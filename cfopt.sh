@@ -121,19 +121,32 @@ download_with_retry() {
                     if [ "$actual_hash" = "$expected_hash" ]; then
                         return 0
                     else
-                        echo -e "${YELLOW}[WARN] 哈希校验失败，正在重试...${NC}"
+                        echo -e "${YELLOW}[WARN] 哈希校验失败 (期望: ${expected_hash:0:16}... 实际: ${actual_hash:0:16}...)，正在重试...${NC}"
                     fi
                 else
                     return 0
                 fi
+            else
+                echo -e "${YELLOW}[WARN] 下载的文件无效 (空文件或错误页面)，正在重试...${NC}"
             fi
+        else
+            echo -e "${YELLOW}[WARN] curl 下载失败 (退出码: $?)，正在重试...${NC}"
         fi
         retry_count=$((retry_count + 1))
-        echo -e "${YELLOW}[WARN] 下载失败 (尝试 $retry_count/$max_retries)，正在重试...${NC}"
-        sleep 2
+        if [ $retry_count -lt $max_retries ]; then
+            echo -e "${YELLOW}[WARN] 第 $retry_count 次重试失败，等待 2 秒后重试...${NC}"
+            sleep 2
+        fi
     done
     
     echo -e "${RED}[ERROR] 无法下载或校验失败: $(basename "$url")${NC}"
+    echo -e "${YELLOW}[DEBUG] URL: $url${NC}"
+    if [ -f "$output" ]; then
+        echo -e "${YELLOW}[DEBUG] 文件大小: $(wc -c < "$output") bytes${NC}"
+        head -5 "$output" 2>/dev/null | while read -r line; do
+            echo -e "${YELLOW}[DEBUG] 内容预览: $line${NC}"
+        done
+    fi
     return 1
 }
 
@@ -684,11 +697,19 @@ EOF
                 [ -z "$LOCAL_VER" ] && LOCAL_VER="0.0"
             fi
 
-            if [ -n "$REMOTE_VER" ] && [ "$REMOTE_VER" != "$LOCAL_VER" ]; then
+            # 判断是否需要下载：文件不存在 或 版本不同
+            NEED_DOWNLOAD=false
+            if [ ! -f "$LOCAL_PATH" ]; then
+                NEED_DOWNLOAD=true
+            elif [ -n "$REMOTE_VER" ] && [ "$REMOTE_VER" != "$LOCAL_VER" ]; then
+                NEED_DOWNLOAD=true
+            fi
+
+            if [ "$NEED_DOWNLOAD" = true ]; then
                 if download_with_retry "$REMOTE_URL/$REMOTE_FILE" "$TEMP_DIR/$REMOTE_FILE" "$REMOTE_HASH"; then
                     HAS_UPDATE=true
                 else
-                    echo -e "${YELLOW}[SKIP] 跳过 $KEY 的更新。${NC}"
+                    echo -e "${RED}[ERROR] $KEY 下载失败，请检查网络或稍后重试。${NC}"
                 fi
             fi
         done
