@@ -19,11 +19,10 @@
 ## 🚀 快速开始
 
 ### 1. 安装
-在终端执行以下命令即可完成一键安装：
+在终端执行以下命令即可完成一键安装（测试中，请勿使用！!!!!）：
 ```bash
 curl -sL https://raw.githubusercontent.com/Ausnana/Cloudflare-Best-IP-DnsUpdate/main/cfopt.sh -o cfopt.sh && bash cfopt.sh
 ```
-*(注：请将链接中的 `your-username` 替换为你的 GitHub 用户名)*
 
 ### 2. 启动程序
 安装完成后，脚本会自动配置全局命令。在任何位置输入以下命令即可启动：
