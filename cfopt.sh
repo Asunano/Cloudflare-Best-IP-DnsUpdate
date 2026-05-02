@@ -157,7 +157,7 @@ check_environment() {
     local missing_tools=()
     
     # 检查必要的系统命令
-    local required_cmds=("curl" "openssl" "grep" "sed" "awk" "jq" "wget")
+    local required_cmds=("curl" "openssl" "grep" "sed" "awk" "jq")
     for cmd in "${required_cmds[@]}"; do
         if ! command -v "$cmd" &> /dev/null; then
             missing_tools+=("$cmd")
@@ -515,7 +515,7 @@ check_and_update_components() {
     echo -e " ${YELLOW}正在检查组件更新...${NC}"
     echo -e "${CYAN}+------------------------------------------------------------+${NC}"
     
-    REMOTE_VERSIONS=$(wget -qO- "$VERSION_FILE_REMOTE" 2>/dev/null)
+    REMOTE_VERSIONS=$(curl -sL --connect-timeout 10 "$VERSION_FILE_REMOTE" 2>/dev/null)
     if [ -z "$REMOTE_VERSIONS" ]; then
         echo -e "${RED}[ERROR] 无法连接远程服务器，请检查网络。${NC}"
         read -p "按回车键返回主菜单..."
