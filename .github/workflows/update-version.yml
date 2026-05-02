@@ -128,7 +128,7 @@ jobs:
         git push origin main
         echo ""
         echo "======================================"
-        echo "  ✅ version.txt 更新成功！"
+        echo "  [OK] version.txt 更新成功！"
         echo "======================================"
         echo ""
         echo "提示："
