@@ -684,7 +684,8 @@ EOF
     )
 
     HAS_UPDATE=false
-    TEMP_DIR=$(mktemp -d)
+    # 显式指定临时目录到 /tmp，避免 /dev/shm 或 /run 空间不足
+    TEMP_DIR=$(mktemp -d /tmp/cfopt_install.XXXXXX)
     
     if [ -n "$REMOTE_VERSIONS" ]; then
         # 有 version.txt，进行版本对比和哈希校验
