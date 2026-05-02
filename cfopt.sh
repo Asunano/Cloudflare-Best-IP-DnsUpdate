@@ -669,7 +669,16 @@ EOF
 
     # 5. 静默版本检测与更新
     echo -e "${CYAN}[INFO] 正在下载组件文件...${NC}"
-    REMOTE_VERSIONS=$(curl -sL --connect-timeout 10 "$VERSION_FILE_REMOTE" 2>/dev/null)
+    
+    # 下载 version.txt（增加超时和进度提示）
+    echo -e "${CYAN}[INFO] 正在获取版本索引...${NC}"
+    REMOTE_VERSIONS=$(curl -sL --connect-timeout 10 --max-time 30 "$VERSION_FILE_REMOTE" 2>/dev/null)
+    
+    if [ -z "$REMOTE_VERSIONS" ]; then
+        echo -e "${YELLOW}[WARN] 无法获取 version.txt，将跳过哈希校验直接下载...${NC}"
+    else
+        echo -e "${GREEN}[OK] 版本索引获取成功！${NC}"
+    fi
     
     declare -A MODULE_MAP
     MODULE_MAP=(
@@ -687,9 +696,14 @@ EOF
     # 显式指定临时目录到 /tmp，避免 /dev/shm 或 /run 空间不足
     TEMP_DIR=$(mktemp -d /tmp/cfopt_install.XXXXXX)
     
+    # 计数器：用于显示进度
+    TOTAL_FILES=${#MODULE_MAP[@]}
+    CURRENT_FILE=0
+    
     if [ -n "$REMOTE_VERSIONS" ]; then
         # 有 version.txt，进行版本对比和哈希校验
         for KEY in "${!MODULE_MAP[@]}"; do
+            CURRENT_FILE=$((CURRENT_FILE + 1))
             IFS=':' read -r LOCAL_PATH REMOTE_FILE <<< "${MODULE_MAP[$KEY]}"
             REMOTE_INFO=$(echo "$REMOTE_VERSIONS" | grep "^${KEY}=" | cut -d'=' -f2)
             REMOTE_VER=$(echo "$REMOTE_INFO" | cut -d':' -f1)
@@ -705,8 +719,10 @@ EOF
             NEED_DOWNLOAD=false
             if [ ! -f "$LOCAL_PATH" ]; then
                 NEED_DOWNLOAD=true
+                echo -e "${CYAN}[INFO] [$CURRENT_FILE/$TOTAL_FILES] 下载 $KEY...${NC}"
             elif [ -n "$REMOTE_VER" ] && [ "$REMOTE_VER" != "$LOCAL_VER" ]; then
                 NEED_DOWNLOAD=true
+                echo -e "${CYAN}[INFO] [$CURRENT_FILE/$TOTAL_FILES] 更新 $KEY (v$LOCAL_VER -> v$REMOTE_VER)...${NC}"
             fi
 
             if [ "$NEED_DOWNLOAD" = true ]; then
@@ -719,12 +735,13 @@ EOF
         done
     else
         # 无 version.txt，跳过哈希校验直接下载所有文件（首次安装或网络问题）
-        echo -e "${YELLOW}[WARN] 无法获取 version.txt，将跳过哈希校验直接下载...${NC}"
         for KEY in "${!MODULE_MAP[@]}"; do
+            CURRENT_FILE=$((CURRENT_FILE + 1))
             IFS=':' read -r LOCAL_PATH REMOTE_FILE <<< "${MODULE_MAP[$KEY]}"
             
             # 仅下载不存在的文件
             if [ ! -f "$LOCAL_PATH" ]; then
+                echo -e "${CYAN}[INFO] [$CURRENT_FILE/$TOTAL_FILES] 下载 $KEY...${NC}"
                 if download_with_retry "$REMOTE_URL/$REMOTE_FILE" "$TEMP_DIR/$REMOTE_FILE" ""; then
                     HAS_UPDATE=true
                 else
