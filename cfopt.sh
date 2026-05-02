@@ -697,9 +697,6 @@ EOF
     )
 
     HAS_UPDATE=false
-    # 显式指定临时目录到 /tmp，避免 /dev/shm 或 /run 空间不足
-    TEMP_DIR=$(mktemp -d /tmp/cfopt_install.XXXXXX)
-    
     # 计数器：用于显示进度
     TOTAL_FILES=${#MODULE_MAP[@]}
     CURRENT_FILE=0
@@ -730,10 +727,16 @@ EOF
             fi
 
             if [ "$NEED_DOWNLOAD" = true ]; then
-                if download_with_retry "$REMOTE_URL/$REMOTE_FILE" "$TEMP_DIR/$REMOTE_FILE" "$REMOTE_HASH"; then
+                # 确保目标目录存在
+                mkdir -p "$(dirname "$LOCAL_PATH")" 2>/dev/null
+                
+                # 直接在目标位置下载
+                if download_with_retry "$REMOTE_URL/$REMOTE_FILE" "$LOCAL_PATH" "$REMOTE_HASH"; then
                     HAS_UPDATE=true
                 else
                     echo -e "${RED}[ERROR] $KEY 下载失败，请检查网络或稍后重试。${NC}"
+                    # 清理可能的残留文件
+                    rm -f "$LOCAL_PATH" 2>/dev/null
                 fi
             fi
         done
@@ -746,30 +749,26 @@ EOF
             # 仅下载不存在的文件
             if [ ! -f "$LOCAL_PATH" ]; then
                 echo -e "${CYAN}[INFO] [$CURRENT_FILE/$TOTAL_FILES] 下载 $KEY...${NC}"
-                if download_with_retry "$REMOTE_URL/$REMOTE_FILE" "$TEMP_DIR/$REMOTE_FILE" ""; then
+                # 确保目标目录存在
+                mkdir -p "$(dirname "$LOCAL_PATH")" 2>/dev/null
+                
+                # 直接在目标位置下载
+                if download_with_retry "$REMOTE_URL/$REMOTE_FILE" "$LOCAL_PATH" ""; then
                     HAS_UPDATE=true
                 else
                     echo -e "${RED}[ERROR] $KEY 下载失败，请检查网络连接。${NC}"
+                    # 清理可能的残留文件
+                    rm -f "$LOCAL_PATH" 2>/dev/null
                 fi
             fi
         done
     fi
 
     if [ "$HAS_UPDATE" = true ]; then
-        echo -e "${BLUE}[INFO] 正在安装组件...${NC}"
-        for KEY in "${!MODULE_MAP[@]}"; do
-            IFS=':' read -r LOCAL_PATH REMOTE_FILE <<< "${MODULE_MAP[$KEY]}"
-            if [ -f "$TEMP_DIR/$REMOTE_FILE" ]; then
-                mkdir -p "$(dirname "$LOCAL_PATH")"
-                mv "$TEMP_DIR/$REMOTE_FILE" "$LOCAL_PATH"
-                chmod +x "$LOCAL_PATH"
-            fi
-        done
         echo -e "${GREEN}[OK] 组件安装完成！${NC}"
     else
         echo -e "${YELLOW}[WARN] 没有可更新的组件。${NC}"
     fi
-    rm -rf "$TEMP_DIR"
 
     # 6. 进入主菜单
     show_main_menu
