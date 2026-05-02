@@ -111,8 +111,12 @@ download_with_retry() {
     local retry_count=0
     
     while [ $retry_count -lt $max_retries ]; do
+        # 确保输出文件的父目录存在
+        local output_dir=$(dirname "$output")
+        mkdir -p "$output_dir" 2>/dev/null
+        
         # 使用 curl 进行下载
-        if curl -sL --connect-timeout 10 -o "$output" "$url" 2>/dev/null; then
+        if curl -sL --connect-timeout 10 --max-time 60 -o "$output" "$url" 2>/dev/null; then
             # 基础校验：文件非空且不是 HTML 错误页
             if [ -s "$output" ] && ! grep -q "403 Forbidden" "$output" 2>/dev/null && ! grep -q "404 Not Found" "$output" 2>/dev/null; then
                 # 哈希校验（如果提供了哈希值）
