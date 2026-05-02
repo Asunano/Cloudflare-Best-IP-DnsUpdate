@@ -111,12 +111,19 @@ download_with_retry() {
     local retry_count=0
     
     while [ $retry_count -lt $max_retries ]; do
-        # 确保输出文件的父目录存在
+        # 确保输出文件的父目录存在且可写
         local output_dir=$(dirname "$output")
-        mkdir -p "$output_dir" 2>/dev/null
+        if ! mkdir -p "$output_dir" 2>/dev/null; then
+            echo -e "${RED}[ERROR] 无法创建目录: $output_dir${NC}"
+            return 1
+        fi
         
-        # 使用 curl 进行下载
-        if curl -sL --connect-timeout 10 --max-time 60 -o "$output" "$url" 2>/dev/null; then
+        # 使用 curl 进行下载，增加 -f (fail) 和 --create-dirs 参数
+        local curl_output
+        curl_output=$(curl -sfL --connect-timeout 10 --max-time 60 --create-dirs -o "$output" "$url" 2>&1)
+        local curl_exit_code=$?
+        
+        if [ $curl_exit_code -eq 0 ]; then
             # 基础校验：文件非空且不是 HTML 错误页
             if [ -s "$output" ] && ! grep -q "403 Forbidden" "$output" 2>/dev/null && ! grep -q "404 Not Found" "$output" 2>/dev/null; then
                 # 哈希校验（如果提供了哈希值）
@@ -134,7 +141,10 @@ download_with_retry() {
                 echo -e "${YELLOW}[WARN] 下载的文件无效 (空文件或错误页面)，正在重试...${NC}"
             fi
         else
-            echo -e "${YELLOW}[WARN] curl 下载失败 (退出码: $?)，正在重试...${NC}"
+            echo -e "${YELLOW}[WARN] curl 下载失败 (退出码: $curl_exit_code)，正在重试...${NC}"
+            if [ $curl_exit_code -eq 23 ]; then
+                echo -e "${RED}[DEBUG] 写入错误：请检查磁盘空间或目录权限。目标路径: $output${NC}"
+            fi
         fi
         retry_count=$((retry_count + 1))
         if [ $retry_count -lt $max_retries ]; then
