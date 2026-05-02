@@ -668,23 +668,26 @@ EOF
     fi
 
     # 5. 静默版本检测与更新
-    REMOTE_VERSIONS=$(wget -qO- "$VERSION_FILE_REMOTE" 2>/dev/null)
-    if [ -n "$REMOTE_VERSIONS" ]; then
-        declare -A MODULE_MAP
-        MODULE_MAP=(
-            ["CF_IP_MENU"]="$INSTALL_DIR/modules/cf-ip/menu.sh:modules/cf-ip/menu.sh"
-            ["CF_IP_CORE"]="$INSTALL_DIR/modules/cf-ip/core.sh:modules/cf-ip/core.sh"
-            ["CF_DNS_CORE"]="$INSTALL_DIR/modules/cf-dns/core.sh:modules/cf-dns/core.sh"
-            ["CF_DNS_SETUP"]="$INSTALL_DIR/modules/cf-dns/setup.sh:modules/cf-dns/setup.sh"
-            ["DNSPOD_CORE"]="$INSTALL_DIR/modules/dnspod-dns/core.sh:modules/dnspod-dns/core.sh"
-            ["DNSPOD_SETUP"]="$INSTALL_DIR/modules/dnspod-dns/setup.sh:modules/dnspod-dns/setup.sh"
-            ["SCHEDULER_RUN"]="$INSTALL_DIR/modules/scheduler/run.sh:modules/scheduler/run.sh"
-            ["IP_SYNC"]="$INSTALL_DIR/modules/ip-sync/sync.sh:modules/ip-sync/sync.sh"
-        )
+    echo -e "${CYAN}[INFO] 正在下载组件文件...${NC}"
+    REMOTE_VERSIONS=$(curl -sL --connect-timeout 10 "$VERSION_FILE_REMOTE" 2>/dev/null)
+    
+    declare -A MODULE_MAP
+    MODULE_MAP=(
+        ["CF_IP_MENU"]="$INSTALL_DIR/modules/cf-ip/menu.sh:modules/cf-ip/menu.sh"
+        ["CF_IP_CORE"]="$INSTALL_DIR/modules/cf-ip/core.sh:modules/cf-ip/core.sh"
+        ["CF_DNS_CORE"]="$INSTALL_DIR/modules/cf-dns/core.sh:modules/cf-dns/core.sh"
+        ["CF_DNS_SETUP"]="$INSTALL_DIR/modules/cf-dns/setup.sh:modules/cf-dns/setup.sh"
+        ["DNSPOD_CORE"]="$INSTALL_DIR/modules/dnspod-dns/core.sh:modules/dnspod-dns/core.sh"
+        ["DNSPOD_SETUP"]="$INSTALL_DIR/modules/dnspod-dns/setup.sh:modules/dnspod-dns/setup.sh"
+        ["SCHEDULER_RUN"]="$INSTALL_DIR/modules/scheduler/run.sh:modules/scheduler/run.sh"
+        ["IP_SYNC"]="$INSTALL_DIR/modules/ip-sync/sync.sh:modules/ip-sync/sync.sh"
+    )
 
-        HAS_UPDATE=false
-        TEMP_DIR=$(mktemp -d)
-        
+    HAS_UPDATE=false
+    TEMP_DIR=$(mktemp -d)
+    
+    if [ -n "$REMOTE_VERSIONS" ]; then
+        # 有 version.txt，进行版本对比和哈希校验
         for KEY in "${!MODULE_MAP[@]}"; do
             IFS=':' read -r LOCAL_PATH REMOTE_FILE <<< "${MODULE_MAP[$KEY]}"
             REMOTE_INFO=$(echo "$REMOTE_VERSIONS" | grep "^${KEY}=" | cut -d'=' -f2)
@@ -713,20 +716,38 @@ EOF
                 fi
             fi
         done
-
-        if [ "$HAS_UPDATE" = true ]; then
-            echo -e "${BLUE}[INFO] 发现新版本，正在后台静默更新...${NC}"
-            for KEY in "${!MODULE_MAP[@]}"; do
-                IFS=':' read -r LOCAL_PATH REMOTE_FILE <<< "${MODULE_MAP[$KEY]}"
-                if [ -f "$TEMP_DIR/$REMOTE_FILE" ]; then
-                    mkdir -p "$(dirname "$LOCAL_PATH")"
-                    mv "$TEMP_DIR/$REMOTE_FILE" "$LOCAL_PATH"
-                    chmod +x "$LOCAL_PATH"
+    else
+        # 无 version.txt，跳过哈希校验直接下载所有文件（首次安装或网络问题）
+        echo -e "${YELLOW}[WARN] 无法获取 version.txt，将跳过哈希校验直接下载...${NC}"
+        for KEY in "${!MODULE_MAP[@]}"; do
+            IFS=':' read -r LOCAL_PATH REMOTE_FILE <<< "${MODULE_MAP[$KEY]}"
+            
+            # 仅下载不存在的文件
+            if [ ! -f "$LOCAL_PATH" ]; then
+                if download_with_retry "$REMOTE_URL/$REMOTE_FILE" "$TEMP_DIR/$REMOTE_FILE" ""; then
+                    HAS_UPDATE=true
+                else
+                    echo -e "${RED}[ERROR] $KEY 下载失败，请检查网络连接。${NC}"
                 fi
-            done
-        fi
-        rm -rf "$TEMP_DIR"
+            fi
+        done
     fi
+
+    if [ "$HAS_UPDATE" = true ]; then
+        echo -e "${BLUE}[INFO] 正在安装组件...${NC}"
+        for KEY in "${!MODULE_MAP[@]}"; do
+            IFS=':' read -r LOCAL_PATH REMOTE_FILE <<< "${MODULE_MAP[$KEY]}"
+            if [ -f "$TEMP_DIR/$REMOTE_FILE" ]; then
+                mkdir -p "$(dirname "$LOCAL_PATH")"
+                mv "$TEMP_DIR/$REMOTE_FILE" "$LOCAL_PATH"
+                chmod +x "$LOCAL_PATH"
+            fi
+        done
+        echo -e "${GREEN}[OK] 组件安装完成！${NC}"
+    else
+        echo -e "${YELLOW}[WARN] 没有可更新的组件。${NC}"
+    fi
+    rm -rf "$TEMP_DIR"
 
     # 6. 进入主菜单
     show_main_menu
