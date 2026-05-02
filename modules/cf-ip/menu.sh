@@ -130,7 +130,7 @@ download_with_retry() {
     local retry_count=0
     
     while [ $retry_count -lt $max_retries ]; do
-        if wget -q --timeout=15 -O "$output" "$url" 2>/dev/null; then
+        if curl -sL --connect-timeout 15 -o "$output" "$url" 2>/dev/null; then
             if [ -s "$output" ]; then
                 if [ -n "$expected_hash" ]; then
                     local actual_hash=$(sha256sum "$output" | awk '{print $1}')
@@ -397,8 +397,8 @@ install_wizard() {
         
         if [ "$DOWNLOAD_SCRIPT" = "y" ] || [ "$DOWNLOAD_SCRIPT" = "Y" ]; then
             read -p "请输入 ip_auto.sh 的下载地址: " SCRIPT_URL
-            wget -N -O "$IP_AUTO_SCRIPT" "$SCRIPT_URL"
-            if [ $? -eq 0 ]; then
+            curl -sL -o "$IP_AUTO_SCRIPT" "$SCRIPT_URL"
+            if [ $? -eq 0 ] && [ -s "$IP_AUTO_SCRIPT" ]; then
                 chmod +x "$IP_AUTO_SCRIPT"
                 echo -e "${GREEN}[OK] 脚本下载成功${NC}"
             else
