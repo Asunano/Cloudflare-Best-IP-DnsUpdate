@@ -8,6 +8,10 @@ on:
       - 'modules/**/*.sh'
   workflow_dispatch:
 
+permissions:
+  contents: write
+  actions: write
+
 jobs:
   update-version:
     runs-on: ubuntu-latest
@@ -16,8 +20,9 @@ jobs:
     - name: Checkout code
       uses: actions/checkout@v4
       with:
-        token: ${{ secrets.GITHUB_TOKEN }}
+        token: ${{ secrets.GH_TOKEN }}
         fetch-depth: 0
+        persist-credentials: true
     
     - name: Calculate SHA256 hashes
       run: |
@@ -28,19 +33,16 @@ jobs:
         echo "# ============================================================" >> version.txt
         echo "" >> version.txt
         
-        # Function to extract version and calculate hash
         generate_entry() {
           local key=$1
           local file=$2
           
           if [ -f "$file" ]; then
-            # Extract version
             local ver=$(grep -m1 '^SCRIPT_VERSION=' "$file" | cut -d'=' -f2 | tr -d '"' | tr -d "'")
             if [ -z "$ver" ]; then
               ver="0.1"
             fi
             
-            # Calculate SHA256
             local hash=$(sha256sum "$file" | awk '{print $1}')
             
             echo "${key}=${ver}:${hash}" >> version.txt
@@ -72,11 +74,16 @@ jobs:
           echo "Changes detected in version.txt"
         fi
     
-    - name: Commit and push changes
+    - name: Configure Git
       if: steps.check_changes.outputs.has_changes == 'true'
       run: |
         git config user.name "github-actions[bot]"
         git config user.email "github-actions[bot]@users.noreply.github.com"
+        git remote set-url origin https://x-access-token:${{ secrets.GH_TOKEN }}@github.com/${{ github.repository }}.git
+    
+    - name: Commit and push changes
+      if: steps.check_changes.outputs.has_changes == 'true'
+      run: |
         git add version.txt
         git commit -m "ci: auto-update version.txt hashes [skip ci]"
-        git push
+        git push origin main
