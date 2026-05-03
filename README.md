@@ -23,7 +23,6 @@ Cloudflare-Best-IP-DnsUpdate 是一款**全新重构**的自动化 Cloudflare IP
 - **📦 模块化设计**：清晰的功能划分，便于二次开发与维护
 - **🎯 JSON 配置架构**：统一的 JSON 配置文件，替代传统 shell 变量，更易管理和扩展
 - **💡 智能引导系统**：首次运行时自动引导用户完成配置，新手友好
-- **🌐 GitHub 托管**：所有资源托管于 GitHub，全球 CDN 加速，高可用性
 
 ---
 
@@ -35,7 +34,7 @@ Cloudflare-Best-IP-DnsUpdate 是一款**全新重构**的自动化 Cloudflare IP
 - **必要工具**：curl、bash、crontab、jq
 - **权限要求**：root 或具有 sudo 权限的用户
 
-### 一键安装
+### 一键安装（请勿使用，还在开发中，正在测试部署步骤......）
 
 ```bash
 curl -sL https://raw.githubusercontent.com/Asunano/Cloudflare-Best-IP-DnsUpdate/main/cfopt.sh -o cfopt.sh && bash cfopt.sh
@@ -410,12 +409,6 @@ tail -f /root/cfopt/logs/dnspod-dns/*.log
 - ✅ **多线路支持**：DNSPod 支持单线路和多线路（运营商分流）模式
 - ✅ **进程锁管理**：防止并发执行导致的数据冲突
 - ✅ **数据有效性校验**：启动前检查 IP 文件格式和内容
-
-### 用户体验
-- ✅ **UI 风格统一**：所有模块使用一致的 ASCII 边框菜单
-- ✅ **错误提示优化**：清晰的错误信息和解决建议
-- ✅ **GitHub 托管**：全球 CDN 加速，高可用性
-- ✅ **完善的 .gitignore**：忽略运行时文件，保留模板
 
 ### 安全性
 - ✅ **SHA256 校验**：所有组件下载后验证完整性
