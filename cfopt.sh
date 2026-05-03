@@ -19,7 +19,40 @@ NC='\033[0m'
 
 # --- 全局配置区 ---
 SCRIPT_VERSION="0.1"
+
+# 【新增】地理位置检测与镜像选择
+# 默认使用 GitHub Raw
 REMOTE_URL="https://raw.githubusercontent.com/Asunano/Cloudflare-Best-IP-DnsUpdate/main"
+GITHUB_MIRROR="https://gh-proxy.org/https://raw.githubusercontent.com/Asunano/Cloudflare-Best-IP-DnsUpdate/main"
+
+# 检测是否在中国大陆，自动切换镜像
+detect_and_set_mirror() {
+    echo -e "${CYAN}[INFO] 正在检测网络环境...${NC}"
+    
+    # 尝试获取 IP 地理位置信息
+    local location_info
+    location_info=$(curl -s --connect-timeout 5 --max-time 10 "https://ip.sb/api/" 2>/dev/null)
+    
+    if [[ -n "${location_info}" ]]; then
+        # 提取国家代码
+        local country_code
+        country_code=$(echo "${location_info}" | grep -o '"country":"[^"]*"' | cut -d'"' -f4)
+        
+        if [[ "${country_code}" == "CN" ]]; then
+            echo -e "${YELLOW}[INFO] 检测到中国大陆 IP，自动启用 GitHub 镜像加速${NC}"
+            REMOTE_URL="${GITHUB_MIRROR}"
+            echo -e "${GREEN}[OK] 已切换至镜像: gh-proxy.org${NC}"
+        else
+            echo -e "${GREEN}[OK] 检测到海外 IP (${country_code})，使用直连${NC}"
+        fi
+    else
+        echo -e "${YELLOW}[WARN] 无法获取地理位置信息，使用默认直连${NC}"
+    fi
+}
+
+# 执行镜像检测
+detect_and_set_mirror
+
 VERSION_FILE_REMOTE="${REMOTE_URL}/version.txt"
 
 # 根据用户权限动态确定安装目录
@@ -195,27 +228,54 @@ download_with_retry() {
         
         # 使用 curl 进行下载，仅显示进度条
         if curl -sfL --connect-timeout 10 --max-time 60 --create-dirs -o "${output}" "${url}" 2>/dev/null; then
-            # 基础校验：文件非空且不是 HTML 错误页
-            if [[ -s "${output}" ]] && ! grep -q "403 Forbidden" "${output}" 2>/dev/null && ! grep -q "404 Not Found" "${output}" 2>/dev/null; then
-                local file_size
-                file_size="$(wc -c < "${output}")"
-                
-                # 哈希校验（如果提供了哈希值）
-                if [[ -n "${expected_hash}" ]]; then
-                    local actual_hash
-                    actual_hash="$(sha256sum "${output}" | awk '{print $1}')"
-                    if [[ "${actual_hash}" = "${expected_hash}" ]]; then
-                        echo -e "${GREEN}[OK] 下载成功 (${file_size} bytes) - 哈希校验通过${NC}"
-                        return 0
-                    else
-                        echo -e "${YELLOW}[WARN] 哈希校验失败，正在重试...${NC}"
-                    fi
-                else
-                    echo -e "${GREEN}[OK] 下载成功 (${file_size} bytes)${NC}"
+            # 【增强】多重完整性校验
+            
+            # 1. 文件非空检查
+            if [[ ! -s "${output}" ]]; then
+                echo -e "${YELLOW}[WARN] 下载的文件为空，正在重试...${NC}"
+                continue
+            fi
+            
+            local file_size
+            file_size="$(wc -c < "${output}")"
+            
+            # 2. 最小文件大小检查（小于 100 bytes 可能是错误页面）
+            if [[ ${file_size} -lt 100 ]]; then
+                echo -e "${YELLOW}[WARN] 文件过小 (${file_size} bytes)，可能是错误页面，正在重试...${NC}"
+                continue
+            fi
+            
+            # 3. HTML 错误页检查
+            if grep -q "403 Forbidden" "${output}" 2>/dev/null || \
+               grep -q "404 Not Found" "${output}" 2>/dev/null || \
+               grep -q "<html" "${output}" 2>/dev/null || \
+               grep -q "<!DOCTYPE" "${output}" 2>/dev/null; then
+                echo -e "${YELLOW}[WARN] 下载到 HTML 错误页，正在重试...${NC}"
+                continue
+            fi
+            
+            # 4. Shell 脚本基本语法检查（如果是 .sh 文件）
+            if [[ "${output}" == *.sh ]]; then
+                if ! head -1 "${output}" | grep -q "^#!/" 2>/dev/null; then
+                    echo -e "${YELLOW}[WARN] 文件不是有效的 Shell 脚本（缺少 shebang），正在重试...${NC}"
+                    continue
+                fi
+            fi
+            
+            # 5. 哈希校验（如果提供了哈希值）
+            if [[ -n "${expected_hash}" ]]; then
+                local actual_hash
+                actual_hash="$(sha256sum "${output}" | awk '{print $1}')"
+                if [[ "${actual_hash}" = "${expected_hash}" ]]; then
+                    echo -e "${GREEN}[OK] 下载成功 (${file_size} bytes) - 哈希校验通过${NC}"
                     return 0
+                else
+                    echo -e "${YELLOW}[WARN] 哈希校验失败，正在重试...${NC}"
+                    continue
                 fi
             else
-                echo -e "${YELLOW}[WARN] 下载的文件无效，正在重试...${NC}"
+                echo -e "${GREEN}[OK] 下载成功 (${file_size} bytes) - 完整性校验通过${NC}"
+                return 0
             fi
         else
             local curl_exit_code=$?
@@ -476,7 +536,7 @@ setup_auto_cron() {
     # 检查系统是否安装 crontab
     if ! command -v crontab &> /dev/null; then
         echo -e "${RED}[ERROR] 系统未检测到 crontab 组件。${NC}"
-        echo -e "${YELLOW}提示:${NC} 定时任务依赖于 cronie (CentOS) 或 cron (Debian/Ubuntu)。"
+        echo -e "${YELLOW}提示:${NC} 定时任务依赖于 cronie (CentOS) 或 cron (Debian/Ubuntu)."
         read -r -p "是否现在尝试自动安装？(y/n，默认y): " INSTALL_CRON
         INSTALL_CRON="${INSTALL_CRON:-y}"
         
