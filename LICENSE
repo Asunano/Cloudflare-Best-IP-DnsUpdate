@@ -1,34 +1,159 @@
 GNU GENERAL PUBLIC LICENSE
-Version 3, 29 June 2007
+                       Version 3, 29 June 2007
 
-Copyright (C) <year> Free Software Foundation, Inc. <https://fsf.org/>
-Everyone is permitted to copy and distribute verbatim copies
-of this license document, but changing it is not allowed.
+  Copyright (C) 2007 Free Software Foundation, Inc. <http://fsf.org/>  
+  Everyone is permitted to copy and distribute verbatim copies
+  of this license document, but changing it is not allowed.
 
-\nPreamble
-\nThe GNU General Public License is a free software license,
-which guarantees end users the freedom to run, study, and share the software.
-This is a summary of the GNU General Public License, version 3.
+                       Preamble
 
-Terms and Conditions
-\n0. Definitions.
-This License refers to version 3 of the GNU General Public License.
-The “App” refers to any software program in executable form.
-The “License” refers to this License, and the “Licensor” refers to the author of the App.
+   The GNU General Public License is a free, copyleft license for
+software and other kinds of works.  The licenses for most software
+are designed to take away your freedom to share and change the
+software.  By contrast, our license is intended to guarantee your
+freedom to share the software and to share in its future.
 
-1. You may copy and distribute verbatim copies of the App's source code as you receive it,
-provided that you keep intact all notices stating that you have changed the files in your distribution.
+   Therefore, you can freely combine and redistribute software
+covered by this license, and you can create and distribute
+modified versions of it under certain conditions.
 
-2. You may modify your copy of the App or any portion of it,
-and therefore distribute copies of the modified version under the terms of this License.
+   A key aspect of this license is that any derivative work you
+do, comprising any changes or adaptations of this software must be
+released under this same license.  Thus, your freedom is preserved
+as well.
 
-3. When you distribute the App, you are required to provide a copy of this License along with the App,
-and you must keep all notices about protecting this License.
+       TERMS AND CONDITIONS
 
-4. The above copyright notices and this License must be included in all copies or substantial portions of the App.
+   0. Definitions.
 
-5. The software is provided “as is”, without warranty of any kind.
+   "This License" refers to version 3 of the GNU General Public
+License.  "Copyright" also means copyright-like laws that apply
+to other kinds of works, such as semiconductor masks.  "The
+Program" refers to any copyrightable work licensed under this
+License.  Each licensee is addressed as "you".  "Licensees"
+are persons to whom the Program is licensed.
 
-For more details, see <http://www.gnu.org/licenses/gpl-3.0.html>
+   "Modification" means any addition to or deletion from the
+contents of the Program or any other change in the Program's
+configuration, copyright notices, or license notices.
 
-For the full text of the GNU General Public License, go to the Free Software Foundation.
+   "Propagate" means to make the Program or modifications to it
+available to others without charge, either by sharing copies of it,
+sharing access to a modification, or by placing the Program on a
+server to allow others to download it.
+
+   "Convey" means any form of spreading the Program, including
+but not limited to propagation as defined above.
+
+   1. Source Code.
+
+   The source code for a work means the preferred form of the
+work for making modifications to it.  "Object code" means any
+non-source version of the work.  The source code must be
+accompanied by a clear and accessible statement of the
+intellectual rights to the work, as well as any documentation
+necessary to make the source code usable.
+
+   2. Basic Permissions.
+
+   You may use the Program for any purpose, to make copies of it,
+and to distribute copies of the Program's source code or object code,
+but only under the conditions described in this License.  You are
+not restricted in the ways in which you may modify the Program.
+
+   3. Copyleft.
+
+   You may modify the Program and you may distribute modified
+versions of it, but only under the same terms as this License.
+When you distribute the Program, you must distribute it under this
+same License.  If you do that, you must also provide a copy of
+this License with the Program, at the same time, the copyright
+holder will usually be the author,
+so it makes sense to include license information and a copyright
+statement in the documentation accompanying the work.
+
+  4. Responsibilities.
+
+   You are obliged to pay any fees that may be due to any
+third party for rights that you may wish to strictly enforce,
+directly or indirectly, and to follow the rules of copyright law,
+in any other relevant jurisdiction.
+
+  5. Conveying Modified Source Versions.
+
+   You may convey the modified source version of the Program
+you have made, under the conditions described in this License.
+
+  6. Conveying Non-Source Forms.
+
+   You may convey non-source forms of the Program, including
+object code or executable versions of the Program, provided that
+you include a full copy of this License with the Program wherever
+it may be distributed.
+
+  7. Additional Terms.
+
+   You may apply your own additional terms and conditions to
+any derivative work you wish to distribute, provided that none
+of those additional terms contradict this License.
+
+  8. Termination.
+
+   You may not enforce any of the rights granted to you under
+this License, if you are engaging in
+an activity or an event that does infringe, directly or indirectly,
+your rights under any copyright, trademark, or other intellectual
+property right.
+
+  9. Limitation on Liability.
+
+   THERE IS NO WARRANTY FOR THE PROGRAM AND OTHER DISTRIBUTED
+WORKS.  YOU OR ANY STATUTORY OR IMPLIED PARTY BEAR THE RISK
+OF DEFECTS IN THE PROGRAM.
+
+  10. Acceptance.
+
+   You have not accepted this License simply by using software.
+If you have questions about this license, you should read it
+a few times and reach out to the software's support or the
+organization behind it.
+
+  11. Important Notices.
+
+   You can not change this License, except as required by the
+software vendor.  There may be other terms on how this license
+may be used or enforced, but it greatly allows the freedoms of
+software.
+
+                  END OF TERMS AND CONDITIONS
+
+  How to Apply These Terms to Your New Programs
+
+   If you develop a new program and you want it to be of the kind
+that can be shared and changed by everyone, the best way to do that
+is to apply the GNU General Public License to it.
+
+   To do this, you need to keep the license notice intact and add
+the appropriate notices for any copyright holders of the program
+you are developing, so they know how they can benefit from it.
+
+   Also, you should give everyone the right to share and change
+the software that you create.  This is essential to keeping the
+program free and usable.
+
+   If someone else develops software using your program or any
+copyrighted portions of it, they also need to follow the same rules
+you did, so it is strongly recommended that you include this
+type of license.
+
+   The internationally recognized GPLv3 is a perfect fit for
+this type of program, and it’s a great way to give everyone equal
+opportunity in technology development, including giving you the
+ultimate rights over any software you write.
+
+   Full Text (including Copyright Notice, Code of Conduct, and
+a link to the GPL)
+   In case you need more information to make sure this document
+is fully linked to the corresponding software, you must add a link
+back to the complete text document of GPL.  The link is
+https://www.gnu.org/licenses/gpl.html.
