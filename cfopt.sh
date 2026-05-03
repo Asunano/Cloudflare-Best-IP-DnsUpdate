@@ -736,14 +736,35 @@ check_and_update_components() {
         REMOTE_HASH="$(echo "${REMOTE_INFO}" | cut -d':' -f2)"
         
         LOCAL_VER="0.0"
+        LOCAL_HASH=""
         if [[ -f "${LOCAL_PATH}" ]]; then
             LOCAL_VER="$(grep -m1 "^SCRIPT_VERSION=" "${LOCAL_PATH}" | awk -F'"' '{print $2}')"
             [[ -z "${LOCAL_VER}" ]] && LOCAL_VER="0.0"
+            # 计算本地文件哈希
+            LOCAL_HASH="$(sha256sum "${LOCAL_PATH}" | awk '{print $1}')"
         fi
 
-        if [[ -n "${REMOTE_VER}" ]] && [[ "${REMOTE_VER}" != "${LOCAL_VER}" ]]; then
-            echo -e "  ${YELLOW}[UPDATE]${NC} ${KEY}: ${LOCAL_VER} -> ${REMOTE_VER}"
-            if download_with_retry "${REMOTE_URL}/${REMOTE_FILE}" "${TEMP_DIR}/${REMOTE_FILE}" "${REMOTE_HASH}"; then
+        # 【修复】判断是否需要下载：文件不存在 OR 版本不同 OR 哈希不同
+        NEED_DOWNLOAD=false
+        if [[ ! -f "${LOCAL_PATH}" ]]; then
+            NEED_DOWNLOAD=true
+            echo -e "${CYAN}[INFO] [${CURRENT_FILE}/${TOTAL_FILES}] 下载 ${KEY}...${NC}"
+        elif [[ -n "${REMOTE_VER}" ]] && [[ "${REMOTE_VER}" != "${LOCAL_VER}" ]]; then
+            # 版本号不同，需要更新
+            NEED_DOWNLOAD=true
+            echo -e "${CYAN}[INFO] [${CURRENT_FILE}/${TOTAL_FILES}] 更新 ${KEY} (v${LOCAL_VER} -> v${REMOTE_VER})...${NC}"
+        elif [[ -n "${REMOTE_HASH}" ]] && [[ -n "${LOCAL_HASH}" ]] && [[ "${REMOTE_HASH}" != "${LOCAL_HASH}" ]]; then
+            # 【新增】版本号相同但哈希不同，说明内容已修改
+            NEED_DOWNLOAD=true
+            echo -e "${YELLOW}[INFO] [${CURRENT_FILE}/${TOTAL_FILES}] 更新 ${KEY} (内容已变更)...${NC}"
+        fi
+
+        if [[ "${NEED_DOWNLOAD}" = true ]]; then
+            # 确保目标目录存在
+            mkdir -p "$(dirname "${LOCAL_PATH}")" 2>/dev/null
+            
+            # 直接在目标位置下载
+            if download_with_retry "${REMOTE_URL}/${REMOTE_FILE}" "${LOCAL_PATH}" "${REMOTE_HASH}"; then
                 HAS_UPDATE=true
             else
                 HAS_ERROR=true
@@ -783,7 +804,10 @@ check_and_update_components() {
     fi
     
     rm -rf "${TEMP_DIR}"
+    echo ""
     read -r -p "按回车键返回主菜单..."
+    # 【修复】返回主菜单而不是退出
+    show_main_menu
 }
 
 # --- 初始化流程 ---
@@ -910,19 +934,27 @@ EOF
             REMOTE_HASH="$(echo "${REMOTE_INFO}" | cut -d':' -f2)"
             
             LOCAL_VER="0.0"
+            LOCAL_HASH=""
             if [[ -f "${LOCAL_PATH}" ]]; then
                 LOCAL_VER="$(grep -m1 "^SCRIPT_VERSION=" "${LOCAL_PATH}" | awk -F'"' '{print $2}')"
                 [[ -z "${LOCAL_VER}" ]] && LOCAL_VER="0.0"
+                # 计算本地文件哈希
+                LOCAL_HASH="$(sha256sum "${LOCAL_PATH}" | awk '{print $1}')"
             fi
 
-            # 判断是否需要下载：文件不存在 或 版本不同
+            # 【修复】判断是否需要下载：文件不存在 OR 版本不同 OR 哈希不同
             NEED_DOWNLOAD=false
             if [[ ! -f "${LOCAL_PATH}" ]]; then
                 NEED_DOWNLOAD=true
                 echo -e "${CYAN}[INFO] [${CURRENT_FILE}/${TOTAL_FILES}] 下载 ${KEY}...${NC}"
             elif [[ -n "${REMOTE_VER}" ]] && [[ "${REMOTE_VER}" != "${LOCAL_VER}" ]]; then
+                # 版本号不同，需要更新
                 NEED_DOWNLOAD=true
                 echo -e "${CYAN}[INFO] [${CURRENT_FILE}/${TOTAL_FILES}] 更新 ${KEY} (v${LOCAL_VER} -> v${REMOTE_VER})...${NC}"
+            elif [[ -n "${REMOTE_HASH}" ]] && [[ -n "${LOCAL_HASH}" ]] && [[ "${REMOTE_HASH}" != "${LOCAL_HASH}" ]]; then
+                # 【新增】版本号相同但哈希不同，说明内容已修改
+                NEED_DOWNLOAD=true
+                echo -e "${YELLOW}[INFO] [${CURRENT_FILE}/${TOTAL_FILES}] 更新 ${KEY} (内容已变更)...${NC}"
             fi
 
             if [[ "${NEED_DOWNLOAD}" = true ]]; then
