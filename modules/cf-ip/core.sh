@@ -172,9 +172,16 @@ echo -e "  提取数量: ${TAKE_IP_NUM}"
 echo -e "  输出文件: ${OUTPUT_CSV}"
 
 # 构建 cfst 命令
-CMD=("${CFST_BIN}" "-t" "${CFST_THREADS}" "-n" "${TAKE_IP_NUM}")
-if [[ -n "${TARGET_COLO}" ]]; then CMD+=("-c" "${TARGET_COLO}"); fi
+CMD=("${CFST_BIN}" "-n" "${CFST_THREADS}" "-t" "${CFST_PING_TIMES}")
+if [[ -n "${TARGET_COLO}" ]]; then CMD+=("-cfcolo" "${TARGET_COLO}"); fi
 if [[ -f "${IP_DATA_FILE}" ]]; then CMD+=("-f" "${IP_DATA_FILE}"); fi
+CMD+=("-dn" "${CFST_DOWNLOAD_COUNT}" "-dt" "${CFST_DOWNLOAD_TIME}")
+CMD+=("-tp" "${CFST_PORT}" "-url" "${CFST_URL}")
+if [[ "${CFST_HTTPING}" = "true" ]]; then CMD+=("-httping"); fi
+CMD+=("-tl" "${CFST_LATENCY_MAX}" "-tlr" "${CFST_PACKET_LOSS_MAX}" "-sl" "${CFST_SPEED_MIN}")
+CMD+=("-p" "${CFST_SHOW_COUNT}")
+if [[ "${CFST_DISABLE_DOWNLOAD}" = "true" ]]; then CMD+=("-dd"); fi
+if [[ "${CFST_ALL_IP}" = "true" ]]; then CMD+=("-allip"); fi
 CMD+=("-o" "${OUTPUT_CSV}")
 
 # 执行并记录日志
