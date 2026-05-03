@@ -23,6 +23,7 @@ Cloudflare-Best-IP-DnsUpdate 是一款**全新重构**的自动化 Cloudflare IP
 - **📦 模块化设计**：清晰的功能划分，便于二次开发与维护
 - **🎯 JSON 配置架构**：统一的 JSON 配置文件，替代传统 shell 变量，更易管理和扩展
 - **💡 智能引导系统**：首次运行时自动引导用户完成配置，新手友好
+- **🌐 GitHub 托管**：所有资源托管于 GitHub，全球 CDN 加速，高可用性
 
 ---
 
@@ -31,14 +32,16 @@ Cloudflare-Best-IP-DnsUpdate 是一款**全新重构**的自动化 Cloudflare IP
 ### 系统要求
 
 - **操作系统**：Linux（Debian/Ubuntu/CentOS/Alpine 等主流发行版）
-- **必要工具**：curl、bash、crontab、jq
+- **必要工具**：curl、bash、cron（请勿使用，还在开发中，正在测试部署步骤......）tab、jq
 - **权限要求**：root 或具有 sudo 权限的用户
 
-### 一键安装（请勿使用，还在开发中，正在测试部署步骤......）
+### 一键安装
 
 ```bash
-curl -sL https://raw.githubusercontent.com/Asunano/Cloudflare-Best-IP-DnsUpdate/main/cfopt.sh -o cfopt.sh && bash cfopt.sh
+curl -sL https://gh-proxy.org/https://raw.githubusercontent.com/Asunano/Cloudflare-Best-IP-DnsUpdate/main/cfopt.sh -o cfopt.sh && bash cfopt.sh
 ```
+
+> **提示**：已默认启用 gh-proxy 镜像加速，中国大陆用户无需额外配置。
 
 安装完成后，脚本会自动：
 1. ✅ 迁移至标准目录（`/root/cfopt` 或 `$HOME/cfopt`）
@@ -407,8 +410,8 @@ tail -f /root/cfopt/logs/dnspod-dns/*.log
 ### 功能层面
 - ✅ **智能引导系统**：首次运行自动检测配置状态，Y/n 确认启动向导
 - ✅ **多线路支持**：DNSPod 支持单线路和多线路（运营商分流）模式
-- ✅ **进程锁管理**：防止并发执行导致的数据冲突
-- ✅ **数据有效性校验**：启动前检查 IP 文件格式和内容
+- ✅ **进程锁管理**CDN 加速，高可用性
+- ✅ **完善的 .gitignore**：忽略运行时文件，保留模板
 
 ### 安全性
 - ✅ **SHA256 校验**：所有组件下载后验证完整性
