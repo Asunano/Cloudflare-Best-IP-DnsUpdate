@@ -226,8 +226,10 @@ download_with_retry() {
             
             # 4. Shell 脚本基本语法检查（如果是 .sh 文件）
             if [[ "${output}" == *.sh ]]; then
-                if ! head -1 "${output}" | grep -q "^#!/" 2>/dev/null; then
-                    echo -e "${YELLOW}[WARN] 文件不是有效的 Shell 脚本（缺少 shebang），正在重试...${NC}"
+                local first_line
+                first_line="$(head -1 "${output}" 2>/dev/null)"
+                if ! echo "${first_line}" | grep -q "^#!/" 2>/dev/null; then
+                    echo -e "${YELLOW}[WARN] 文件不是有效的 Shell 脚本（第一行: ${first_line}），正在重试...${NC}"
                     continue
                 fi
             fi
