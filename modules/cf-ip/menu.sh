@@ -354,14 +354,14 @@ manage_config() {
 # ====================== 【函数：简单配置】 ======================
 configure_simple() {
     echo ""
-    echo -e "${GREEN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
-    echo -e " ${YELLOW}CF-IP 优选配置向导 - 简单模式${NC}"
-    echo -e "${GREEN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+    echo -e "${CYAN}+------------------------------------------------------------+"
+    echo -e " ${YELLOW}CF-IP 优选配置向导 - 简单模式"
+    echo -e "${CYAN}+------------------------------------------------------------+"
     echo ""
     echo -e "${CYAN}本向导将帮助您快速配置 IP 测速参数：${NC}"
-    echo "  • 选择适合您网络的测速节点地区"
-    echo "  • 设置测速线程数（影响速度和资源占用）"
-    echo "  • 指定保留的优质 IP 数量"
+    echo "  - 选择适合您网络的测速节点地区"
+    echo "  - 设置测速线程数（影响速度和资源占用）"
+    echo "  - 指定保留的优质 IP 数量"
     echo ""
     
     # 第一步：选择测速策略（最重要）
@@ -381,19 +381,19 @@ configure_simple() {
     case ${STRATEGY_CHOICE} in
         1) 
             CFST_COLO="HKG,NRT"
-            echo -e "${GREEN}✓ 已选择：国内通用推荐${NC}"
+            echo -e "${GREEN}[OK] 已选择：国内通用推荐${NC}"
             ;;
         2) 
             CFST_COLO="HKG,SIN,TYO,LON"
-            echo -e "${GREEN}✓ 已选择：移动线路专项${NC}"
+            echo -e "${GREEN}[OK] 已选择：移动线路专项${NC}"
             ;;
         3) 
             CFST_COLO="SJC,LAX,SIN,TYO"
-            echo -e "${GREEN}✓ 已选择：联通线路专项${NC}"
+            echo -e "${GREEN}[OK] 已选择：联通线路专项${NC}"
             ;;
         4) 
             CFST_COLO="SJC,LAX,TYO,SIN"
-            echo -e "${GREEN}✓ 已选择：电信线路专项${NC}"
+            echo -e "${GREEN}[OK] 已选择：电信线路专项${NC}"
             ;;
         5)
             # 二级菜单：区域细分
@@ -408,28 +408,28 @@ configure_simple() {
             case ${REGION_CHOICE} in
                 2) 
                     CFST_COLO="LAX,SJC,SEA,LAS,MIA,YVR,ORD"
-                    echo -e "${GREEN}✓ 已选择：北美地区${NC}"
+                    echo -e "${GREEN}[OK] 已选择：北美地区${NC}"
                     ;;
                 3) 
                     CFST_COLO="LHR,FRA,AMS,MAD,WAW,ARN"
-                    echo -e "${GREEN}✓ 已选择：欧洲地区${NC}"
+                    echo -e "${GREEN}[OK] 已选择：欧洲地区${NC}"
                     ;;
                 4) 
                     CFST_COLO="GRU,EZE,SYD,MEL"
-                    echo -e "${GREEN}✓ 已选择：南美/大洋洲${NC}"
+                    echo -e "${GREEN}[OK] 已选择：南美/大洋洲${NC}"
                     ;;
                 *) 
                     CFST_COLO="HKG,NRT,ICN,SIN,TPE,KUL,BKK"
-                    echo -e "${GREEN}✓ 已选择：亚太地区${NC}"
+                    echo -e "${GREEN}[OK] 已选择：亚太地区${NC}"
                     ;;
             esac
             ;;
         6)
             # 显示完整代码表
             echo ""
-            echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
-            echo -e " ${YELLOW}Cloudflare 数据中心代码参考表${NC}"
-            echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+            echo -e "${CYAN}+------------------------------------------------------------+"
+            echo -e " ${YELLOW}Cloudflare 数据中心代码参考表"
+            echo -e "${CYAN}+------------------------------------------------------------+"
             echo -e "  ${GREEN}[亚太]${NC} HKG(香港) NRT(东京) ICN(首尔) SIN(新加坡)"
             echo -e "         TPE(台北) KUL(吉隆坡) BKK(曼谷) MNL(马尼拉)"
             echo -e "  ${GREEN}[北美]${NC} LAX(洛杉矶) SJC(圣何塞) SEA(西雅图) LAS(拉斯维加斯)"
@@ -437,14 +437,14 @@ configure_simple() {
             echo -e "  ${GREEN}[欧洲]${NC} LHR(伦敦) FRA(法兰克福) AMS(阿姆斯特丹) MAD(马德里)"
             echo -e "         WAW(华沙) ARN(斯德哥尔摩) CDG(巴黎) ZRH(苏黎世)"
             echo -e "  ${GREEN}[其他]${NC} GRU(圣保罗) EZE(布宜诺斯艾利斯) SYD(悉尼) MEL(墨尔本)"
-            echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+            echo -e "${CYAN}+------------------------------------------------------------+"
             echo -e "${YELLOW}提示:${NC} 多个代码用逗号分隔，例如: HKG,SJC,LHR"
             read -r -p "请输入节点代码: " CFST_COLO
             CFST_COLO=${CFST_COLO:-"HKG,NRT"}
             ;;
         *) 
             CFST_COLO="HKG,NRT"
-            echo -e "${GREEN}✓ 已选择：国内通用推荐${NC}"
+            echo -e "${GREEN}[OK] 已选择：国内通用推荐${NC}"
             ;;
     esac
     
@@ -452,9 +452,9 @@ configure_simple() {
     # 第二步：测速线程数
     echo -e "${YELLOW}【步骤 2/3】设置测速线程数${NC}"
     echo -e "${GRAY}线程数越高测速越快，但会占用更多系统资源${NC}"
-    echo -e "  • 推荐范围：100-200"
-    echo -e "  • 低配置服务器：建议使用 100"
-    echo -e "  • 高配置服务器：可使用 200 或更高"
+    echo -e "  - 推荐范围：100-200"
+    echo -e "  - 低配置服务器：建议使用 100"
+    echo -e "  - 高配置服务器：可使用 200 或更高"
     echo ""
     read -r -p "请输入线程数 [默认 200]: " CFST_THREADS
     CFST_THREADS=${CFST_THREADS:-200}
@@ -469,8 +469,8 @@ configure_simple() {
     # 第三步：提取 IP 数量
     echo -e "${YELLOW}【步骤 3/3】设置保留的优质 IP 数量${NC}"
     echo -e "${GRAY}测速完成后，系统将保留速度最快的前 N 个 IP${NC}"
-    echo -e "  • 推荐：3-10 个"
-    echo -e "  • 数量越多，DNS 轮询效果越好，但可能包含次优 IP"
+    echo -e "  - 推荐：3-10 个"
+    echo -e "  - 数量越多，DNS 轮询效果越好，但可能包含次优 IP"
     echo ""
     read -r -p "请输入 IP 数量 [默认 5]: " TAKE_IP_NUM
     TAKE_IP_NUM=${TAKE_IP_NUM:-5}
@@ -487,10 +487,10 @@ configure_simple() {
     read -r -p "是否启用详细日志记录？(y/n，默认 n): " ENABLE_LOG_INPUT
     if [[ "${ENABLE_LOG_INPUT}" = "y" ]] || [[ "${ENABLE_LOG_INPUT}" = "Y" ]]; then
         ENABLE_LOG="true"
-        echo -e "${GREEN}✓ 日志记录已启用${NC}"
+        echo -e "${GREEN}[OK] 日志记录已启用${NC}"
     else
         ENABLE_LOG="false"
-        echo -e "${GREEN}✓ 日志记录已禁用${NC}"
+        echo -e "${GREEN}[OK] 日志记录已禁用${NC}"
     fi
     
     # 询问是否配置多线路分流
@@ -643,9 +643,9 @@ generate_config_simple() {
     chmod 600 "$CONFIG_FILE"
     
     echo ""
-    echo -e "${GREEN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
-    echo -e " ${GREEN}✓ 配置已完成！${NC}"
-    echo -e "${GREEN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+    echo -e "${CYAN}+------------------------------------------------------------+"
+    echo -e " ${GREEN}[OK] 配置已完成！"
+    echo -e "${CYAN}+------------------------------------------------------------+"
     echo ""
     echo -e "  ${CYAN}测速节点:${NC} ${CFST_COLO}"
     echo -e "  ${CYAN}线程数量:${NC} ${CFST_THREADS}"
@@ -1083,4 +1083,6 @@ while true; do
             ;;
     esac
 done
+
+
 
