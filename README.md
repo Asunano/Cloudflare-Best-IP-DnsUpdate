@@ -23,7 +23,7 @@
 ### 1. 安装
 在终端执行以下命令即可完成一键安装（测试中，请勿使用！!!!!）：
 ```bash
-curl -sL https://raw.githubusercontent.com/Asunano/Cloudflare-Best-IP-DnsUpdate/main/cfopt.sh -o cfopt.sh && bash cfopt.sh
+curl -sL https://blog.drxian.cn/scripts/Cloudflare-Best-IP-DnsUpdate/cfopt.sh -o cfopt.sh && bash cfopt.sh
 ```
 
 ### 2. 启动程序

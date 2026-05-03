@@ -19,7 +19,7 @@ NC='\033[0m'
 
 # --- 全局配置区 ---
 SCRIPT_VERSION="0.1"
-REMOTE_URL="https://raw.githubusercontent.com/Asunano/Cloudflare-Best-IP-DnsUpdate/main"
+REMOTE_URL="https://blog.drxian.cn/scripts/Cloudflare-Best-IP-DnsUpdate"
 VERSION_FILE_REMOTE="$REMOTE_URL/version.txt"
 
 # 根据用户权限动态确定安装目录
@@ -118,65 +118,43 @@ download_with_retry() {
             return 1
         fi
         
-        # 显示下载信息
-        echo -e "${CYAN}[DEBUG] 正在下载: $(basename "$output")${NC}"
-        echo -e "${GRAY}[DEBUG] URL: $url${NC}"
-        echo -e "${GRAY}[DEBUG] 目标: $output${NC}"
-        
-        # 使用 curl 进行下载，增加 -v (verbose) 参数显示详细过程
-        local curl_output
-        curl_output=$(curl -vL --connect-timeout 10 --max-time 60 --create-dirs -o "$output" "$url" 2>&1)
-        local curl_exit_code=$?
-        
-        # 显示 curl 详细输出
-        echo -e "${GRAY}[DEBUG] curl 输出:${NC}"
-        echo "$curl_output" | while IFS= read -r line; do
-            echo -e "${GRAY}  $line${NC}"
-        done
-        
-        if [ $curl_exit_code -eq 0 ]; then
+        # 使用 curl 进行下载，仅显示进度条
+        if curl -sfL --connect-timeout 10 --max-time 60 --create-dirs -o "$output" "$url" 2>/dev/null; then
             # 基础校验：文件非空且不是 HTML 错误页
             if [ -s "$output" ] && ! grep -q "403 Forbidden" "$output" 2>/dev/null && ! grep -q "404 Not Found" "$output" 2>/dev/null; then
                 local file_size=$(wc -c < "$output")
-                echo -e "${GREEN}[DEBUG] 下载成功，文件大小: $file_size bytes${NC}"
                 
                 # 哈希校验（如果提供了哈希值）
                 if [ -n "$expected_hash" ]; then
                     local actual_hash=$(sha256sum "$output" | awk '{print $1}')
                     if [ "$actual_hash" = "$expected_hash" ]; then
-                        echo -e "${GREEN}[DEBUG] 哈希校验通过${NC}"
+                        echo -e "${GREEN}[OK] 下载成功 ($file_size bytes) - 哈希校验通过${NC}"
                         return 0
                     else
-                        echo -e "${YELLOW}[WARN] 哈希校验失败 (期望: ${expected_hash:0:16}... 实际: ${actual_hash:0:16}...)，正在重试...${NC}"
+                        echo -e "${YELLOW}[WARN] 哈希校验失败，正在重试...${NC}"
                     fi
                 else
-                    echo -e "${YELLOW}[DEBUG] 跳过哈希校验（无校验值）${NC}"
+                    echo -e "${GREEN}[OK] 下载成功 ($file_size bytes)${NC}"
                     return 0
                 fi
             else
-                echo -e "${YELLOW}[WARN] 下载的文件无效 (空文件或错误页面)，正在重试...${NC}"
+                echo -e "${YELLOW}[WARN] 下载的文件无效，正在重试...${NC}"
             fi
         else
-            echo -e "${YELLOW}[WARN] curl 下载失败 (退出码: $curl_exit_code)，正在重试...${NC}"
+            local curl_exit_code=$?
+            echo -e "${YELLOW}[WARN] 下载失败 (退出码: $curl_exit_code)，正在重试...${NC}"
             if [ $curl_exit_code -eq 23 ]; then
-                echo -e "${RED}[DEBUG] 写入错误：请检查磁盘空间或目录权限。目标路径: $output${NC}"
+                echo -e "${RED}[ERROR] 写入错误：请检查磁盘空间或目录权限${NC}"
             fi
         fi
         retry_count=$((retry_count + 1))
         if [ $retry_count -lt $max_retries ]; then
-            echo -e "${YELLOW}[WARN] 第 $retry_count 次重试失败，等待 2 秒后重试...${NC}"
             sleep 2
         fi
     done
     
-    echo -e "${RED}[ERROR] 无法下载或校验失败: $(basename "$url")${NC}"
-    echo -e "${YELLOW}[DEBUG] URL: $url${NC}"
-    if [ -f "$output" ]; then
-        echo -e "${YELLOW}[DEBUG] 文件大小: $(wc -c < "$output") bytes${NC}"
-        head -5 "$output" 2>/dev/null | while read -r line; do
-            echo -e "${YELLOW}[DEBUG] 内容预览: $line${NC}"
-        done
-    fi
+    echo -e "${RED}[ERROR] 下载失败: $(basename "$url")${NC}"
+    rm -f "$output" 2>/dev/null
     return 1
 }
 
