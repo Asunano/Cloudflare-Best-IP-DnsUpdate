@@ -183,8 +183,8 @@ echo -e "  目标地区: ${TARGET_COLO}"
 echo -e "  提取数量: ${TAKE_IP_NUM}"
 echo -e "  输出文件: ${OUTPUT_CSV}"
 
-# 构建 cfst 命令
-CMD=("${CFST_BIN}" "-n" "${CFST_THREADS}" "-t" "${CFST_PING_TIMES}")
+# 构建 cfst 命令 - 使用绝对路径
+CMD=(./cfst "-n" "${CFST_THREADS}" "-t" "${CFST_PING_TIMES}")
 if [[ -n "${TARGET_COLO}" ]]; then CMD+=("-cfcolo" "${TARGET_COLO}"); fi
 if [[ -n "${IP_DATA_FILE}" ]]; then CMD+=("-f" "${IP_DATA_FILE}"); fi
 CMD+=("-dn" "${CFST_DOWNLOAD_COUNT}" "-dt" "${CFST_DOWNLOAD_TIME}")
