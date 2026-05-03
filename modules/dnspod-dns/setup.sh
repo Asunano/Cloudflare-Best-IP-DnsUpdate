@@ -4069,9 +4069,8 @@ while true; do
             clear
             ;;
         0)
-            echo ""
-            echo -e "${GREEN}[OK] 再见!"
-            exit 0
+            # 退出子菜单，返回 cfopt 主菜单
+            break
             ;;
         *)
             echo ""
