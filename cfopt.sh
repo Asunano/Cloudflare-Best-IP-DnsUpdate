@@ -511,7 +511,7 @@ uninstall_cfopt() {
 
     echo ""
     echo -e "${GREEN}[OK] 清理完成！cfopt 已从您的系统中消失。${NC}"
-    echo -e "${YELLOW}感谢曾经的陪伴，再见！👋${NC}"
+    echo -e "${YELLOW}感谢曾经的陪伴，再见！${NC}"
     echo ""
     exit 0
 }
