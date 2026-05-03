@@ -867,12 +867,6 @@ EOF
     # 5. 静默版本检测与更新
     echo -e "${CYAN}[INFO] 正在下载组件文件...${NC}"
     
-    # 【新增】网络健康检查
-    if ! check_network_health; then
-        echo -e "${RED}[ERROR] 网络检查失败，中止安装${NC}"
-        exit 1
-    fi
-    
     # 【新增】备份当前版本（如果存在）
     backup_current_version
     
