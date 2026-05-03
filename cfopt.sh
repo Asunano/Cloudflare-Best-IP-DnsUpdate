@@ -1,4 +1,4 @@
-#!/bin/bash
+﻿#!/bin/bash
 # ==============================================================================
 # cfopt - Cloudflare IP 优选与 DNS 管理套件 (主入口)
 # Version: 0.1
@@ -698,7 +698,12 @@ check_and_update_components() {
     HAS_ERROR=false
     TEMP_DIR="$(mktemp -d)"
     
+    # 计数器：用于显示进度
+    TOTAL_FILES=${#MODULE_MAP[@]}
+    CURRENT_FILE=0
+    
     for KEY in "${!MODULE_MAP[@]}"; do
+        CURRENT_FILE=$((CURRENT_FILE + 1))
         IFS=':' read -r LOCAL_PATH REMOTE_FILE <<< "${MODULE_MAP[$KEY]}"
         # 特殊处理 cfopt.sh 自身路径
         if [[ "${REMOTE_FILE}" = "cfopt.sh" ]]; then
