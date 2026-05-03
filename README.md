@@ -35,7 +35,7 @@ Cloudflare-Best-IP-DnsUpdate 是一款全自动化的 **Cloudflare IP 优选与 
 ### 一键安装
 
 ```bash
-curl -sL https://blog.drxian.cn/scripts/Cloudflare-Best-IP-DnsUpdate/cfopt.sh -o cfopt.sh && bash cfopt.sh
+curl -sL https://raw.githubusercontent.com/Asunano/Cloudflare-Best-IP-DnsUpdate/main/cfopt.sh -o cfopt.sh && bash cfopt.sh
 ```
 
 安装完成后，脚本会自动：
