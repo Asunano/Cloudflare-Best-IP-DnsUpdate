@@ -92,6 +92,90 @@ install_system_cmd() {
     fi
 }
 
+# --- 网络健康检查系统 ---
+# 在执行下载前检查网络连通性，快速失败避免长时间等待
+check_network_health() {
+    local test_urls=(
+        "https://raw.githubusercontent.com"
+        "https://api.github.com"
+    )
+    
+    echo -e "${CYAN}[INFO] 正在执行网络健康检查...${NC}"
+    
+    for url in "${test_urls[@]}"; do
+        if curl -s --connect-timeout 5 --max-time 10 "${url}" > /dev/null 2>&1; then
+            echo -e "${GREEN}[OK] 网络连接正常: ${url}${NC}"
+            return 0
+        fi
+    done
+    
+    echo -e "${RED}[ERROR] 网络连接异常，请检查以下项：${NC}"
+    echo -e "  1. 服务器是否可以访问外网"
+    echo -e "  2. DNS 解析是否正常（尝试 ping 8.8.8.8）"
+    echo -e "  3. 防火墙是否阻止了 HTTPS 流量"
+    echo -e "  4. 代理设置是否正确（如使用代理）"
+    return 1
+}
+
+# --- 自动回滚机制 ---
+# 备份当前版本，更新失败时可快速恢复
+backup_current_version() {
+    local backup_dir="${INSTALL_DIR}/backups/$(date +%Y%m%d_%H%M%S)"
+    
+    # 如果安装目录不存在，无需备份
+    if [[ ! -d "${INSTALL_DIR}" ]]; then
+        return 0
+    fi
+    
+    mkdir -p "${backup_dir}"
+    
+    # 备份配置文件
+    if [[ -d "${INSTALL_DIR}/conf" ]]; then
+        cp -r "${INSTALL_DIR}/conf" "${backup_dir}/conf" 2>/dev/null
+    fi
+    
+    # 备份模块文件
+    if [[ -d "${INSTALL_DIR}/modules" ]]; then
+        cp -r "${INSTALL_DIR}/modules" "${backup_dir}/modules" 2>/dev/null
+    fi
+    
+    # 记录版本信息
+    echo "$(date '+%Y-%m-%d %H:%M:%S')" > "${backup_dir}/timestamp.txt"
+    echo "Backup created at: $(date)" >> "${backup_dir}/README.txt"
+    
+    echo -e "${GREEN}[OK] 备份完成: ${backup_dir}${NC}"
+}
+
+# 更新失败时回滚到上一版本
+rollback_on_failure() {
+    local latest_backup
+    latest_backup=$(ls -t "${INSTALL_DIR}/backups/" 2>/dev/null | head -1)
+    
+    if [[ -n "${latest_backup}" ]] && [[ -d "${INSTALL_DIR}/backups/${latest_backup}" ]]; then
+        echo -e "${YELLOW}[WARN] 检测到更新失败，正在回滚到上一版本...${NC}"
+        
+        # 回滚配置文件
+        if [[ -d "${INSTALL_DIR}/backups/${latest_backup}/conf" ]]; then
+            rm -rf "${INSTALL_DIR}/conf"
+            cp -r "${INSTALL_DIR}/backups/${latest_backup}/conf" "${INSTALL_DIR}/conf"
+            echo -e "${GREEN}[OK] 配置文件已回滚${NC}"
+        fi
+        
+        # 回滚模块文件
+        if [[ -d "${INSTALL_DIR}/backups/${latest_backup}/modules" ]]; then
+            rm -rf "${INSTALL_DIR}/modules"
+            cp -r "${INSTALL_DIR}/backups/${latest_backup}/modules" "${INSTALL_DIR}/modules"
+            echo -e "${GREEN}[OK] 模块文件已回滚${NC}"
+        fi
+        
+        echo -e "${GREEN}[OK] 回滚成功，系统已恢复到: ${latest_backup}${NC}"
+        return 0
+    else
+        echo -e "${RED}[ERROR] 无可用备份，请手动修复或重新安装${NC}"
+        return 1
+    fi
+}
+
 # --- 辅助函数：带重试的下载与校验 ---
 download_with_retry() {
     local url="$1"
@@ -720,6 +804,15 @@ EOF
     # 5. 静默版本检测与更新
     echo -e "${CYAN}[INFO] 正在下载组件文件...${NC}"
     
+    # 【新增】网络健康检查
+    if ! check_network_health; then
+        echo -e "${RED}[ERROR] 网络检查失败，中止安装${NC}"
+        exit 1
+    fi
+    
+    # 【新增】备份当前版本（如果存在）
+    backup_current_version
+    
     # 下载 version.txt（增加超时和进度提示）
     echo -e "${CYAN}[INFO] 正在获取版本索引...${NC}"
     REMOTE_VERSIONS="$(curl -sL --connect-timeout 10 --max-time 30 "${VERSION_FILE_REMOTE}" 2>/dev/null)"
@@ -805,6 +898,11 @@ EOF
                     echo -e "${RED}[ERROR] ${KEY} 下载失败，请检查网络连接。${NC}"
                     # 清理可能的残留文件
                     rm -f "${LOCAL_PATH}" 2>/dev/null
+                    
+                    # 【新增】下载失败时回滚
+                    echo -e "${YELLOW}[WARN] 检测到组件下载失败，正在执行回滚...${NC}"
+                    rollback_on_failure
+                    exit 1
                 fi
             fi
         done
