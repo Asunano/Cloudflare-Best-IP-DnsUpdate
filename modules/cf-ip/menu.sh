@@ -203,23 +203,25 @@ download_cfst() {
     temp_dir="$(mktemp -d)"
     local temp_file="${temp_dir}/${filename}"
     
-    # 尝试从主源下载，失败则尝试镜像
+    # 尝试从镜像源下载（优先使用国内镜像）
     local download_success=false
     
-    # 首先尝试直接下载
-    echo -e "${CYAN}[INFO] 尝试从 GitHub 下载...${NC}"
-    if download_with_retry "${download_url}" "${temp_file}"; then
-        download_success=true
-    else
-        # 尝试镜像加速
-        echo -e "${YELLOW}[WARN] GitHub 下载失败，尝试镜像加速...${NC}"
-        for mirror_url in "${mirrors[@]}"; do
-            echo -e "${CYAN}[INFO] 尝试镜像: ${mirror_url%%/*}...${NC}"
-            if download_with_retry "${mirror_url}" "${temp_file}"; then
-                download_success=true
-                break
-            fi
-        done
+    # 首先尝试镜像加速（提高国内用户成功率）
+    echo -e "${CYAN}[INFO] 尝试从镜像源下载...${NC}"
+    for mirror_url in "${mirrors[@]}"; do
+        echo -e "${CYAN}[INFO] 尝试镜像: ${mirror_url%%/https*}...${NC}"
+        if download_with_retry "${mirror_url}" "${temp_file}"; then
+            download_success=true
+            break
+        fi
+    done
+    
+    # 如果镜像都失败，尝试 GitHub 直连
+    if [[ "${download_success}" != "true" ]]; then
+        echo -e "${YELLOW}[WARN] 镜像下载失败，尝试 GitHub 直连...${NC}"
+        if download_with_retry "${download_url}" "${temp_file}"; then
+            download_success=true
+        fi
     fi
     
     if [[ "${download_success}" != "true" ]]; then
