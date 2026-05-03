@@ -17,6 +17,157 @@ CYAN='\033[0;36m'
 GRAY='\033[0;90m'
 NC='\033[0m'
 
+# ====================== 【统一错误处理系统】 ======================
+
+# 记录错误日志
+log_error() {
+    local message="$1"
+    local timestamp
+    timestamp="$(date '+%Y-%m-%d %H:%M:%S')"
+    echo -e "${RED}[ERROR] ${timestamp} - ${message}${NC}" >&2
+    
+    # 同时写入日志文件（如果存在）
+    if [[ -n "${INSTALL_DIR:-}" ]] && [[ -d "${INSTALL_DIR}/logs" ]]; then
+        echo "[${timestamp}] ERROR: ${message}" >> "${INSTALL_DIR}/logs/error.log" 2>/dev/null || true
+    fi
+}
+
+# 记录警告信息
+log_warning() {
+    local message="$1"
+    echo -e "${YELLOW}[WARN] ${message}${NC}"
+}
+
+# 记录成功信息
+log_success() {
+    local message="$1"
+    echo -e "${GREEN}[OK] ${message}${NC}"
+}
+
+# 记录信息
+log_info() {
+    local message="$1"
+    echo -e "${CYAN}[INFO] ${message}${NC}"
+}
+
+# 触发回滚
+trigger_rollback() {
+    log_warning "检测到严重错误，尝试回滚到上一版本..."
+    if rollback_on_failure; then
+        log_success "回滚成功，系统已恢复"
+    else
+        log_error "回滚失败，请手动修复或重新安装"
+    fi
+}
+
+# 安全执行命令（带错误检查）
+safe_execute() {
+    local description="$1"
+    shift
+    
+    if "$@"; then
+        return 0
+    else
+        local exit_code=$?
+        log_error "${description} (退出码: ${exit_code})"
+        return 1
+    fi
+}
+
+# 安全的文件移动（带备份和验证）
+safe_move() {
+    local source="$1"
+    local target="$2"
+    local description="${3:-文件移动}"
+    
+    # 检查源文件是否存在
+    if [[ ! -f "${source}" ]]; then
+        log_error "${description}: 源文件不存在 (${source})"
+        return 1
+    fi
+    
+    # 确保目标目录存在
+    local target_dir
+    target_dir="$(dirname "${target}")"
+    if ! mkdir -p "${target_dir}" 2>/dev/null; then
+        log_error "${description}: 无法创建目标目录 (${target_dir})"
+        return 1
+    fi
+    
+    # 执行移动
+    if mv "${source}" "${target}" 2>/dev/null; then
+        # 验证目标文件是否存在且非空
+        if [[ -f "${target}" ]] && [[ -s "${target}" ]]; then
+            return 0
+        else
+            log_error "${description}: 目标文件验证失败"
+            return 1
+        fi
+    else
+        log_error "${description}: 移动失败"
+        return 1
+    fi
+}
+
+# 安全的文件复制（带验证）
+safe_copy() {
+    local source="$1"
+    local target="$2"
+    local description="${3:-文件复制}"
+    
+    # 检查源文件/目录是否存在
+    if [[ ! -e "${source}" ]]; then
+        log_error "${description}: 源路径不存在 (${source})"
+        return 1
+    fi
+    
+    # 确保目标目录存在
+    local target_dir
+    target_dir="$(dirname "${target}")"
+    if ! mkdir -p "${target_dir}" 2>/dev/null; then
+        log_error "${description}: 无法创建目标目录 (${target_dir})"
+        return 1
+    fi
+    
+    # 执行复制
+    if cp -r "${source}" "${target}" 2>/dev/null; then
+        # 验证目标是否存在
+        if [[ -e "${target}" ]]; then
+            return 0
+        else
+            log_error "${description}: 目标验证失败"
+            return 1
+        fi
+    else
+        log_error "${description}: 复制失败"
+        return 1
+    fi
+}
+
+# 安全的目录删除（带确认和保护）
+safe_remove_dir() {
+    local dir_path="$1"
+    local description="${2:-目录删除}"
+    
+    # 安全检查：防止误删重要目录
+    if [[ -z "${dir_path}" ]] || [[ "${dir_path}" = "/" ]] || [[ "${dir_path}" = "/root" ]] || [[ "${dir_path}" = "/home" ]]; then
+        log_error "${description}: 拒绝删除危险路径 (${dir_path})"
+        return 1
+    fi
+    
+    if [[ -d "${dir_path}" ]]; then
+        if rm -rf "${dir_path}" 2>/dev/null; then
+            return 0
+        else
+            log_error "${description}: 删除失败 (${dir_path})"
+            return 1
+        fi
+    else
+        log_warning "${description}: 目录不存在，跳过 (${dir_path})"
+        return 0
+    fi
+}
+
 # --- 全局配置区 ---
 SCRIPT_VERSION="0.1"
 
@@ -41,13 +192,13 @@ if [[ "${CURRENT_SCRIPT_PATH}" != "${TARGET_SCRIPT_PATH}" ]]; then
     mkdir -p "${INSTALL_DIR}"
     
     # 移动脚本并保留执行权限
-    if mv "${CURRENT_SCRIPT_PATH}" "${TARGET_SCRIPT_PATH}"; then
+    if safe_move "${CURRENT_SCRIPT_PATH}" "${TARGET_SCRIPT_PATH}" "脚本迁移"; then
         chmod +x "${TARGET_SCRIPT_PATH}"
-        echo -e "${GREEN}[OK] 迁移成功，正在从新位置启动...${NC}"
+        log_success "迁移成功，正在从新位置启动..."
         # 使用 exec 替换当前进程，从新位置重新启动
         exec bash "${TARGET_SCRIPT_PATH}"
     else
-        echo -e "${RED}[ERROR] 迁移失败，请检查权限。${NC}"
+        log_error "迁移失败，请检查权限。"
         exit 1
     fi
 fi
@@ -77,20 +228,30 @@ install_system_cmd() {
         # 非 Root 用户尝试提权处理
         if [[ "${EUID}" -ne 0 ]]; then
             if command -v sudo >/dev/null 2>&1; then
-                sudo cp "$0" "${SYSTEM_CMD_PATH}" && sudo chmod +x "${SYSTEM_CMD_PATH}" || exec_result=1
+                if safe_execute "安装全局命令" sudo cp "$0" "${SYSTEM_CMD_PATH}" && \
+                   safe_execute "设置执行权限" sudo chmod +x "${SYSTEM_CMD_PATH}"; then
+                    exec_result=0
+                else
+                    exec_result=1
+                fi
             else
-                echo -e "${RED}[ERROR] 需要 root 权限或 sudo 支持。${NC}"
+                log_error "需要 root 权限或 sudo 支持。"
                 return 1
             fi
         else
-            cp "$0" "${SYSTEM_CMD_PATH}" && chmod +x "${SYSTEM_CMD_PATH}" || exec_result=1
+            if safe_execute "安装全局命令" cp "$0" "${SYSTEM_CMD_PATH}" && \
+               safe_execute "设置执行权限" chmod +x "${SYSTEM_CMD_PATH}"; then
+                exec_result=0
+            else
+                exec_result=1
+            fi
         fi
 
         if [[ "${exec_result}" -eq 0 ]]; then
-            echo -e "${GREEN}[OK] 安装成功！路径: ${SYSTEM_CMD_PATH}${NC}"
+            log_success "安装成功！路径: ${SYSTEM_CMD_PATH}"
             return 0
         else
-            echo -e "${RED}[ERROR] 安装失败，请检查权限。${NC}"
+            log_error "安装失败，请检查权限。"
         fi
     fi
 }
@@ -134,12 +295,16 @@ backup_current_version() {
     
     # 备份配置文件
     if [[ -d "${INSTALL_DIR}/conf" ]]; then
-        cp -r "${INSTALL_DIR}/conf" "${backup_dir}/conf" 2>/dev/null
+        if ! safe_copy "${INSTALL_DIR}/conf" "${backup_dir}/conf" "备份配置文件"; then
+            log_warning "配置文件备份失败，继续执行..."
+        fi
     fi
     
     # 备份模块文件
     if [[ -d "${INSTALL_DIR}/modules" ]]; then
-        cp -r "${INSTALL_DIR}/modules" "${backup_dir}/modules" 2>/dev/null
+        if ! safe_copy "${INSTALL_DIR}/modules" "${backup_dir}/modules" "备份模块文件"; then
+            log_warning "模块文件备份失败，继续执行..."
+        fi
     fi
     
     # 记录版本信息
@@ -155,26 +320,32 @@ rollback_on_failure() {
     latest_backup=$(ls -t "${INSTALL_DIR}/backups/" 2>/dev/null | head -1)
     
     if [[ -n "${latest_backup}" ]] && [[ -d "${INSTALL_DIR}/backups/${latest_backup}" ]]; then
-        echo -e "${YELLOW}[WARN] 检测到更新失败，正在回滚到上一版本...${NC}"
+        log_warning "检测到更新失败，正在回滚到上一版本..."
         
         # 回滚配置文件
         if [[ -d "${INSTALL_DIR}/backups/${latest_backup}/conf" ]]; then
-            rm -rf "${INSTALL_DIR}/conf"
-            cp -r "${INSTALL_DIR}/backups/${latest_backup}/conf" "${INSTALL_DIR}/conf"
-            echo -e "${GREEN}[OK] 配置文件已回滚${NC}"
+            if safe_remove_dir "${INSTALL_DIR}/conf" "清理旧配置" && \
+               safe_copy "${INSTALL_DIR}/backups/${latest_backup}/conf" "${INSTALL_DIR}/conf" "恢复配置"; then
+                log_success "配置文件已回滚"
+            else
+                log_error "配置文件回滚失败"
+            fi
         fi
         
         # 回滚模块文件
         if [[ -d "${INSTALL_DIR}/backups/${latest_backup}/modules" ]]; then
-            rm -rf "${INSTALL_DIR}/modules"
-            cp -r "${INSTALL_DIR}/backups/${latest_backup}/modules" "${INSTALL_DIR}/modules"
-            echo -e "${GREEN}[OK] 模块文件已回滚${NC}"
+            if safe_remove_dir "${INSTALL_DIR}/modules" "清理旧模块" && \
+               safe_copy "${INSTALL_DIR}/backups/${latest_backup}/modules" "${INSTALL_DIR}/modules" "恢复模块"; then
+                log_success "模块文件已回滚"
+            else
+                log_error "模块文件回滚失败"
+            fi
         fi
         
-        echo -e "${GREEN}[OK] 回滚成功，系统已恢复到: ${latest_backup}${NC}"
+        log_success "回滚成功，系统已恢复到: ${latest_backup}"
         return 0
     else
-        echo -e "${RED}[ERROR] 无可用备份，请手动修复或重新安装${NC}"
+        log_error "无可用备份，请手动修复或重新安装"
         return 1
     fi
 }
@@ -668,10 +839,17 @@ uninstall_cfopt() {
     fi
 
     echo -e "${CYAN}[INFO] 正在删除全局命令链接...${NC}"
-    rm -f /usr/local/bin/cfopt
+    if [[ -f /usr/local/bin/cfopt ]]; then
+        if ! rm -f /usr/local/bin/cfopt 2>/dev/null; then
+            log_warning "删除全局命令失败，可能需要手动清理"
+        fi
+    fi
 
-    echo -e "${CYAN}[INFO] 正在删除安装目录及所有数据...${NC}"
-    rm -rf "${INSTALL_DIR}"
+    log_info "正在删除安装目录及所有数据..."
+    if ! safe_remove_dir "${INSTALL_DIR}" "卸载清理"; then
+        log_error "卸载失败，请手动删除: ${INSTALL_DIR}"
+        exit 1
+    fi
 
     echo ""
     echo -e "${GREEN}[OK] 清理完成！cfopt 已从您的系统中消失。${NC}"
@@ -807,9 +985,12 @@ check_and_update_components() {
             for KEY in "${!MODULE_MAP[@]}"; do
                 IFS=':' read -r LOCAL_PATH REMOTE_FILE <<< "${MODULE_MAP[$KEY]}"
                 if [[ -f "${TEMP_DIR}/${REMOTE_FILE}" ]]; then
-                    mkdir -p "$(dirname "${LOCAL_PATH}")"
-                    mv "${TEMP_DIR}/${REMOTE_FILE}" "${LOCAL_PATH}"
-                    chmod +x "${LOCAL_PATH}"
+                    if ! safe_move "${TEMP_DIR}/${REMOTE_FILE}" "${LOCAL_PATH}" "应用更新: ${KEY}"; then
+                        log_error "更新应用失败: ${KEY}"
+                        HAS_ERROR=true
+                    else
+                        chmod +x "${LOCAL_PATH}"
+                    fi
                 fi
             done
             echo -e "${GREEN}[OK] 更新已应用！${NC}"
