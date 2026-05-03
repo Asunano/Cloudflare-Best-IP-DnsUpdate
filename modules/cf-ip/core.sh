@@ -162,6 +162,7 @@ fi
 IP_DATA_FILE="${CFST_IP_FILE:-${ROOT_DIR}/assets/data/cf-ip/ip.txt}"
 if [[ ! -f "${IP_DATA_FILE}" ]]; then
     echo -e "${YELLOW}[WARN] 未找到自定义 IP 列表，将使用 cfst 内置列表。${NC}"
+    IP_DATA_FILE=""  # 清空，不传递给 cfst
 fi
 
 # ==================== 执行测速 ====================
