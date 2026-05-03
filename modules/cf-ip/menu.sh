@@ -349,7 +349,11 @@ show_main_menu() {
     echo -e "${CYAN}+------------------------------------------------------------+"
     echo -e " ${GREEN}[OK] 1. 修改测速配置     ${CYAN}- 调整地区、线程及筛选策略"
     echo -e " ${GREEN}[OK] 2. 查看当前配置     ${CYAN}- 浏览 cf-ip.json 内容"
-    echo -e " ${GREEN}[OK] 3. 立即执行测速     ${CYAN}- 手动触发一次 IP 优选"
+    if [[ -f "${CFST_BIN}" ]]; then
+        echo -e " ${GREEN}[OK] 3. 立即执行测速     ${CYAN}- 手动触发一次 IP 优选"
+    else
+        echo -e " ${YELLOW}[WARN] 3. 下载测速程序   ${CYAN}- 自动下载 cfst (必需)"
+    fi
     echo -e " ${GREEN}[OK] 4. 管理定时任务     ${CYAN}- 设置自动测速 Cron 计划"
     echo -e " ${GREEN}[OK] 5. 查看运行日志     ${CYAN}- 追踪测速结果与错误信息"
     echo ""
@@ -1039,12 +1043,20 @@ while true; do
     case ${CHOICE} in
         1) manage_config ;;
         2) view_config ;;
-        3) run_test ;;
+        3) 
+            # 【新增】如果 cfst 不存在，先下载
+            if [[ ! -f "${CFST_BIN}" ]]; then
+                echo -e "\n${YELLOW}[INFO] 检测到测速程序 cfst 未安装，即将自动下载...${NC}"
+                download_cfst
+            else
+                run_test
+            fi
+            ;;
         4) manage_cron ;;
         5) view_logs ;;
         0) 
-            echo -e "\n${GREEN}[OK] 感谢使用 CF-IP 优选管理模块，再见！${NC}"
-            exit 0
+            # 【修复】返回上级菜单而不是退出程序
+            return 0
             ;;
         *)
             echo -e "${RED}[ERROR] 无效的选择，请输入 0-5 之间的数字${NC}"

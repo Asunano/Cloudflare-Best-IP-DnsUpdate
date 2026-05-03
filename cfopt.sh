@@ -366,18 +366,18 @@ get_module_status() {
                 local file_time
                 file_time="$(stat -c %Y "${data_file}" 2>/dev/null || stat -f %m "${data_file}" 2>/dev/null)"
                 if [[ $((now - file_time)) -lt 86400 ]]; then
-                    echo -e "${GREEN}[OK]${NC}"
+                    echo -e "${GREEN}[正常]${NC}"
                 else
-                    echo -e "${YELLOW}[WAIT]${NC}"
+                    echo -e "${YELLOW}[待更新]${NC}"
                 fi
             else
-                echo -e "${CYAN}[CFG]${NC}"
+                echo -e "${CYAN}[已配置]${NC}"
             fi
         else
-            echo -e "${GRAY}[OFF]${NC}"
+            echo -e "${GRAY}[已禁用]${NC}"
         fi
     else
-        echo -e "${RED}[NONE]${NC}"
+        echo -e "${RED}[未配置]${NC}"
     fi
 }
 
