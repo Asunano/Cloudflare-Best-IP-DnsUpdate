@@ -930,6 +930,8 @@ run_test() {
     echo ""
     echo -e "${YELLOW}开始执行测速...${NC}"
     echo "--------------------------------------------------------"
+    # 切换到 ROOT_DIR 以确保相对路径正确
+    cd "${ROOT_DIR}" || return 1
     CF_OPT_ENTRY=1 bash "${IP_AUTO_SCRIPT}"
     echo ""
     read -r -p "按回车键返回..."
