@@ -200,9 +200,10 @@ CMD+=("-o" "${OUTPUT_CSV}")
 if [[ "${ENABLE_LOG}" = "true" ]]; then
     LOG_FILE="${LOG_DIR}/cfst_$(date +%Y%m%d_%H%M%S).log"
     echo -e "${CYAN}[INFO] 日志已开启: ${LOG_FILE}${NC}"
-    "${CMD[@]}" 2>&1 | tee "${LOG_FILE}"
+    # 切换到 cfst 所在目录执行，避免 cfst 寻找当前目录下的 ip.txt
+    cd "$(dirname "$CFST_BIN")" && "${CMD[@]}" 2>&1 | tee "${LOG_FILE}"
 else
-    "${CMD[@]}"
+    cd "$(dirname "$CFST_BIN")" && "${CMD[@]}"
 fi
 
 EXIT_CODE=$?
