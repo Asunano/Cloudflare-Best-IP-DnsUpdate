@@ -523,12 +523,27 @@ check_and_update_components() {
     echo -e " ${YELLOW}正在检查组件更新...${NC}"
     echo -e "${CYAN}+------------------------------------------------------------+${NC}"
     
-    REMOTE_VERSIONS=$(curl -sL --connect-timeout 10 "$VERSION_FILE_REMOTE" 2>/dev/null)
-    if [ -z "$REMOTE_VERSIONS" ]; then
-        echo -e "${RED}[ERROR] 无法连接远程服务器，请检查网络。${NC}"
+    echo -e "${CYAN}[INFO] 正在连接远程服务器获取版本信息...${NC}"
+    echo -e "${GRAY}[DEBUG] URL: $VERSION_FILE_REMOTE${NC}"
+    
+    REMOTE_VERSIONS=$(curl -sfL --connect-timeout 10 --max-time 30 "$VERSION_FILE_REMOTE" 2>&1)
+    local curl_exit=$?
+    
+    if [ $curl_exit -ne 0 ]; then
+        echo -e "${RED}[ERROR] 连接远程服务器失败 (退出码: $curl_exit)${NC}"
+        echo -e "${YELLOW}[DEBUG] 请检查网络连接或防火墙设置${NC}"
         read -p "按回车键返回主菜单..."
         return
     fi
+    
+    if [ -z "$REMOTE_VERSIONS" ]; then
+        echo -e "${RED}[ERROR] 远程服务器返回空数据${NC}"
+        read -p "按回车键返回主菜单..."
+        return
+    fi
+    
+    echo -e "${GREEN}[OK] 版本信息获取成功${NC}"
+    echo ""
 
     # 定义模块映射: [KEY]="本地路径:远程文件"
     declare -A MODULE_MAP
