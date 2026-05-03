@@ -20,39 +20,9 @@ NC='\033[0m'
 # --- 全局配置区 ---
 SCRIPT_VERSION="0.1"
 
-# 【新增】地理位置检测与镜像选择
-# 默认使用 GitHub Raw
-REMOTE_URL="https://raw.githubusercontent.com/Asunano/Cloudflare-Best-IP-DnsUpdate/main"
+# 【优化】默认使用镜像源，提高国内访问速度
 GITHUB_MIRROR="https://gh-proxy.org/https://raw.githubusercontent.com/Asunano/Cloudflare-Best-IP-DnsUpdate/main"
-
-# 检测是否在中国大陆，自动切换镜像
-detect_and_set_mirror() {
-    echo -e "${CYAN}[INFO] 正在检测网络环境...${NC}"
-    
-    # 尝试获取 IP 地理位置信息
-    local location_info
-    location_info=$(curl -s --connect-timeout 5 --max-time 10 "https://ip.sb/api/" 2>/dev/null)
-    
-    if [[ -n "${location_info}" ]]; then
-        # 提取国家代码
-        local country_code
-        country_code=$(echo "${location_info}" | grep -o '"country":"[^"]*"' | cut -d'"' -f4)
-        
-        if [[ "${country_code}" == "CN" ]]; then
-            echo -e "${YELLOW}[INFO] 检测到中国大陆 IP，自动启用 GitHub 镜像加速${NC}"
-            REMOTE_URL="${GITHUB_MIRROR}"
-            echo -e "${GREEN}[OK] 已切换至镜像: gh-proxy.org${NC}"
-        else
-            echo -e "${GREEN}[OK] 检测到海外 IP (${country_code})，使用直连${NC}"
-        fi
-    else
-        echo -e "${YELLOW}[WARN] 无法获取地理位置信息，使用默认直连${NC}"
-    fi
-}
-
-# 执行镜像检测
-detect_and_set_mirror
-
+REMOTE_URL="${GITHUB_MIRROR}"  # 默认使用镜像
 VERSION_FILE_REMOTE="${REMOTE_URL}/version.txt"
 
 # 根据用户权限动态确定安装目录
@@ -693,13 +663,17 @@ check_and_update_components() {
     if [[ "${curl_exit}" -ne 0 ]]; then
         echo -e "${RED}[ERROR] 连接远程服务器失败 (退出码: ${curl_exit})${NC}"
         echo -e "${YELLOW}[DEBUG] 请检查网络连接或防火墙设置${NC}"
+        echo ""
         read -r -p "按回车键返回主菜单..."
+        show_main_menu
         return
     fi
     
     if [[ -z "${REMOTE_VERSIONS}" ]]; then
         echo -e "${RED}[ERROR] 远程服务器返回空数据${NC}"
+        echo ""
         read -r -p "按回车键返回主菜单..."
+        show_main_menu
         return
     fi
     
