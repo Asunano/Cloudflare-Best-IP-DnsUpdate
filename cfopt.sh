@@ -905,8 +905,10 @@ EOF
     # 5. 静默版本检测与更新
     echo -e "${CYAN}[INFO] 正在下载组件文件...${NC}"
     
-    # 【新增】备份当前版本（如果存在）
-    backup_current_version
+    # 【修复】仅在已安装的情况下才执行备份（通过检查核心模块是否存在判断）
+    if [[ -d "${INSTALL_DIR}/modules/cf-ip" ]] || [[ -d "${INSTALL_DIR}/modules/scheduler" ]]; then
+        backup_current_version
+    fi
     
     # 下载 version.txt（增加超时和进度提示）
     echo -e "${CYAN}[INFO] 正在获取版本索引...${NC}"
