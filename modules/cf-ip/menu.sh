@@ -1012,8 +1012,8 @@ while true; do
         4) manage_cron ;;
         5) view_logs ;;
         0) 
-            # 【修复】返回上级菜单而不是退出程序
-            return 0
+            # 退出子菜单，返回 cfopt 主菜单
+            exit 0
             ;;
         *)
             echo -e "${RED}[ERROR] 无效的选择，请输入 0-5 之间的数字${NC}"
