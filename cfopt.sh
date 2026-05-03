@@ -227,8 +227,8 @@ download_with_retry() {
             # 4. Shell 脚本基本语法检查（如果是 .sh 文件）
             if [[ "${output}" == *.sh ]]; then
                 local first_line
-                first_line="$(head -1 "${output}" 2>/dev/null)"
-                # 使用 bash 内置模式匹配检查 shebang（自动处理 BOM）
+                # 自动删除 BOM (UTF-8 Byte Order Mark)
+                first_line="$(head -1 "${output}" 2>/dev/null | sed '1s/^\xEF\xBB\xBF//')"
                 if [[ "${first_line}" != "#!"* ]]; then
                     echo -e "${YELLOW}[WARN] 文件不是有效的 Shell 脚本（第一行: ${first_line}），正在重试...${NC}"
                     continue
