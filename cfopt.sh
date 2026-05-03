@@ -19,7 +19,7 @@ NC='\033[0m'
 
 # --- 全局配置区 ---
 SCRIPT_VERSION="0.1"
-REMOTE_URL="https://raw.githubusercontent.com/Ausnana/Cloudflare-Best-IP-DnsUpdate/main"
+REMOTE_URL="https://raw.githubusercontent.com/Asunano/Cloudflare-Best-IP-DnsUpdate/main"
 VERSION_FILE_REMOTE="$REMOTE_URL/version.txt"
 
 # 根据用户权限动态确定安装目录
@@ -118,23 +118,39 @@ download_with_retry() {
             return 1
         fi
         
-        # 使用 curl 进行下载，增加 -f (fail) 和 --create-dirs 参数
+        # 显示下载信息
+        echo -e "${CYAN}[DEBUG] 正在下载: $(basename "$output")${NC}"
+        echo -e "${GRAY}[DEBUG] URL: $url${NC}"
+        echo -e "${GRAY}[DEBUG] 目标: $output${NC}"
+        
+        # 使用 curl 进行下载，增加 -v (verbose) 参数显示详细过程
         local curl_output
-        curl_output=$(curl -sfL --connect-timeout 10 --max-time 60 --create-dirs -o "$output" "$url" 2>&1)
+        curl_output=$(curl -vL --connect-timeout 10 --max-time 60 --create-dirs -o "$output" "$url" 2>&1)
         local curl_exit_code=$?
+        
+        # 显示 curl 详细输出
+        echo -e "${GRAY}[DEBUG] curl 输出:${NC}"
+        echo "$curl_output" | while IFS= read -r line; do
+            echo -e "${GRAY}  $line${NC}"
+        done
         
         if [ $curl_exit_code -eq 0 ]; then
             # 基础校验：文件非空且不是 HTML 错误页
             if [ -s "$output" ] && ! grep -q "403 Forbidden" "$output" 2>/dev/null && ! grep -q "404 Not Found" "$output" 2>/dev/null; then
+                local file_size=$(wc -c < "$output")
+                echo -e "${GREEN}[DEBUG] 下载成功，文件大小: $file_size bytes${NC}"
+                
                 # 哈希校验（如果提供了哈希值）
                 if [ -n "$expected_hash" ]; then
                     local actual_hash=$(sha256sum "$output" | awk '{print $1}')
                     if [ "$actual_hash" = "$expected_hash" ]; then
+                        echo -e "${GREEN}[DEBUG] 哈希校验通过${NC}"
                         return 0
                     else
                         echo -e "${YELLOW}[WARN] 哈希校验失败 (期望: ${expected_hash:0:16}... 实际: ${actual_hash:0:16}...)，正在重试...${NC}"
                     fi
                 else
+                    echo -e "${YELLOW}[DEBUG] 跳过哈希校验（无校验值）${NC}"
                     return 0
                 fi
             else

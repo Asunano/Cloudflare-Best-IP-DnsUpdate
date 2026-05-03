@@ -1,5 +1,7 @@
 # Cloudflare-Best-IP-DnsUpdate
 
+> ⚠️ **警告：本项目正在积极开发中，功能尚未稳定，切勿在生产环境中使用！** ⚠️
+
 [![License](https://img.shields.io/badge/License-GPL--3.0-blue.svg)](LICENSE)
 [![Shell](https://img.shields.io/badge/Shell-Bash-green.svg)](https://www.gnu.org/software/bash/)
 
@@ -21,7 +23,7 @@
 ### 1. 安装
 在终端执行以下命令即可完成一键安装（测试中，请勿使用！!!!!）：
 ```bash
-curl -sL https://raw.githubusercontent.com/Ausnana/Cloudflare-Best-IP-DnsUpdate/main/cfopt.sh -o cfopt.sh && bash cfopt.sh
+curl -sL https://raw.githubusercontent.com/Asunano/Cloudflare-Best-IP-DnsUpdate/main/cfopt.sh -o cfopt.sh && bash cfopt.sh
 ```
 
 ### 2. 启动程序
@@ -79,7 +81,7 @@ Cloudflare-Best-IP-DnsUpdate/
 
 ## 🤝 贡献与支持
 
-如果你希望贡献代码、报告 Bug 或提出改进建议，欢迎提交 [Issue](https://github.com/Ausnana/Cloudflare-Best-IP-DnsUpdate/issues) 或 [Pull Request](https://github.com/Ausnana/Cloudflare-Best-IP-DnsUpdate/pulls)。
+如果你希望贡献代码、报告 Bug 或提出改进建议，欢迎提交 [Issue](https://github.com/Asunano/Cloudflare-Best-IP-DnsUpdate/issues) 或 [Pull Request](https://github.com/Asunano/Cloudflare-Best-IP-DnsUpdate/pulls)。
 
 ---
 
