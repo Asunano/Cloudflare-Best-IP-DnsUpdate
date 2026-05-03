@@ -1,0 +1,38 @@
+{
+  "_comment": "全局配置文件 - cfopt 系统级设置",
+  "_version": "1.0",
+  
+  "system": {
+    "root_dir": "/opt/cfopt",
+    "log_level": "INFO",
+    "debug_mode": false,
+    "auto_update": true
+  },
+  
+  "paths": {
+    "assets_dir": "./assets",
+    "data_dir": "./assets/data",
+    "logs_dir": "./logs",
+    "cache_dir": "./cache",
+    "bin_dir": "./assets/bin"
+  },
+  
+  "network": {
+    "default_timeout": 10,
+    "max_retries": 3,
+    "user_agent": "cfopt/1.0"
+  },
+  
+  "modules": {
+    "cf_ip_enabled": true,
+    "cf_dns_enabled": true,
+    "dnspod_enabled": false,
+    "ip_sync_enabled": true
+  },
+  
+  "scheduler": {
+    "cf_ip_cron": "0 */6 * * *",
+    "cf_dns_cron": "*/15 * * * *",
+    "dnspod_cron": "*/15 * * * *"
+  }
+}

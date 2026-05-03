@@ -70,13 +70,46 @@ cfopt
 
 ### 配置文件位置
 
-所有配置文件位于 `$HOME/cfopt/conf/` 目录下，首次运行时会自动生成。
+项目采用**模板与配置分离**的架构，所有文件位于 `$HOME/cfopt/conf/` 目录下：
+
+```
+$HOME/cfopt/conf/
+├── templates/                  # 系统模板区（只读）
+│   ├── cf-ip.json.example
+│   ├── cf-dns.json.example
+│   ├── dnspod.json.example
+│   └── global.json.example
+│
+├── cf-ip.json                  # 用户配置区（可编辑）
+├── cf-dns.json
+├── dnspod.json
+├── global.json
+└── status.conf                 # 运行时自动生成
+```
+
+#### 用户配置文件（可直接编辑）
 
 | 文件名 | 说明 |
 | :--- | :--- |
-| `cfdns.conf` | Cloudflare API 令牌 (Token)、区域 ID (Zone ID) 及目标域名 |
-| `dnspod.conf` | DNSPod API ID/Token 及目标域名 |
-| `status.conf` | 系统内部状态记录，通常无需手动修改 |
+| `cf-ip.json` | CF IP 测速配置（测速参数、目标 URL、并发数等） |
+| `cf-dns.json` | Cloudflare API Token、Zone ID 及域名配置 |
+| `dnspod.json` | DNSPod API ID/Token 及域名配置 |
+| `global.json` | 全局配置（日志级别、超时时间等） |
+| `status.conf` | 系统内部状态记录（运行时自动生成，无需手动修改） |
+
+#### 系统模板文件（仅供参考）
+
+| 文件名 | 说明 |
+| :--- | :--- |
+| `templates/cf-ip.json.example` | CF IP 测速配置模板 |
+| `templates/cf-dns.json.example` | Cloudflare DNS 更新配置模板 |
+| `templates/dnspod.json.example` | DNSPod DNS 更新配置模板 |
+| `templates/global.json.example` | 全局配置模板 |
+
+> **提示**: 
+> - 首次安装时，系统会自动从 `templates/` 复制模板到 `conf/` 并去除 `.example` 后缀
+> - 后续更新组件时不会覆盖用户的配置文件
+> - 如需恢复默认配置，可从 `templates/` 重新复制
 
 ### 获取 API 凭证
 

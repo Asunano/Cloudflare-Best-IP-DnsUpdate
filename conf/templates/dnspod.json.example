@@ -1,0 +1,51 @@
+{
+  "_comment": "DNSPod DNS 更新模块配置 - 同时支持单线路和多线路模式",
+  "_version": "2.0",
+  
+  "enabled": true,
+  
+  "api": {
+    "id": "your_api_id_here",
+    "token": "your_api_token_here",
+    "timeout": 10,
+    "max_retries": 5
+  },
+  
+  "dns": {
+    "domain": "example.com",
+    "ttl": 600,
+    "record_type": "A",
+    "max_ips_per_record": 2,
+    
+    "mode": "single",
+    "subdomain_strategy": "separate",
+    
+    "sub_domain": "www",
+    "sub_domain_unified": "dns",
+    
+    "sub_domains": {
+      "default": "default",
+      "unicom": "unicom",
+      "mobile": "mobile",
+      "telecom": "telecom"
+    },
+    
+    "isp_lines": "默认"
+  },
+  
+  "ip_source": {
+    "file_path": "./assets/data/dnspod-dns/ip_list.txt",
+    "files": {
+      "default": "./assets/data/dnspod-dns/default.txt",
+      "unicom": "./assets/data/dnspod-dns/unicom.txt",
+      "mobile": "./assets/data/dnspod-dns/mobile.txt",
+      "telecom": "./assets/data/dnspod-dns/telecom.txt"
+    }
+  },
+  
+  "logging": {
+    "log_dir": "./logs/dnspod-dns",
+    "log_rotation_days": 7,
+    "verbose": false
+  }
+}

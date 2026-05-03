@@ -1,10 +1,12 @@
 #!/bin/bash
+# shellcheck shell=bash
 # ==============================================================================
 # cfopt - Cloudflare DNS 配置向导 (Setup Wizard)
 # Version: 0.1
 # Description: 引导用户完成 API 令牌、Zone ID 及域名记录的交互式配置
 # Usage: bash modules/cf-dns/setup.sh
 # ==============================================================================
+# shellcheck disable=SC2034
 SCRIPT_VERSION="0.1"
 
 # ==================== 入口校验与路径初始化 ====================
@@ -21,7 +23,7 @@ MENU_BORDER="+------------------------------------------------------------+"
 MENU_BORDER_MID="+------------------------------------------------------------+"
 MENU_BORDER_BOTTOM="+------------------------------------------------------------+"
 
-CONFIG_FILE="$ROOT_DIR/conf/cfdns.conf"
+CONFIG_FILE="$ROOT_DIR/conf/cf-dns.json"
 LOCK_FILE="$ROOT_DIR/modules/cf-dns/.setup_cfdns.lock"
 
 # ==================== 进程锁管理 ====================
@@ -29,7 +31,8 @@ LOCK_FILE="$ROOT_DIR/modules/cf-dns/.setup_cfdns.lock"
 # 检查并获取锁
 acquire_lock() {
     if [ -f "$LOCK_FILE" ]; then
-        local lock_pid=$(cat "$LOCK_FILE" 2>/dev/null)
+        local lock_pid
+        lock_pid=$(cat "$LOCK_FILE" 2>/dev/null)
         if [ -n "$lock_pid" ] && kill -0 "$lock_pid" 2>/dev/null; then
             echo -e "${RED}[ERROR] 另一个实例正在运行 (PID: ${lock_pid})${NC}"
             echo -e "${YELLOW}提示: 如果确定没有运行，请删除 ${LOCK_FILE}${NC}"
@@ -62,33 +65,38 @@ show_menu() {
     clear
     
     # 获取当前时间和状态
-    local NOW=$(date "+%Y-%m-%d %H:%M:%S")
+    local NOW
+    NOW=$(date "+%Y-%m-%d %H:%M:%S")
     local status_text=""
     local dns_info=""
     
     if [ -f "$CONFIG_FILE" ]; then
-        source "$CONFIG_FILE"
+        # 从 JSON 读取配置
+        local cf_dns_name
+        local cf_domain
+        cf_dns_name=$(jq -r '.dns.record_name // empty' "$CONFIG_FILE" 2>/dev/null)
+        cf_domain=$(jq -r '.dns.domain // empty' "$CONFIG_FILE" 2>/dev/null)
         
         # 构建完整域名显示
         local full_domain=""
-        if [ -z "$CF_DNS_NAME" ] || [ "$CF_DNS_NAME" = "your_dns_name_here" ]; then
+        if [ -z "$cf_dns_name" ] || [ "$cf_dns_name" = "your_dns_name_here" ]; then
             full_domain="${RED}未设置${NC}"
-        elif echo "$CF_DNS_NAME" | grep -q '\.'; then
+        elif echo "$cf_dns_name" | grep -q '\.'; then
             # 检测到格式错误
-            full_domain="${RED}${CF_DNS_NAME}${NC} ${YELLOW}(格式错误)${NC}"
-        elif [ "$CF_DNS_NAME" = "@" ]; then
+            full_domain="${RED}${cf_dns_name}${NC} ${YELLOW}(格式错误)${NC}"
+        elif [ "$cf_dns_name" = "@" ]; then
             # 根域名 - 使用配置文件中的域名
-            if [ -n "$CF_DOMAIN" ]; then
-                full_domain="${CYAN}${CF_DOMAIN}${NC} (根域名)"
+            if [ -n "$cf_domain" ]; then
+                full_domain="${CYAN}${cf_domain}${NC} (根域名)"
             else
                 full_domain="${CYAN}根域名${NC}"
             fi
         else
             # 子域名 - 使用配置文件中的域名
-            if [ -n "$CF_DOMAIN" ]; then
-                full_domain="${GREEN}${CF_DNS_NAME}.${CF_DOMAIN}${NC}"
+            if [ -n "$cf_domain" ]; then
+                full_domain="${GREEN}${cf_dns_name}.${cf_domain}${NC}"
             else
-                full_domain="${GREEN}${CF_DNS_NAME}${NC}.${CYAN}您的域名${NC}"
+                full_domain="${GREEN}${cf_dns_name}${NC}.${CYAN}您的域名${NC}"
             fi
         fi
         
@@ -151,7 +159,7 @@ http_request() {
     local retry_count=0
     local response=""
     
-    while [ $retry_count -lt $max_retries ]; do
+    while [ "$retry_count" -lt "$max_retries" ]; do
         if [ "$method" = "GET" ]; then
             response=$(curl -s -w "\n%{http_code}" -X GET "$url" \
                 -H "Authorization: Bearer ${api_token}" \
@@ -170,8 +178,10 @@ http_request() {
                 --max-time 10)
         fi
         
-        local http_code=$(echo "$response" | tail -n1)
-        local body=$(echo "$response" | sed '$d')
+        local http_code
+        http_code=$(echo "$response" | tail -n1)
+        local body
+        body=$(echo "$response" | sed '$d')
         
         # 成功或客户端错误不需要重试
         if [ "$http_code" = "200" ] || [ "$http_code" = "204" ] || [[ "$http_code" =~ ^4 ]]; then
@@ -181,7 +191,7 @@ http_request() {
         
         # 服务器错误需要重试
         retry_count=$((retry_count + 1))
-        if [ $retry_count -lt $max_retries ]; then
+        if [ "$retry_count" -lt "$max_retries" ]; then
             echo -e "${YELLOW}[WARN] API 请求失败 (HTTP ${http_code}), 第 ${retry_count}/${max_retries} 次重试...${NC}" >&2
             sleep 2
         fi
@@ -212,10 +222,12 @@ sanitize_log() {
 log_message() {
     local level="$1"
     local message="$2"
-    local timestamp=$(date '+%Y-%m-%d %H:%M:%S')
+    local timestamp
+    timestamp=$(date '+%Y-%m-%d %H:%M:%S')
     
     # 脱敏消息
-    local sanitized_msg=$(sanitize_log "$message")
+    local sanitized_msg
+    sanitized_msg=$(sanitize_log "$message")
     
     case "$level" in
         "INFO")
@@ -241,11 +253,14 @@ get_zone_name() {
     local api_token="$2"
     
     # 使用通用 HTTP 请求函数
-    local response=$(http_request "GET" "https://api.cloudflare.com/client/v4/zones/${zone_id}" "$api_token")
+    local response
+    response=$(http_request "GET" "https://api.cloudflare.com/client/v4/zones/${zone_id}" "$api_token")
     
     # 分离响应体和状态码
-    local http_code=$(echo "$response" | tail -n1)
-    local body=$(echo "$response" | sed '$d')
+    local http_code
+    http_code=$(echo "$response" | tail -n1)
+    local body
+    body=$(echo "$response" | sed '$d')
     
     # 如果返回 400 且错误是 Invalid format for Authorization header，可能是 Global API Key
     if [ "$http_code" = "400" ] && echo "$body" | grep -q '"code":6111'; then
@@ -262,7 +277,8 @@ get_zone_name() {
         echo "" >&2
         echo "错误: API 返回 HTTP $http_code" >&2
         if echo "$body" | grep -q '"message"'; then
-            local error_msg=$(json_get "$body" "message")
+            local error_msg
+            error_msg=$(json_get "$body" "message")
             echo "详情: $error_msg" >&2
         fi
         echo ""
@@ -271,37 +287,20 @@ get_zone_name() {
     
     # 解析 JSON 获取 name 字段
     if echo "$body" | grep -q '"success":true'; then
-        local zone_name=$(json_get "$body" "name")
+        local zone_name
+        zone_name=$(json_get "$body" "name")
         echo "$zone_name"
     else
         echo "" >&2
         echo "错误: API 返回失败" >&2
         if echo "$body" | grep -q '"message"'; then
-            local error_msg=$(json_get "$body" "message")
+            local error_msg
+            error_msg=$(json_get "$body" "message")
             echo "详情: $error_msg" >&2
         fi
         echo ""
         return 1
     fi
-}
-
-# 安全更新配置文件值
-update_config_value() {
-    local key="$1"
-    local value="$2"
-    local temp_conf=$(mktemp)
-    
-    while IFS= read -r line; do
-        if [[ "$line" =~ ^${key}= ]]; then
-            echo "${key}=\"${value}\""
-        else
-            echo "$line"
-        fi
-    done < "$CONFIG_FILE" > "$temp_conf"
-    mv "$temp_conf" "$CONFIG_FILE"
-    
-    # 自动修复配置文件权限为 600
-    chmod 600 "$CONFIG_FILE"
 }
 
 # ==================== 配置向导函数 ====================
@@ -329,11 +328,11 @@ full_config_wizard() {
     echo -e "${YELLOW}API 令牌示例:${NC} cfut_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx [OK]"
     echo -e "${YELLOW}Global API Key 示例:${NC} xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx [ERROR]"
     echo ""
-    read -p "请输入 CF_API_TOKEN: " cf_api_token
+    read -r -p "请输入 CF_API_TOKEN: " cf_api_token
     
     if [ -z "$cf_api_token" ]; then
         echo -e "${RED}错误: API Token 不能为空${NC}"
-        read -p "按回车键继续..."
+        read -r -p "按回车键继续..."
         return 1
     fi
     
@@ -343,11 +342,11 @@ full_config_wizard() {
     echo "Zone ID 是域名的唯一标识符。"
     echo -e "${CYAN}查找方法:${NC} 登录 Cloudflare -> 点击域名 -> 在右侧栏底部找到 'API' -> 复制 Zone ID"
     echo ""
-    read -p "请输入 CF_ZONE_ID: " cf_zone_id
+    read -r -p "请输入 CF_ZONE_ID: " cf_zone_id
     
     if [ -z "$cf_zone_id" ]; then
         echo -e "${RED}错误: Zone ID 不能为空${NC}"
-        read -p "按回车键继续..."
+        read -r -p "按回车键继续..."
         return 1
     fi
     
@@ -363,11 +362,11 @@ full_config_wizard() {
     echo -e "  - 想解析到 ${BOLD}cf.example.com${NC} -> 请输入: ${GREEN}cf${NC}"
     echo -e "  - 想解析到根域名 ${BOLD}example.com${NC} -> 请输入: ${GREEN}@${NC}"
     echo ""
-    read -p "请输入 DNS 记录名称 (例如 dns、cf 或 @): " cf_dns_name
+    read -r -p "请输入 DNS 记录名称 (例如 dns、cf 或 @): " cf_dns_name
     
     if [ -z "$cf_dns_name" ]; then
         echo -e "${RED}错误: DNS 记录名称不能为空${NC}"
-        read -p "按回车键继续..."
+        read -r -p "按回车键继续..."
         return 1
     fi
     
@@ -379,11 +378,12 @@ full_config_wizard() {
             echo -e "  如果要解析根域名，请输入: ${GREEN}@${NC}"
         else
             # 提取第一个点号前的部分
-            local subdomain=$(echo "$cf_dns_name" | cut -d'.' -f1)
+            local subdomain
+            subdomain=$(echo "$cf_dns_name" | cut -d'.' -f1)
             echo -e "  你的子域名是: ${GREEN}${subdomain}${NC}"
             echo -e "  请输入: ${GREEN}${subdomain}${NC}"
         fi
-        read -p "按回车键重新输入..."
+        read -r -p "按回车键重新输入..."
         return 1
     fi
     
@@ -391,7 +391,7 @@ full_config_wizard() {
     if [ "$cf_dns_name" != "@" ] && ! [[ "$cf_dns_name" =~ ^[a-zA-Z0-9][a-zA-Z0-9_-]*$ ]]; then
         echo -e "${RED}错误: DNS 记录名称格式无效${NC}"
         echo "只能使用字母、数字、连字符(-)和下划线(_)，或使用 @ 表示根域名"
-        read -p "按回车键重新输入..."
+        read -r -p "按回车键重新输入..."
         return 1
     fi
     
@@ -402,7 +402,7 @@ full_config_wizard() {
     echo "默认: $default_ip_path"
     echo ""
     local ip_file=""
-    read -p "请输入 IP_FILE (直接回车使用默认): " ip_file
+    read -r -p "请输入 IP_FILE (直接回车使用默认): " ip_file
     ip_file=${ip_file:-"$default_ip_path"}
     
     # 5. IP 数量限制
@@ -415,68 +415,63 @@ full_config_wizard() {
     echo "  - 速度才是硬道理：保留少量经过测速的最优 IP，体验会更稳定。"
     echo ""
     echo "默认: 2"
-    read -p "请输入限制数量 (直接回车使用默认): " max_ips
+    read -r -p "请输入限制数量 (直接回车使用默认): " max_ips
     max_ips=${max_ips:-"2"}
     
-    # 创建配置文件
+    # 创建配置文件（从模板生成）
     echo ""
     echo -e "${GREEN}正在创建配置文件...${NC}"
     
-    cat > "$CONFIG_FILE" << EOF
-# Cloudflare DNS 更新器配置文件
-# 自动生成于 $(date '+%Y-%m-%d %H:%M:%S')
-
-# ===== 启用状态 =====
-ENABLED="true"
-
-# ===== API 配置 =====
-CF_API_TOKEN="${cf_api_token}"
-CF_ZONE_ID="${cf_zone_id}"
-CF_DNS_NAME="${cf_dns_name}"
-
-# ===== IP 文件配置 =====
-IP_FILE="${ip_file}"
-
-# ===== 其他配置 =====
-MAX_RETRIES=5
-REQUEST_TIMEOUT=10
-MAX_IPS_PER_RECORD=${max_ips}
-
-# ===== 日志配置 =====
-LOG_DIR="$ROOT_DIR/logs/cf-dns"
-EOF
+    # 检查模板文件是否存在
+    local template_file="$ROOT_DIR/conf/templates/cf-dns.json.example"
+    if [ ! -f "$template_file" ]; then
+        echo -e "${RED}[ERROR] 配置文件模板不存在: ${template_file}${NC}"
+        echo -e "${YELLOW}[INFO] 请确保 conf/templates/cf-dns.json.example 文件存在${NC}"
+        return 1
+    fi
+    
+    # 复制模板文件
+    cp "$template_file" "$CONFIG_FILE"
+    
+    # 使用 jq 更新配置值
+    local temp_file
+    temp_file=$(mktemp)
+    
+    jq --arg token "$cf_api_token" \
+       --arg zone_id "$cf_zone_id" \
+       --arg dns_name "$cf_dns_name" \
+       --arg ip_file "$ip_file" \
+       --argjson max_ips "$max_ips" \
+       --arg log_dir "$ROOT_DIR/logs/cf-dns" \
+       '.enabled = true |
+        .api.token = $token |
+        .api.zone_id = $zone_id |
+        .dns.record_name = $dns_name |
+        .ip_source.file_path = $ip_file |
+        .dns.max_ips_per_record = $max_ips |
+        .logging.log_dir = $log_dir' \
+       "$CONFIG_FILE" > "$temp_file" && mv "$temp_file" "$CONFIG_FILE"
     
     # 自动修复配置文件权限为 600
     chmod 600 "$CONFIG_FILE"
     
     # 自动获取并保存域名到配置文件
     echo -e "${YELLOW}正在获取域名信息...${NC}"
-    local zone_name=$(get_zone_name "$cf_zone_id" "$cf_api_token")
+    local zone_name
+    zone_name=$(get_zone_name "$cf_zone_id" "$cf_api_token")
     if [ -n "$zone_name" ]; then
         # 验证域名格式
         if [[ "$zone_name" =~ ^[a-zA-Z0-9]([a-zA-Z0-9-]*[a-zA-Z0-9])?\.[a-zA-Z]{2,}$ ]]; then
-            # 将域名追加到配置文件
-            cat >> "$CONFIG_FILE" << EOF
-
-# ===== 自动获取的域名信息 =====
-CF_DOMAIN="${zone_name}"
-EOF
+            # 使用 jq 更新域名
+            local temp_file
+            temp_file=$(mktemp)
+            jq --arg domain "$zone_name" '.dns.domain = $domain' "$CONFIG_FILE" > "$temp_file" && mv "$temp_file" "$CONFIG_FILE"
             echo -e "${GREEN}[OK] 已自动获取域名: ${zone_name}${NC}"
         else
             echo -e "${YELLOW}[WARN] 域名格式异常: ${zone_name}${NC}"
-            cat >> "$CONFIG_FILE" << EOF
-
-# ===== 自动获取的域名信息 =====
-CF_DOMAIN=""
-EOF
         fi
     else
-        echo -e "${YELLOW}[WARN] 无法获取域名，将使用默认显示${NC}"
-        cat >> "$CONFIG_FILE" << EOF
-
-# ===== 自动获取的域名信息 =====
-CF_DOMAIN=""
-EOF
+        echo -e "${YELLOW}[WARN] 无法获取域名，请手动填写${NC}"
     fi
     
     # 创建 IP 数据目录
@@ -486,18 +481,70 @@ EOF
     if [ ! -f "$ip_file" ]; then
         cat > "$ip_file" << 'EOF'
 # Cloudflare 优选 IP 列表
-# 格式1: 每行一个IP
-# 格式2: 逗号分隔的IP
-
+# 
+# 说明:
+#   - 此文件由 CF-IP 优选程序自动生成 (modules/cf-ip/core.sh)
+#   - 也可以手动添加已知的高速 IP
+#   - 以 # 开头的行为注释，会被忽略
+#
+# 支持的格式:
+#   1. 每行一个 IP
+#   2. 逗号分隔: 1.2.3.4,5.6.7.8
+#   3. 空格分隔: 1.2.3.4 5.6.7.8
+#
+# 示例 IP (请替换为实际测速结果):
 104.16.132.229
 104.16.133.229
 EOF
         echo -e "${GREEN}[OK] 已创建示例 IP 文件: ${ip_file}${NC}"
+        echo -e "${YELLOW}[提示]${NC} 建议运行 CF-IP 优选程序获取最优 IP" >&2
+    fi
+    
+    # 自动验证配置格式
+    echo ""
+    echo -e "${CYAN}正在验证配置格式...${NC}"
+    local config_valid=true
+    local warnings=()
+    
+    # 检查 API Token 格式
+    if [ ${#cf_api_token} -lt 20 ]; then
+        warnings+=("API Token 长度异常 (${#cf_api_token} 字符)，建议检查是否正确复制")
+        config_valid=false
+    fi
+    
+    # 检查 Zone ID 格式（应该是 32 位十六进制字符串）
+    if ! [[ "$cf_zone_id" =~ ^[a-f0-9]{32}$ ]]; then
+        warnings+=("Zone ID 格式可能不正确，应该是 32 位十六进制字符串")
+        config_valid=false
+    fi
+    
+    # 检查 DNS 名称是否包含点号（常见错误）
+    if echo "$cf_dns_name" | grep -q '\.'; then
+        warnings+=("DNS 记录名称不应包含点号，请只填写子域名部分")
+        config_valid=false
+    fi
+    
+    # 检查 IP 文件路径
+    if [[ "$ip_file" != /* ]] && [[ "$ip_file" != ./* ]]; then
+        warnings+=("IP 文件路径建议使用绝对路径或以 ./ 开头的相对路径")
+    fi
+    
+    # 输出验证结果
+    if [ ${#warnings[@]} -eq 0 ]; then
+        echo -e "  ${GREEN}✓${NC} 配置格式检查通过"
+    else
+        echo -e "  ${YELLOW}⚠${NC} 发现以下潜在问题:"
+        for warning in "${warnings[@]}"; do
+            echo -e "    ${YELLOW}- ${warning}${NC}"
+        done
+        echo ""
+        echo -e "  ${YELLOW}提示:${NC} 如果确认配置无误，可以忽略以上警告"
     fi
     
     echo ""
     echo -e "${GREEN}[OK] 配置完成!${NC}"
     echo -e "配置文件已保存到: ${CONFIG_FILE}"
+    echo -e "空白模板文件: ${template_file}"
     echo ""
     
     # 如果是首次配置，询问是否继续
@@ -508,7 +555,7 @@ EOF
         echo ""
     fi
     
-    read -p "按回车键继续..."
+    read -r -p "按回车键继续..."
 }
 
 # 查看当前配置
@@ -522,69 +569,81 @@ view_config() {
     if [ ! -f "$CONFIG_FILE" ]; then
         echo -e "${RED}配置文件不存在${NC}"
         echo ""
-        read -p "按回车键继续..."
+        read -r -p "按回车键继续..."
         return
     fi
     
-    # 加载配置
-    source "$CONFIG_FILE"
+    local cf_api_token cf_zone_id cf_dns_name cf_domain ip_file max_ips request_timeout max_retries
     
-    # 显示核心配置
-    echo -e "${BLUE}API 配置:${NC}"
-    # 脱敏显示 API Token
-    local token_display="${CF_API_TOKEN:0:8}...${CF_API_TOKEN: -4}"
-    echo "  CF_API_TOKEN = ${token_display}"
-    echo "  CF_ZONE_ID   = ${CF_ZONE_ID}"
-    echo ""
-    
-    # 显示 DNS 记录信息
-    echo -e "${BLUE}DNS 记录配置:${NC}"
-    
-    if [ "$CF_DNS_NAME" = "@" ]; then
-        echo "  CF_DNS_NAME  = @ (根域名)"
-        if [ -n "$CF_DOMAIN" ]; then
-            echo "  完整域名   = ${CF_DOMAIN}"
+    cf_api_token=$(jq -r '.api.token // empty' "$CONFIG_FILE")
+    cf_zone_id=$(jq -r '.api.zone_id // empty' "$CONFIG_FILE")
+    cf_dns_name=$(jq -r '.dns.record_name // empty' "$CONFIG_FILE")
+    cf_domain=$(jq -r '.dns.domain // empty' "$CONFIG_FILE")
+    ip_file=$(jq -r '.ip_source.file_path // empty' "$CONFIG_FILE")
+    max_ips=$(jq -r '.dns.max_ips_per_record // 2' "$CONFIG_FILE")
+    request_timeout=$(jq -r '.api.timeout // 10' "$CONFIG_FILE")
+    max_retries=$(jq -r '.api.max_retries // 5' "$CONFIG_FILE")
+        
+        # 显示核心配置
+        echo -e "${BLUE}API 配置:${NC}"
+        if [ -n "$cf_api_token" ]; then
+            local token_display="${cf_api_token:0:8}...${cf_api_token: -4}"
+            echo "  CF_API_TOKEN = ${token_display}"
         else
-            echo "  完整域名   = 你的域名（如 example.com）"
+            echo "  CF_API_TOKEN = ${RED}未设置${NC}"
         fi
-    else
-        echo "  CF_DNS_NAME  = ${CF_DNS_NAME}"
-        if [ -n "$CF_DOMAIN" ]; then
-            echo "  完整域名   = ${CF_DNS_NAME}.${CF_DOMAIN}"
+        echo "  CF_ZONE_ID   = ${cf_zone_id:-${RED}未设置${NC}}"
+        echo ""
+        
+        # 显示 DNS 记录信息
+        echo -e "${BLUE}DNS 记录配置:${NC}"
+        
+        if [ "$cf_dns_name" = "@" ]; then
+            echo "  CF_DNS_NAME  = @ (根域名)"
+            if [ -n "$cf_domain" ]; then
+                echo "  完整域名   = ${cf_domain}"
+            else
+                echo "  完整域名   = 你的域名（如 example.com）"
+            fi
+        elif [ -n "$cf_dns_name" ]; then
+            echo "  CF_DNS_NAME  = ${cf_dns_name}"
+            if [ -n "$cf_domain" ]; then
+                echo "  完整域名   = ${cf_dns_name}.${cf_domain}"
+            else
+                echo "  完整域名   = ${cf_dns_name}.你的域名 (如 ${cf_dns_name}.example.com)"
+            fi
         else
-            echo "  完整域名   = ${CF_DNS_NAME}.你的域名 (如 ${CF_DNS_NAME}.example.com)"
+            echo "  CF_DNS_NAME  = ${RED}未设置${NC}"
         fi
-    fi
-    
-    if [ -n "$CF_DOMAIN" ]; then
-        echo "  CF_DOMAIN    = ${CF_DOMAIN} (自动获取)"
-    fi
-    echo ""
-    
-    # 显示 IP 文件配置
-    echo -e "${BLUE}IP 文件配置:${NC}"
-    echo "  IP_FILE      = ${IP_FILE}"
-    if [ -f "$IP_FILE" ]; then
-        local ip_count=$(grep -v '^#' "$IP_FILE" | grep -v '^$' | wc -l | tr -d ' ')
-        echo "  当前 IP 数量 = ${ip_count} 个"
-    else
-        echo "  当前 IP 数量 = 文件不存在"
-    fi
-    echo ""
-    
-    # 显示其他配置
-    echo -e "${BLUE}其他配置:${NC}"
-    echo "  IP 数量限制   = ${MAX_IPS_PER_RECORD:-2} 个/记录"
-    echo "  请求超时时间  = ${REQUEST_TIMEOUT:-10} 秒"
-    echo "  最大重试次数  = ${MAX_RETRIES:-3} 次"
-    echo ""
-    
+        
+        if [ -n "$cf_domain" ]; then
+            echo "  CF_DOMAIN    = ${cf_domain} (自动获取)"
+        fi
+        echo ""
+        
+        # 显示 IP 文件配置
+        echo -e "${BLUE}IP 文件配置:${NC}"
+        echo "  IP_FILE      = ${ip_file:-${RED}未设置${NC}}"
+        if [ -n "$ip_file" ] && [ -f "$ip_file" ]; then
+            local ip_count
+            ip_count=$(grep -c -v '^#' "$ip_file" | grep -c -v '^$')
+            echo "  当前 IP 数量 = ${ip_count} 个"
+        else
+            echo "  当前 IP 数量 = 文件不存在"
+        fi
+        echo ""
+        
+        # 显示其他配置
+        echo -e "${BLUE}其他配置:${NC}"
+        echo "  IP 数量限制   = ${max_ips} 个/记录"
+        echo "  请求超时时间  = ${request_timeout} 秒"
+        echo "  最大重试次数  = ${max_retries} 次"
     echo -e "${CYAN}提示:${NC}"
-    echo "  - 使用 '5) 修改配置' 可以修改任意配置项"
+    echo "  - 使用 '7) 修改配置' 可以修改任意配置项"
     echo "  - 使用 '2) 快速运行' 可以立即执行 DNS 更新"
     
     echo ""
-    read -p "按回车键继续..."
+    read -r -p "按回车键继续..."
 }
 
 # 修改 IP 数量限制
@@ -598,29 +657,35 @@ modify_ip_limit() {
     if [ ! -f "$CONFIG_FILE" ]; then
         echo -e "${RED}配置文件不存在,请先运行完整配置向导${NC}"
         echo ""
-        read -p "按回车键继续..."
+        read -r -p "按回车键继续..."
         return
     fi
     
-    source "$CONFIG_FILE"
-    echo -e "${CYAN}当前限制: ${MAX_IPS_PER_RECORD:-2} 个IP/记录${NC}"
+    # 使用 jq 读取当前值
+    local current_limit
+    current_limit=$(jq -r '.dns.max_ips_per_record // 2' "$CONFIG_FILE")
+    
+    echo -e "${CYAN}当前限制: ${current_limit} 个IP/记录${NC}"
     echo ""
     echo -e "${YELLOW}说明:${NC}"
     echo "  - 设置每条 DNS 记录最多包含几个 IP 地址"
     echo "  - 例如: 设置为 2，则每个域名最多解析到 2 个 IP"
     echo "  - 设置为 0 表示不限制（需要套餐支持）"
     echo ""
-    read -p "请输入新的限制 (0=不限制, 直接回车保持 ${MAX_IPS_PER_RECORD:-2}): " new_limit
+    read -r -p "请输入新的限制 (0=不限制, 直接回车保持 ${current_limit}): " new_limit
     
     if [ -n "$new_limit" ] && [[ "$new_limit" =~ ^[0-9]+$ ]]; then
-        update_config_value "MAX_IPS_PER_RECORD" "$new_limit"
+        local temp_file
+        temp_file=$(mktemp)
+        jq --argjson limit "$new_limit" '.dns.max_ips_per_record = $limit' "$CONFIG_FILE" > "$temp_file" && mv "$temp_file" "$CONFIG_FILE"
+        chmod 600 "$CONFIG_FILE"
         echo -e "${GREEN}[OK] IP 数量限制已更新为: ${new_limit}${NC}"
     else
         echo -e "${RED}错误: 请输入有效的数字${NC}"
     fi
     
     echo ""
-    read -p "按回车键继续..."
+    read -r -p "按回车键继续..."
 }
 
 # 启用/禁用模块
@@ -634,12 +699,13 @@ toggle_module_status() {
     if [ ! -f "$CONFIG_FILE" ]; then
         echo -e "${RED}配置文件不存在,请先运行完整配置向导${NC}"
         echo ""
-        read -p "按回车键继续..."
+        read -r -p "按回车键继续..."
         return
     fi
     
-    source "$CONFIG_FILE"
-    local current_status="${ENABLED:-false}"
+    # 使用 jq 读取当前状态
+    local current_status
+    current_status=$(jq -r '.enabled // false' "$CONFIG_FILE")
     
     if [ "$current_status" = "true" ]; then
         echo -e "${GREEN}当前状态: ${BOLD}已启用${NC}"
@@ -648,9 +714,12 @@ toggle_module_status() {
         echo "  - IP 同步组件会自动将测速结果写入此模块"
         echo "  - DNS 更新任务会正常执行"
         echo ""
-        read -p "是否禁用此模块? (y/n): " confirm
+        read -r -p "是否禁用此模块? (y/n): " confirm
         if [ "$confirm" = "y" ] || [ "$confirm" = "Y" ]; then
-            update_config_value "ENABLED" "false"
+            local temp_file
+            temp_file=$(mktemp)
+            jq '.enabled = false' "$CONFIG_FILE" > "$temp_file" && mv "$temp_file" "$CONFIG_FILE"
+            chmod 600 "$CONFIG_FILE"
             echo -e "${GREEN}[OK] 模块已禁用${NC}"
             echo -e "${CYAN}提示:${NC} IP 同步和 DNS 更新将跳过此模块"
         fi
@@ -661,16 +730,19 @@ toggle_module_status() {
         echo "  - IP 同步组件不会为此模块写入 IP"
         echo "  - DNS 更新任务不会执行"
         echo ""
-        read -p "是否启用此模块? (y/n): " confirm
+        read -r -p "是否启用此模块? (y/n): " confirm
         if [ "$confirm" = "y" ] || [ "$confirm" = "Y" ]; then
-            update_config_value "ENABLED" "true"
+            local temp_file
+            temp_file=$(mktemp)
+            jq '.enabled = true' "$CONFIG_FILE" > "$temp_file" && mv "$temp_file" "$CONFIG_FILE"
+            chmod 600 "$CONFIG_FILE"
             echo -e "${GREEN}[OK] 模块已启用${NC}"
             echo -e "${CYAN}提示:${NC} 下次测速后将自动同步 IP 并支持 DNS 更新"
         fi
     fi
     
     echo ""
-    read -p "按回车键继续..."
+    read -r -p "按回车键继续..."
 }
 
 # 管理 IP 内容
@@ -684,20 +756,26 @@ manage_ip_content() {
     if [ ! -f "$CONFIG_FILE" ]; then
         echo -e "${RED}配置文件不存在,请先运行完整配置向导${NC}"
         echo ""
-        read -p "按回车键继续..."
+        read -r -p "按回车键继续..."
         return
     fi
     
-    source "$CONFIG_FILE"
-    local ip_file="${IP_FILE:-$ROOT_DIR/assets/data/cf-dns/ip_list.txt}"
+    # shellcheck disable=SC1090
+    local ip_file
+    ip_file=$(jq -r '.ip_source.file_path // empty' "$CONFIG_FILE")
+    if [ -z "$ip_file" ]; then
+        ip_file="$ROOT_DIR/assets/data/cf-dns/ip_list.txt"
+    fi
     
     echo "当前 IP 文件: ${ip_file}"
     echo ""
     
     if [ -f "$ip_file" ]; then
         # 读取并展平所有IP(支持逗号和换行分隔)
-        local all_ips=$(cat "$ip_file" | tr ',' '\n' | grep -v '^\s*#' | grep -v '^\s*$' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
-        local ip_count=$(echo "$all_ips" | wc -l)
+        local all_ips
+        all_ips=$(cat "$ip_file" | tr ',' '\n' | grep -v '^\s*#' | grep -v '^\s*$' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
+        local ip_count
+        ip_count=$(echo "$all_ips" | wc -l)
         echo "当前 IP 数量: ${ip_count}"
         echo ""
         echo "IP 列表 (每行一个):"
@@ -716,14 +794,15 @@ manage_ip_content() {
     echo ""
     echo -e "  ${RED}➤${NC} 0. 返回主菜单"
     echo ""
-    read -p "  请输入选项 [0-4]: " action
+    read -r -p "  请输入选项 [0-4]: " action
     
     case "$action" in
         1)
             # 输入/编辑 IP
             clear
             if [ -f "$ip_file" ]; then
-                local old_count=$(cat "$ip_file" | tr ',' '\n' | grep -v '^\s*#' | grep -v '^\s*$' | wc -l)
+                local old_count
+                old_count=$(grep -c -v '^\s*#' "$ip_file" | grep -c -v '^\s*$')
                 echo ""
                 echo -e "${CYAN}检测到现有文件 (${old_count} 个 IP)${NC}"
                 echo ""
@@ -734,7 +813,7 @@ manage_ip_content() {
                 echo -e "  ${GREEN}➤${NC} 3. 清空     ${RED}[备份后删除所有]${NC}"
                 echo -e "  ${GREEN}➤${NC} 4. 跳过     ${CYAN}[取消操作]${NC}"
                 echo ""
-                read -p "  请输入选项 [1-4, 默认 1]: " choice
+                read -r -p "  请输入选项 [1-4, 默认 1]: " choice
                 choice=${choice:-1}
                 
                 case "$choice" in
@@ -742,20 +821,20 @@ manage_ip_content() {
                         cp "$ip_file" "${ip_file}.bak.$(date +%s)"
                         echo -e "\n  ${GREEN}[OK]${NC} 已备份旧文件"
                         echo -e "  ${YELLOW}[WARN]${NC} 将清空现有内容，准备输入新 IP"
-                        > "$ip_file"
+                        true > "$ip_file"
                         ;;
                     2)
                         echo -e "\n  ${GREEN}[INFO]${NC} 提示: 将在现有 ${old_count} 个 IP 后追加"
                         ;;
                     3)
                         cp "$ip_file" "${ip_file}.bak.$(date +%s)"
-                        > "$ip_file"
+                        true > "$ip_file"
                         echo -e "\n  ${GREEN}[OK]${NC} 已清空文件 (已备份)"
                         echo -e "  ${YELLOW}[WARN]${NC} 所有 IP 已删除，准备输入新 IP"
                         ;;
                     4)
                         echo -e "\n  ${CYAN}[INFO]${NC} 已取消操作"
-                        read -p "  按回车键继续..."
+                        read -r -p "  按回车键继续..."
                         return 0
                         ;;
                 esac
@@ -768,9 +847,9 @@ manage_ip_content() {
             echo "空行结束输入"
             echo ""
             
-            local temp_file=$(mktemp)
+            local temp_file
+            temp_file=$(mktemp)
             local valid_count=0
-            local invalid_count=0
             
             while IFS= read -r line; do
                 [ -z "$line" ] && break
@@ -811,7 +890,8 @@ manage_ip_content() {
                 cat "$temp_file" >> "$ip_file"
                 chmod 644 "$ip_file"
                 
-                local new_count=$(cat "$ip_file" | tr ',' '\n' | grep -v '^\s*#' | grep -v '^\s*$' | wc -l)
+                local new_count
+                new_count=$(grep -c -v '^\s*#' "$ip_file" | grep -c -v '^\s*$')
                 echo ""
                 echo -e "${GREEN}[OK] 已保存 ${valid_count} 个有效 IP${NC}"
                 echo -e "   当前总 IP 数: ${new_count}"
@@ -827,7 +907,7 @@ manage_ip_content() {
             clear
             if [ -f "$ip_file" ]; then
                 cp "$ip_file" "${ip_file}.bak.$(date +%s)"
-                > "$ip_file"
+                true > "$ip_file"
                 echo -e "${GREEN}[OK] 已清空所有 IP (已备份)${NC}"
             else
                 echo -e "${YELLOW}[INFO] 文件不存在,无需清空${NC}"
@@ -849,16 +929,18 @@ manage_ip_content() {
             clear
             if [ ! -f "$ip_file" ]; then
                 echo -e "${RED}[ERROR] 文件不存在${NC}"
-                read -p "按回车键继续..."
+                read -r -p "按回车键继续..."
                 return 0
             fi
             
-            local all_ips=$(cat "$ip_file" | tr ',' '\n' | grep -v '^\s*#' | grep -v '^\s*$' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
-            local ip_count=$(echo "$all_ips" | wc -l)
+            local all_ips
+            all_ips=$(cat "$ip_file" | tr ',' '\n' | grep -v '^\s*#' | grep -v '^\s*$' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
+            local ip_count
+            ip_count=$(echo "$all_ips" | wc -l)
             
             if [ "$ip_count" -eq 0 ]; then
                 echo -e "${YELLOW}[INFO] 文件中没有 IP${NC}"
-                read -p "按回车键继续..."
+                read -r -p "按回车键继续..."
                 return 0
             fi
             
@@ -869,27 +951,28 @@ manage_ip_content() {
             echo "请输入要删除的 IP 行号 (多个行号用空格分隔):"
             echo "例如: 2 或 1 3 5"
             echo ""
-            read -p "请输入行号: " delete_lines
+            read -r -p "请输入行号: " delete_lines
             
             if [ -z "$delete_lines" ]; then
                 echo -e "${YELLOW}[INFO] 未输入,取消删除${NC}"
-                read -p "按回车键继续..."
+                read -r -p "按回车键继续..."
                 return 0
             fi
             
             # 验证输入是否为数字(允许多个数字用空格分隔)
             if ! [[ "$delete_lines" =~ ^[0-9]+([[:space:]]+[0-9]+)*$ ]]; then
                 echo -e "${RED}[ERROR] 无效的行号格式,请输入数字(多个用空格分隔)${NC}"
-                read -p "按回车键继续..."
+                read -r -p "按回车键继续..."
                 return 0
             fi
             
             # 验证行号是否在有效范围内
-            local lines_to_delete_arr=($delete_lines)
+            local lines_to_delete_arr
+            mapfile -t lines_to_delete_arr <<< "$delete_lines"
             for del_line in "${lines_to_delete_arr[@]}"; do
                 if [ "$del_line" -lt 1 ] || [ "$del_line" -gt "$ip_count" ]; then
                     echo -e "${RED}[ERROR] 行号 ${del_line} 超出范围 (1-${ip_count})${NC}"
-                    read -p "按回车键继续..."
+                    read -r -p "按回车键继续..."
                     return 0
                 fi
             done
@@ -899,7 +982,8 @@ manage_ip_content() {
             echo -e "${GREEN}[OK] 已备份原文件${NC}"
             
             # 将行号转换为数组
-            local lines_to_delete=($delete_lines)
+            local lines_to_delete
+            mapfile -t lines_to_delete <<< "$delete_lines"
             
             # 构建新的IP列表(排除要删除的行)
             local new_ips=""
@@ -929,7 +1013,8 @@ ${ip}"
             chmod 644 "$ip_file"
             
             local deleted_count=${#lines_to_delete[@]}
-            local remaining_count=$(cat "$ip_file" | tr ',' '\n' | grep -v '^\s*#' | grep -v '^\s*$' | wc -l)
+            local remaining_count
+            remaining_count=$(grep -c -v '^\s*#' "$ip_file" | grep -c -v '^\s*$')
             echo -e "${GREEN}[OK] 已删除 ${deleted_count} 个 IP,剩余 ${remaining_count} 个${NC}"
             ;;
         0)
@@ -941,7 +1026,7 @@ ${ip}"
     esac
     
     echo ""
-    read -p "按回车键继续..."
+    read -r -p "按回车键继续..."
 }
 
 # 日志管理
@@ -957,16 +1042,17 @@ log_management() {
     if [ ! -d "$log_dir" ]; then
         echo -e "${YELLOW}日志目录不存在${NC}"
         echo ""
-        read -p "按回车键继续..."
+        read -r -p "按回车键继续..."
         return
     fi
     
-    local log_count=$(ls -1 "$log_dir"/cfdns_*.log 2>/dev/null | wc -l)
+    local log_count
+    log_count=$(find "$log_dir" -name "cfdns_*.log" 2>/dev/null | wc -l)
     
     if [ "$log_count" -eq 0 ]; then
         echo -e "${YELLOW}暂无日志文件${NC}"
         echo ""
-        read -p "按回车键继续..."
+        read -r -p "按回车键继续..."
         return
     fi
     
@@ -981,12 +1067,13 @@ log_management() {
     echo ""
     echo -e "  ${RED}➤${NC} 0. 返回主菜单"
     echo ""
-    read -p "  请输入选项 [0-4]: " choice
+    read -r -p "  请输入选项 [0-4]: " choice
     
     case $choice in
         1)
             clear
-            local latest_log=$(ls -t "$log_dir"/cfdns_*.log 2>/dev/null | head -n 1)
+            local latest_log
+            latest_log=$(find "$log_dir" -name "cfdns_*.log" -type f -printf '%T@ %p\n' 2>/dev/null | sort -rn | head -n 1 | cut -d' ' -f2-)
             if [ -n "$latest_log" ]; then
                 echo -e "${BLUE}最新日志: $(basename "$latest_log")${NC}"
                 echo "----------------------------------------"
@@ -994,36 +1081,36 @@ log_management() {
                 echo "----------------------------------------"
             fi
             echo ""
-            read -p "按回车键继续..."
+            read -r -p "按回车键继续..."
             ;;
         2)
             clear
             echo -e "${BLUE}日志文件列表:${NC}"
-            ls -lt "$log_dir"/cfdns_*.log 2>/dev/null
+            find "$log_dir" -name "cfdns_*.log" -type f -exec ls -lt {} + 2>/dev/null
             echo ""
-            read -p "按回车键继续..."
+            read -r -p "按回车键继续..."
             ;;
         3)
             clear
             echo -e "${YELLOW}将删除7天前的日志文件...${NC}"
-            read -p "确认? (y/n): " confirm
+            read -r -p "确认? (y/n): " confirm
             if [ "$confirm" = "y" ] || [ "$confirm" = "Y" ]; then
                 find "$log_dir" -name "cfdns_*.log" -mtime +7 -delete
                 echo -e "${GREEN}[OK] 旧日志已清理${NC}"
             fi
             echo ""
-            read -p "按回车键继续..."
+            read -r -p "按回车键继续..."
             ;;
         4)
             clear
             echo -e "${RED}警告: 这将删除所有日志文件!${NC}"
-            read -p "确认? (y/n): " confirm
+            read -r -p "确认? (y/n): " confirm
             if [ "$confirm" = "y" ] || [ "$confirm" = "Y" ]; then
-                rm -f "$log_dir"/cfdns_*.log
+                find "$log_dir" -name "cfdns_*.log" -type f -delete
                 echo -e "${GREEN}[OK] 所有日志已清空${NC}"
             fi
             echo ""
-            read -p "按回车键继续..."
+            read -r -p "按回车键继续..."
             ;;
         0)
             return
@@ -1031,7 +1118,7 @@ log_management() {
         *)
             echo -e "${RED}无效选择${NC}"
             echo ""
-            read -p "按回车键继续..."
+            read -r -p "按回车键继续..."
             ;;
     esac
 }
@@ -1041,7 +1128,7 @@ modify_config_menu() {
     while true; do
         show_modify_menu
         
-        read -p "请选择 (0-6): " choice
+        read -r -p "请选择 (0-6): " choice
         
         case $choice in
             1)
@@ -1051,39 +1138,56 @@ modify_config_menu() {
                 # 修改 API 配置
                 if [ ! -f "$CONFIG_FILE" ]; then
                     echo -e "${RED}配置文件不存在,请先运行完整配置向导${NC}"
-                    read -p "按回车键继续..."
+                    read -r -p "按回车键继续..."
                     continue
                 fi
                 
-                source "$CONFIG_FILE"
                 echo ""
                 echo -e "${CYAN}━━ 修改 API 配置 ━━${NC}"
                 echo ""
-                echo "当前 CF_API_TOKEN: ${CF_API_TOKEN:0:8}...${CF_API_TOKEN: -4}"
-                read -p "请输入新的 CF_API_TOKEN (留空保持不变): " new_token
+                
+                # 读取当前值
+                local cf_api_token cf_zone_id
+                cf_api_token=$(jq -r '.api.token // empty' "$CONFIG_FILE")
+                cf_zone_id=$(jq -r '.api.zone_id // empty' "$CONFIG_FILE")
+                
+                echo "当前 CF_API_TOKEN: ${cf_api_token:0:8}...${cf_api_token: -4}"
+                read -r -p "请输入新的 CF_API_TOKEN (留空保持不变): " new_token
                 if [ -n "$new_token" ]; then
-                    update_config_value "CF_API_TOKEN" "$new_token"
+                    local temp_file
+                    temp_file=$(mktemp)
+                    jq --arg token "$new_token" '.api.token = $token' "$CONFIG_FILE" > "$temp_file" && mv "$temp_file" "$CONFIG_FILE"
+                    chmod 600 "$CONFIG_FILE"
                     echo -e "${GREEN}[OK] CF_API_TOKEN 已更新${NC}"
+                    cf_api_token="$new_token"
                 fi
                 
-                echo "当前 CF_ZONE_ID: ${CF_ZONE_ID}"
-                read -p "请输入新的 CF_ZONE_ID (留空保持不变): " new_zone
+                echo "当前 CF_ZONE_ID: ${cf_zone_id}"
+                read -r -p "请输入新的 CF_ZONE_ID (留空保持不变): " new_zone
                 if [ -n "$new_zone" ]; then
-                    update_config_value "CF_ZONE_ID" "$new_zone"
+                    local temp_file
+                    temp_file=$(mktemp)
+                    jq --arg zone_id "$new_zone" '.api.zone_id = $zone_id' "$CONFIG_FILE" > "$temp_file" && mv "$temp_file" "$CONFIG_FILE"
+                    chmod 600 "$CONFIG_FILE"
                     echo -e "${GREEN}[OK] CF_ZONE_ID 已更新${NC}"
+                    cf_zone_id="$new_zone"
                     
                     # 如果 API Token 或 Zone ID 有变化，重新获取域名
                     if [ -n "$new_token" ] || [ -n "$new_zone" ]; then
                         echo ""
                         echo -e "${YELLOW}正在重新获取域名信息...${NC}"
                         local api_token="$new_token"
-                        [ -z "$api_token" ] && api_token="$CF_API_TOKEN"
+                        [ -z "$api_token" ] && api_token="$cf_api_token"
                         local zone_id="$new_zone"
-                        [ -z "$zone_id" ] && zone_id="$CF_ZONE_ID"
+                        [ -z "$zone_id" ] && zone_id="$cf_zone_id"
                         
-                        local zone_name=$(get_zone_name "$zone_id" "$api_token")
+                        local zone_name
+                        zone_name=$(get_zone_name "$zone_id" "$api_token")
                         if [ -n "$zone_name" ]; then
-                            update_config_value "CF_DOMAIN" "$zone_name"
+                            local temp_file
+                            temp_file=$(mktemp)
+                            jq --arg domain "$zone_name" '.dns.domain = $domain' "$CONFIG_FILE" > "$temp_file" && mv "$temp_file" "$CONFIG_FILE"
+                            chmod 600 "$CONFIG_FILE"
                             echo -e "${GREEN}[OK] 已更新域名: ${zone_name}${NC}"
                         else
                             echo -e "${YELLOW}[WARN] 无法获取域名，请手动修改配置文件${NC}"
@@ -1092,32 +1196,39 @@ modify_config_menu() {
                 fi
                 
                 echo ""
-                read -p "按回车键继续..."
+                read -r -p "按回车键继续..."
                 ;;
             3)
                 # 修改 DNS 记录名称
                 if [ ! -f "$CONFIG_FILE" ]; then
                     echo -e "${RED}配置文件不存在,请先运行完整配置向导${NC}"
-                    read -p "按回车键继续..."
+                    read -r -p "按回车键继续..."
                     continue
                 fi
                 
-                source "$CONFIG_FILE"
                 echo ""
                 echo -e "${CYAN}━━ 修改 DNS 记录名称 ━━${NC}"
                 echo ""
-                echo "当前记录名称: ${CF_DNS_NAME}"
+                
+                # 读取当前值
+                local cf_dns_name
+                cf_dns_name=$(jq -r '.dns.record_name // empty' "$CONFIG_FILE")
+                
+                echo "当前记录名称: ${cf_dns_name}"
                 echo ""
                 echo -e "${YELLOW}使用说明:${NC}"
                 echo -e "  - 如果最终域名是 ${BOLD}dns.example.com${NC}，填 ${GREEN}dns${NC}"
                 echo -e "  - 如果最终域名是 ${BOLD}cf.example.com${NC}，填 ${GREEN}cf${NC}"
                 echo -e "  - 如果最终域名是 ${BOLD}example.com${NC}（根域名），填 ${GREEN}@${NC}"
                 echo ""
-                read -p "请输入新的 DNS 记录名称 (留空保持不变): " new_dns
+                read -r -p "请输入新的 DNS 记录名称 (留空保持不变): " new_dns
                 if [ -n "$new_dns" ]; then
                     # 验证输入
                     if [ "$new_dns" = "@" ] || [[ "$new_dns" =~ ^[a-zA-Z0-9][a-zA-Z0-9_-]*$ ]]; then
-                        update_config_value "CF_DNS_NAME" "$new_dns"
+                        local temp_file
+                        temp_file=$(mktemp)
+                        jq --arg dns_name "$new_dns" '.dns.record_name = $dns_name' "$CONFIG_FILE" > "$temp_file" && mv "$temp_file" "$CONFIG_FILE"
+                        chmod 600 "$CONFIG_FILE"
                         echo -e "${GREEN}[OK] CF_DNS_NAME 已更新为: ${new_dns}${NC}"
                         if [ "$new_dns" = "@" ]; then
                             echo -e "${YELLOW}提示: 这将更新根域名的 A 记录${NC}"
@@ -1131,27 +1242,33 @@ modify_config_menu() {
                 fi
                 
                 echo ""
-                read -p "按回车键继续..."
+                read -r -p "按回车键继续..."
                 ;;
             4)
                 # 修改 IP 文件路径
                 if [ ! -f "$CONFIG_FILE" ]; then
                     echo -e "${RED}配置文件不存在,请先运行完整配置向导${NC}"
-                    read -p "按回车键继续..."
+                    read -r -p "按回车键继续..."
                     continue
                 fi
                 
-                source "$CONFIG_FILE"
-                echo "当前 IP_FILE: ${IP_FILE}"
-                read -p "请输入新的 IP_FILE (留空保持不变): " new_ip_file
+                # 读取当前值
+                local ip_file
+                ip_file=$(jq -r '.ip_source.file_path // empty' "$CONFIG_FILE")
+                
+                echo "当前 IP_FILE: ${ip_file}"
+                read -r -p "请输入新的 IP_FILE (留空保持不变): " new_ip_file
                 if [ -n "$new_ip_file" ]; then
-                    update_config_value "IP_FILE" "$new_ip_file"
+                    local temp_file
+                    temp_file=$(mktemp)
+                    jq --arg ip_file "$new_ip_file" '.ip_source.file_path = $ip_file' "$CONFIG_FILE" > "$temp_file" && mv "$temp_file" "$CONFIG_FILE"
+                    chmod 600 "$CONFIG_FILE"
                     mkdir -p "$(dirname "$new_ip_file")"
                     echo -e "${GREEN}[OK] IP_FILE 已更新${NC}"
                 fi
                 
                 echo ""
-                read -p "按回车键继续..."
+                read -r -p "按回车键继续..."
                 ;;
             5)
                 manage_ip_content
@@ -1160,36 +1277,46 @@ modify_config_menu() {
                 # 修改超时和重试
                 if [ ! -f "$CONFIG_FILE" ]; then
                     echo -e "${RED}配置文件不存在,请先运行完整配置向导${NC}"
-                    read -p "按回车键继续..."
+                    read -r -p "按回车键继续..."
                     continue
                 fi
                 
-                source "$CONFIG_FILE"
+                # 读取当前值
+                local request_timeout max_retries
+                request_timeout=$(jq -r '.api.timeout // 10' "$CONFIG_FILE")
+                max_retries=$(jq -r '.api.max_retries // 5' "$CONFIG_FILE")
+                
                 echo -e "${CYAN}━━ 修改超时和重试设置 ━━${NC}"
                 echo ""
                 echo -e "${YELLOW}REQUEST_TIMEOUT (请求超时时间):${NC}"
                 echo "  - 每次 API 请求等待响应的最长时间（秒）"
-                echo "  - 当前值: ${REQUEST_TIMEOUT:-10} 秒"
+                echo "  - 当前值: ${request_timeout} 秒"
                 echo "  - 建议值: 5-15 秒"
-                read -p "请输入新的超时时间 (留空保持 ${REQUEST_TIMEOUT:-10}): " new_timeout
+                read -r -p "请输入新的超时时间 (留空保持 ${request_timeout}): " new_timeout
                 if [ -n "$new_timeout" ] && [[ "$new_timeout" =~ ^[0-9]+$ ]]; then
-                    update_config_value "REQUEST_TIMEOUT" "$new_timeout"
+                    local temp_file
+                    temp_file=$(mktemp)
+                    jq --argjson timeout "$new_timeout" '.api.timeout = $timeout' "$CONFIG_FILE" > "$temp_file" && mv "$temp_file" "$CONFIG_FILE"
+                    chmod 600 "$CONFIG_FILE"
                     echo -e "${GREEN}[OK] 请求超时已更新为 ${new_timeout} 秒${NC}"
                 fi
                 
                 echo ""
                 echo -e "${YELLOW}MAX_RETRIES (最大重试次数):${NC}"
                 echo "  - API 请求失败后自动重试的次数"
-                echo "  - 当前值: ${MAX_RETRIES:-3} 次"
+                echo "  - 当前值: ${max_retries} 次"
                 echo "  - 建议值: 2-5 次"
-                read -p "请输入新的重试次数 (留空保持 ${MAX_RETRIES:-3}): " new_retries
+                read -r -p "请输入新的重试次数 (留空保持 ${max_retries}): " new_retries
                 if [ -n "$new_retries" ] && [[ "$new_retries" =~ ^[0-9]+$ ]]; then
-                    update_config_value "MAX_RETRIES" "$new_retries"
+                    local temp_file
+                    temp_file=$(mktemp)
+                    jq --argjson retries "$new_retries" '.api.max_retries = $retries' "$CONFIG_FILE" > "$temp_file" && mv "$temp_file" "$CONFIG_FILE"
+                    chmod 600 "$CONFIG_FILE"
                     echo -e "${GREEN}[OK] 重试次数已更新为 ${new_retries} 次${NC}"
                 fi
                 
                 echo ""
-                read -p "按回车键继续..."
+                read -r -p "按回车键继续..."
                 ;;
             0)
                 return
@@ -1210,26 +1337,31 @@ check_config_valid() {
         return 1
     fi
     
-    source "$CONFIG_FILE"
+    # 读取配置值
+    local cf_api_token cf_zone_id cf_dns_name
+    cf_api_token=$(jq -r '.api.token // empty' "$CONFIG_FILE")
+    cf_zone_id=$(jq -r '.api.zone_id // empty' "$CONFIG_FILE")
+    cf_dns_name=$(jq -r '.dns.record_name // empty' "$CONFIG_FILE")
+    
     local config_valid=true
     local missing_items=()
     local format_errors=()
     
     # 检测必需的配置项
-    if [ -z "$CF_API_TOKEN" ] || [ "$CF_API_TOKEN" = "your_api_token_here" ]; then
+    if [ -z "$cf_api_token" ] || [ "$cf_api_token" = "your_api_token_here" ]; then
         missing_items+=("CF_API_TOKEN")
         config_valid=false
     fi
     
-    if [ -z "$CF_ZONE_ID" ] || [ "$CF_ZONE_ID" = "your_zone_id_here" ]; then
+    if [ -z "$cf_zone_id" ] || [ "$cf_zone_id" = "your_zone_id_here" ]; then
         missing_items+=("CF_ZONE_ID")
         config_valid=false
     fi
     
-    if [ -z "$CF_DNS_NAME" ] || [ "$CF_DNS_NAME" = "your_dns_name_here" ]; then
+    if [ -z "$cf_dns_name" ] || [ "$cf_dns_name" = "your_dns_name_here" ]; then
         missing_items+=("CF_DNS_NAME")
         config_valid=false
-    elif echo "$CF_DNS_NAME" | grep -q '\.'; then
+    elif echo "$cf_dns_name" | grep -q '\.'; then
         # 检测到完整域名格式错误
         format_errors+=("CF_DNS_NAME 格式错误: 你填的是完整域名，应该只填子域名部分")
         config_valid=false
@@ -1253,16 +1385,17 @@ check_config_valid() {
             for error in "${format_errors[@]}"; do
                 echo -e "  - ${RED}${error}${NC}"
             done
-            if echo "$CF_DNS_NAME" | grep -q '\.'; then
-                local correct_subdomain=$(echo "$CF_DNS_NAME" | cut -d'.' -f1)
-                echo -e "${YELLOW}  提示: 应该填写 '${correct_subdomain}' 而不是 '${CF_DNS_NAME}'${NC}"
+            if echo "$cf_dns_name" | grep -q '\.'; then
+                local correct_subdomain
+                correct_subdomain=$(echo "$cf_dns_name" | cut -d'.' -f1)
+                echo -e "${YELLOW}  提示: 应该填写 '${correct_subdomain}' 而不是 '${cf_dns_name}'${NC}"
             fi
             echo ""
         fi
         
         echo -e "${YELLOW}建议运行完整配置向导进行配置${NC}"
         echo ""
-        read -p "是否现在运行配置向导? (y/n): " confirm
+        read -r -p "是否现在运行配置向导? (y/n): " confirm
         if [ "$confirm" = "y" ] || [ "$confirm" = "Y" ]; then
             full_config_wizard
             # 配置完成后继续执行主菜单循环
@@ -1294,7 +1427,7 @@ main() {
     while true; do
         show_menu
         
-        read -p "请选择 (0-8): " choice
+        read -r -p "请选择 (0-8): " choice
         
         case $choice in
             1)
@@ -1307,9 +1440,9 @@ main() {
                     echo ""
                     echo -e "${YELLOW}请先完成配置:${NC}"
                     echo "  1. 选择 '1) 完整配置向导' 进行配置"
-                    echo "  2. 或手动创建 cfdns.conf 文件"
+                    echo "  2. 或手动创建 cf-dns.json 文件"
                     echo ""
-                    read -p "是否现在运行配置向导? (y/n): " confirm
+                    read -r -p "是否现在运行配置向导? (y/n): " confirm
                     if [ "$confirm" = "y" ] || [ "$confirm" = "Y" ]; then
                         full_config_wizard
                     fi
@@ -1317,20 +1450,24 @@ main() {
                 fi
                 
                 # 检测配置是否完整
-                source "$CONFIG_FILE"
+                local cf_api_token cf_zone_id cf_dns_name
+                cf_api_token=$(jq -r '.api.token // empty' "$CONFIG_FILE")
+                cf_zone_id=$(jq -r '.api.zone_id // empty' "$CONFIG_FILE")
+                cf_dns_name=$(jq -r '.dns.record_name // empty' "$CONFIG_FILE")
+                
                 local config_ok=true
                 
-                if [ -z "$CF_API_TOKEN" ] || [ "$CF_API_TOKEN" = "your_api_token_here" ]; then
+                if [ -z "$cf_api_token" ] || [ "$cf_api_token" = "your_api_token_here" ]; then
                     echo -e "${RED}[ERROR] CF_API_TOKEN 未配置${NC}"
                     config_ok=false
                 fi
                 
-                if [ -z "$CF_ZONE_ID" ] || [ "$CF_ZONE_ID" = "your_zone_id_here" ]; then
+                if [ -z "$cf_zone_id" ] || [ "$cf_zone_id" = "your_zone_id_here" ]; then
                     echo -e "${RED}[ERROR] CF_ZONE_ID 未配置${NC}"
                     config_ok=false
                 fi
                 
-                if [ -z "$CF_DNS_NAME" ] || [ "$CF_DNS_NAME" = "your_dns_name_here" ]; then
+                if [ -z "$cf_dns_name" ] || [ "$cf_dns_name" = "your_dns_name_here" ]; then
                     echo -e "${RED}[ERROR] CF_DNS_NAME 未配置${NC}"
                     config_ok=false
                 fi
@@ -1339,7 +1476,7 @@ main() {
                     echo ""
                     echo -e "${YELLOW}请先完成所有必需配置项${NC}"
                     echo ""
-                    read -p "是否现在运行配置向导? (y/n): " confirm
+                    read -r -p "是否现在运行配置向导? (y/n): " confirm
                     if [ "$confirm" = "y" ] || [ "$confirm" = "Y" ]; then
                         full_config_wizard
                     fi
@@ -1351,7 +1488,7 @@ main() {
                 chmod +x "$ROOT_DIR/modules/cf-dns/core.sh"
                 bash "$ROOT_DIR/modules/cf-dns/core.sh"
                 echo ""
-                read -p "按回车键继续..."
+                read -r -p "按回车键继续..."
                 ;;
             3)
                 view_config
@@ -1363,7 +1500,7 @@ main() {
                 echo -e "${GREEN}正在调用 IP 同步组件...${NC}"
                 bash "$ROOT_DIR/modules/ip-sync/sync.sh"
                 echo ""
-                read -p "按回车键继续..."
+                read -r -p "按回车键继续..."
                 ;;
             6)
                 modify_ip_limit

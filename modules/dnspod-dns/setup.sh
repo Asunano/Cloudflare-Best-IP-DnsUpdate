@@ -1,10 +1,12 @@
 #!/bin/bash
+# shellcheck shell=bash
 # ==============================================================================
 # cfopt - DNSPod DNS 配置向导 (Setup Wizard)
 # Version: 0.1
 # Description: 引导用户完成 DNSPod API 配置、运营商分流策略及定时任务设置
 # Usage: bash modules/dnspod-dns/setup.sh
 # ==============================================================================
+# shellcheck disable=SC2034
 SCRIPT_VERSION="0.1"
 
 # ==================== 入口校验与路径初始化 ====================
@@ -29,9 +31,12 @@ NC='\033[0m'
 
 # 定义菜单边框样式，确保 UI 对齐
 MENU_BORDER="+------------------------------------------------------------+"
+MENU_BORDER_MID="+------------------------------------------------------------+"
+MENU_BORDER_BOTTOM="+------------------------------------------------------------+"
+# shellcheck disable=SC2034
 SMALL_BORDER="+--------------------------------------------------+"
 
-CONFIG_FILE="$ROOT_DIR/conf/dnspod.conf"
+CONFIG_FILE="$ROOT_DIR/conf/dnspod.json"
 LOCK_FILE="$ROOT_DIR/modules/dnspod-dns/.setup.lock"
 
 # ==================== 进程锁管理 ====================
@@ -39,11 +44,12 @@ LOCK_FILE="$ROOT_DIR/modules/dnspod-dns/.setup.lock"
 
 # 获取执行锁
 acquire_lock() {
-    if [ -f "$LOCK_FILE" ]; then
-        local lock_pid=$(cat "$LOCK_FILE" 2>/dev/null)
-        if [ -n "$lock_pid" ] && kill -0 "$lock_pid" 2>/dev/null; then
-            echo -e "${RED}[ERROR] 另一个实例正在运行 (PID: ${lock_pid})${NC}"
-            echo -e "${YELLOW}提示: 如果确定没有运行，请删除 ${LOCK_FILE}${NC}"
+    if [[ -f "$LOCK_FILE" ]]; then
+        local lock_pid
+        lock_pid=$(cat "$LOCK_FILE" 2>/dev/null)
+        if [[ -n "$lock_pid" ]] && kill -0 "$lock_pid" 2>/dev/null; then
+            echo -e "${RED}[ERROR] 另一个实例正在运行 (PID: ${lock_pid})"
+            echo -e "${YELLOW}提示: 如果确定没有运行，请删除 ${LOCK_FILE}"
             exit 1
         else
             # 清理残留的无效锁文件
@@ -60,6 +66,28 @@ release_lock() {
     rm -f "$LOCK_FILE"
 }
 
+# ==================== 辅助函数：JSON 配置读取 ====================
+# 从 JSON 配置文件读取值
+# 用法: json_get ".dns.domain" "默认值"
+json_get() {
+    local key="$1"
+    local default="${2:-}"
+    
+    if [[ ! -f "$CONFIG_FILE" ]]; then
+        echo "$default"
+        return 1
+    fi
+    
+    local value
+    value=$(jq -r "${key} // empty" "$CONFIG_FILE" 2>/dev/null)
+    
+    if [[ -z "$value" ]] || [[ "$value" == "null" ]]; then
+        echo "$default"
+    else
+        echo "$value"
+    fi
+}
+
 # ==================== 菜单显示函数 ====================
 
 # 显示主配置菜单
@@ -67,60 +95,63 @@ show_menu() {
     clear
     
     # 获取当前系统时间及配置状态
-    local NOW=$(date "+%Y-%m-%d %H:%M:%S")
+    local NOW
+    NOW=$(date "+%Y-%m-%d %H:%M:%S")
     local status_text=""
     local lines_info=""
     local strategy_info=""
     
-    if [ -f "$CONFIG_FILE" ]; then
-        source "$CONFIG_FILE"
+    if [[ -f "$CONFIG_FILE" ]]; then
+        # 从 JSON 读取配置
+        local MODE
+        MODE=$(json_get ".dns.mode" "single")
+        local DOMAIN
+        DOMAIN=$(json_get ".dns.domain" "")
         
-        if [ "$MODE" = "multi" ]; then
+        # shellcheck disable=SC2153
+        if [[ "$MODE" == "multi" ]]; then
             # 提取子域名分流策略
-            local strategy=$(grep '^SUBDOMAIN_STRATEGY=' "$CONFIG_FILE" | cut -d'"' -f2)
-            strategy=${strategy:-separate}
+            local strategy
+            strategy=$(json_get ".dns.subdomain_strategy" "separate")
             
             # 根据策略设置显示提示
-            if [ "$strategy" = "unified" ]; then
-                strategy_info=" ${YELLOW}策略: 统一模式${NC}"
+            if [[ "$strategy" == "unified" ]]; then
+                strategy_info=" ${YELLOW}策略: 统一模式"
             else
-                strategy_info=" ${YELLOW}策略: 分离模式${NC}"
+                strategy_info=" ${YELLOW}策略: 分离模式"
             fi
             
             status_text="多线路模式 | 配置文件：已存在"
             
             # 获取运营商线路列表
-            local isp_lines=$(grep '^ISP_LINES=' "$CONFIG_FILE" | cut -d'"' -f2)
+            local isp_lines
+            isp_lines=$(json_get ".dns.isp_lines" "默认")
             
-            if [ "$strategy" = "unified" ]; then
+            if [[ "$strategy" == "unified" ]]; then
                 # 统一模式：显示统一子域名
-                local unified_subdomain=$(grep '^SUB_DOMAIN_UNIFIED=' "$CONFIG_FILE" | cut -d'"' -f2)
-                unified_subdomain=${unified_subdomain:-dns}
-                lines_info="  ${CYAN}线路: ${unified_subdomain}.${DOMAIN}${NC}"
+                local unified_subdomain
+                unified_subdomain=$(json_get ".dns.sub_domain_unified" "dns")
+                lines_info="  ${CYAN}线路: ${unified_subdomain}.${DOMAIN}"
             else
                 # 分离模式：显示各线路子域名
-                lines_info="  ${CYAN}线路:${NC}"
-                IFS=',' read -ra line_array <<< "$isp_lines"
+                lines_info="  ${CYAN}线路:"
+                IFS=' ' read -ra line_array <<< "$isp_lines"
                 for line in "${line_array[@]}"; do
                     line=$(echo "$line" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
-                    if [ -n "$line" ]; then
+                    if [[ -n "$line" ]]; then
                         local subdomain
                         case "$line" in
                             "默认")
-                                subdomain=$(grep '^SUB_DOMAIN_DEFAULT=' "$CONFIG_FILE" | cut -d'"' -f2)
-                                subdomain=${subdomain:-default}
+                                subdomain=$(json_get ".dns.sub_domains.default" "default")
                                 ;;
                             "联通")
-                                subdomain=$(grep '^SUB_DOMAIN_UNICOM=' "$CONFIG_FILE" | cut -d'"' -f2)
-                                subdomain=${subdomain:-unicom}
+                                subdomain=$(json_get ".dns.sub_domains.unicom" "unicom")
                                 ;;
                             "移动")
-                                subdomain=$(grep '^SUB_DOMAIN_MOBILE=' "$CONFIG_FILE" | cut -d'"' -f2)
-                                subdomain=${subdomain:-mobile}
+                                subdomain=$(json_get ".dns.sub_domains.mobile" "mobile")
                                 ;;
                             "电信")
-                                subdomain=$(grep '^SUB_DOMAIN_TELECOM=' "$CONFIG_FILE" | cut -d'"' -f2)
-                                subdomain=${subdomain:-telecom}
+                                subdomain=$(json_get ".dns.sub_domains.telecom" "telecom")
                                 ;;
                             *)
                                 subdomain=$(echo "$line" | tr '[:upper:]' '[:lower:]')
@@ -132,36 +163,36 @@ show_menu() {
             fi
         else
             status_text="单线路模式 | 配置文件：已存在"
-            local sub_domain=$(grep '^SUB_DOMAIN=' "$CONFIG_FILE" | cut -d'"' -f2)
-            sub_domain=${sub_domain:-dns}
-            lines_info="  ${CYAN}线路: ${sub_domain}.${DOMAIN}${NC}"
+            local sub_domain
+            sub_domain=$(json_get ".dns.sub_domain" "dns")
+            lines_info="  ${CYAN}线路: ${sub_domain}.${DOMAIN}"
         fi
     else
         status_text="未配置 | 配置文件：不存在"
     fi
     
-    echo -e "${CYAN}${MENU_BORDER}${NC}"
-    echo -e " ${YELLOW}DNSPod DNS 更新器 v${VERSION}${NC}"
+    echo -e "${CYAN}${MENU_BORDER}"
+    echo -e " ${YELLOW}DNSPod DNS 更新器 v${VERSION}"
     echo -e " 当前时间: ${NOW}"
-    if [ -n "$lines_info" ]; then
+    if [[ -n "$lines_info" ]]; then
         echo -e "$lines_info"
     fi
-    if [ -n "$strategy_info" ]; then
+    if [[ -n "$strategy_info" ]]; then
         echo -e "$strategy_info"
     fi
-    echo -e " ${GREEN}状态: ${status_text}${NC}"
-    echo -e "${CYAN}${MENU_BORDER_MID}${NC}"
-    echo -e " ${GREEN}➤${NC} 1. 完整配置向导     ${CYAN}- 首次使用或重新配置所有项${NC}"
-    echo -e " ${GREEN}➤${NC} 2. 快速运行         ${CYAN}- 使用当前配置立即运行${NC}"
-    echo -e " ${GREEN}➤${NC} 3. 查看当前配置     ${CYAN}- 显示 dnspod.conf 配置${NC}"
-    echo -e " ${GREEN}➤${NC} 4. 启用/禁用模块    ${CYAN}- 控制是否自动同步 IP 及更新 DNS${NC}"
-    echo -e " ${GREEN}➤${NC} 5. 手动同步优选 IP   ${CYAN}- 从测速结果中提取最优 IP 到数据文件${NC}"
-    echo -e " ${GREEN}➤${NC} 6. 修改 IP 数量限制 ${CYAN}- 每条DNS记录最多几个IP${NC}"
-    echo -e " ${GREEN}➤${NC} 7. 修改配置         ${CYAN}- 选择性修改特定配置项${NC}"
-    echo -e " ${GREEN}➤${NC} 8. 日志管理         ${CYAN}- 查看、清理运行日志${NC}"
+    echo -e " ${GREEN}状态: ${status_text}"
+    echo -e "${CYAN}${MENU_BORDER_MID}"
+    echo -e " ${GREEN}[OK] 1. 完整配置向导     ${CYAN}- 首次使用或重新配置所有项"
+    echo -e " ${GREEN}[OK] 2. 快速运行         ${CYAN}- 使用当前配置立即运行"
+    echo -e " ${GREEN}[OK] 3. 查看当前配置     ${CYAN}- 显示 dnspod.conf 配置"
+    echo -e " ${GREEN}[OK] 4. 启用/禁用模块    ${CYAN}- 控制是否自动同步 IP 及更新 DNS"
+    echo -e " ${GREEN}[OK] 5. 手动同步优选 IP   ${CYAN}- 从测速结果中提取最优 IP 到数据文件"
+    echo -e " ${GREEN}[OK] 6. 修改 IP 数量限制 ${CYAN}- 每条DNS记录最多几个IP"
+    echo -e " ${GREEN}[OK] 7. 修改配置         ${CYAN}- 选择性修改特定配置项"
+    echo -e " ${GREEN}[OK] 8. 日志管理         ${CYAN}- 查看、清理运行日志"
     echo ""
-    echo -e " ${RED}➤${NC} 0. 退出程序"
-    echo -e "${CYAN}${MENU_BORDER_BOTTOM}${NC}"
+    echo -e " ${RED}[EXIT] 0. 退出程序"
+    echo -e "${CYAN}${MENU_BORDER_BOTTOM}"
     echo ""
 }
 
@@ -171,31 +202,30 @@ show_modify_menu() {
     
     # 读取当前运行模式（单线路/多线路）
     local current_mode="single"
-    if [ -f "$CONFIG_FILE" ]; then
-        current_mode=$(grep '^MODE=' "$CONFIG_FILE" | cut -d'"' -f2)
-        current_mode=${current_mode:-single}
+    if [[ -f "$CONFIG_FILE" ]]; then
+        current_mode=$(json_get ".dns.mode" "single")
     fi
     
-    echo -e "${CYAN}${MENU_BORDER}${NC}"
-    echo -e " ${YELLOW}配置修改向导${NC}"
-    echo -e "${CYAN}${MENU_BORDER_MID}${NC}"
-    echo -e " ${GREEN}➤${NC} 1. 全部重新配置   ${CYAN}- 重置并重新执行完整配置流程${NC}"
-    echo -e " ${GREEN}➤${NC} 2. 域名配置       ${CYAN}- 修改主域名及子域名记录${NC}"
-    echo -e " ${GREEN}➤${NC} 3. API 密钥       ${CYAN}- 更新 DNSPod SecretID 与 SecretKey${NC}"
-    echo -e " ${GREEN}➤${NC} 4. 工作模式       ${CYAN}- 切换单线路或运营商分流模式${NC}"
-    echo -e " ${GREEN}➤${NC} 5. 运营商线路     ${CYAN}- 管理分流的运营商列表 (仅多线路)${NC}"
-    echo -e " ${GREEN}➤${NC} 6. IP 文件路径    ${CYAN}- 指定各线路优选 IP 数据源路径${NC}"
-    echo -e " ${GREEN}➤${NC} 7. 管理 IP 内容   ${CYAN}- 手动录入或编辑优选 IP 列表${NC}"
-    echo -e " ${GREEN}➤${NC} 8. TTL 值         ${CYAN}- 调整 DNS 记录的缓存生存时间${NC}"
+    echo -e "${CYAN}${MENU_BORDER}"
+    echo -e " ${YELLOW}配置修改向导"
+    echo -e "${CYAN}${MENU_BORDER_MID}"
+    echo -e " ${GREEN}[OK] 1. 全部重新配置   ${CYAN}- 重置并重新执行完整配置流程"
+    echo -e " ${GREEN}[OK] 2. 域名配置       ${CYAN}- 修改主域名及子域名记录"
+    echo -e " ${GREEN}[OK] 3. API 密钥       ${CYAN}- 更新 DNSPod SecretID 与 SecretKey"
+    echo -e " ${GREEN}[OK] 4. 工作模式       ${CYAN}- 切换单线路或运营商分流模式"
+    echo -e " ${GREEN}[OK] 5. 运营商线路     ${CYAN}- 管理分流的运营商列表 (仅多线路)"
+    echo -e " ${GREEN}[OK] 6. IP 文件路径    ${CYAN}- 指定各线路优选 IP 数据源路径"
+    echo -e " ${GREEN}[OK] 7. 管理 IP 内容   ${CYAN}- 手动录入或编辑优选 IP 列表"
+    echo -e " ${GREEN}[OK] 8. TTL 值         ${CYAN}- 调整 DNS 记录的缓存生存时间"
     
     # 只在多线路模式下显示选项 9
-    if [ "$current_mode" = "multi" ]; then
-        echo -e " ${GREEN}➤${NC} 9. 子域名策略     ${CYAN}- 切换分离/统一模式${NC}"
+    if [[ "$current_mode" == "multi" ]]; then
+        echo -e " ${GREEN}[OK] 9. 子域名策略     ${CYAN}- 切换分离/统一模式"
     fi
     
     echo ""
-    echo -e " ${RED}➤${NC} 0. 返回主菜单"
-    echo -e "${CYAN}${MENU_BORDER_BOTTOM}${NC}"
+    echo -e " ${RED}[EXIT] 0. 返回主菜单"
+    echo -e "${CYAN}${MENU_BORDER_BOTTOM}"
     echo ""
 }
 
@@ -205,82 +235,85 @@ acquire_lock
 # 检查配置是否有效
 check_config_valid() {
     # 检查文件是否存在
-    if [ ! -f "$CONFIG_FILE" ]; then
+    if [[ ! -f "$CONFIG_FILE" ]]; then
         return 1
     fi
     
     # 检查文件是否为空
-    if [ ! -s "$CONFIG_FILE" ]; then
+    if [[ ! -s "$CONFIG_FILE" ]]; then
+        return 1
+    fi
+    
+    # 使用 jq 验证 JSON 格式
+    if ! jq empty "$CONFIG_FILE" 2>/dev/null; then
+        echo -e "${YELLOW}[WARN] 配置文件不是有效的 JSON 格式" >&2
         return 1
     fi
     
     # 检查关键配置项是否存在且不为空
-    local has_domain=$(grep -E '^DOMAIN="[^"]+"' "$CONFIG_FILE" | wc -l)
-    local has_secretid=$(grep -E '^SECRETID="[^"]+"' "$CONFIG_FILE" | wc -l)
-    local has_secretkey=$(grep -E '^SECRETKEY="[^"]+"' "$CONFIG_FILE" | wc -l)
+    local domain secretid secretkey
+    domain=$(json_get ".dns.domain" "")
+    secretid=$(json_get ".api.id" "")
+    secretkey=$(json_get ".api.token" "")
     
-    if [ "$has_domain" -eq 0 ] || [ "$has_secretid" -eq 0 ] || [ "$has_secretkey" -eq 0 ]; then
+    if [[ -z "$domain" ]] || [[ -z "$secretid" ]] || [[ -z "$secretkey" ]]; then
         return 1
     fi
     
     # 检查 MODE 配置
-    local mode=$(grep '^MODE=' "$CONFIG_FILE" | cut -d'"' -f2)
-    if [ -z "$mode" ]; then
-        return 1
-    fi
+    local mode
+    mode=$(json_get ".dns.mode" "single")
     
     # 验证 MODE 值是否合法
-    if [ "$mode" != "single" ] && [ "$mode" != "multi" ]; then
-        echo -e "${YELLOW}[WARN] MODE 配置值不合法: ${mode} (应为 single 或 multi)${NC}" >&2
+    if [[ "$mode" != "single" ]] && [[ "$mode" != "multi" ]]; then
+        echo -e "${YELLOW}[WARN] MODE 配置值不合法: ${mode} (应为 single 或 multi)" >&2
         return 1
     fi
     
     # 根据模式检查必要配置
-    if [ "$mode" = "multi" ]; then
+    if [[ "$mode" == "multi" ]]; then
         # 多线路模式检查
-        local isp_lines=$(grep '^ISP_LINES=' "$CONFIG_FILE" | cut -d'"' -f2)
-        local strategy=$(grep '^SUBDOMAIN_STRATEGY=' "$CONFIG_FILE" | cut -d'"' -f2)
+        local isp_lines strategy
+        isp_lines=$(json_get ".dns.isp_lines" "")
+        strategy=$(json_get ".dns.subdomain_strategy" "separate")
         
         # 检查运营商线路是否配置
-        if [ -z "$isp_lines" ]; then
-            echo -e "${YELLOW}[WARN] 检测到多线路模式但未配置运营商线路${NC}" >&2
+        if [[ -z "$isp_lines" ]]; then
+            echo -e "${YELLOW}[WARN] 检测到多线路模式但未配置运营商线路" >&2
             return 2  # 返回特殊值表示配置不完整
         fi
         
-        # 检查子域名策略是否配置
-        if [ -z "$strategy" ]; then
-            echo -e "${YELLOW}[WARN] 检测到多线路模式但未配置子域名策略${NC}" >&2
-            return 2
-        fi
-        
         # 验证策略值是否合法
-        if [ "$strategy" != "separate" ] && [ "$strategy" != "unified" ]; then
-            echo -e "${YELLOW}[WARN] SUBDOMAIN_STRATEGY 配置值不合法: ${strategy}${NC}" >&2
-            echo -e "${CYAN}提示${NC}: 合法值为 separate (分离模式) 或 unified (统一模式)" >&2
+        if [[ "$strategy" != "separate" ]] && [[ "$strategy" != "unified" ]]; then
+            echo -e "${YELLOW}[WARN] SUBDOMAIN_STRATEGY 配置值不合法: ${strategy}" >&2
+            echo -e "${CYAN}提示: 合法值为 separate (分离模式) 或 unified (统一模式)" >&2
             return 2
         fi
         
         # 如果是统一模式,检查统一子域名
-        if [ "$strategy" = "unified" ]; then
-            local unified_sub=$(grep '^SUB_DOMAIN_UNIFIED=' "$CONFIG_FILE" | cut -d'"' -f2)
-            if [ -z "$unified_sub" ]; then
-                echo -e "${YELLOW}[WARN] 检测到统一模式但未配置统一子域名${NC}" >&2
+        if [[ "$strategy" == "unified" ]]; then
+            local unified_sub
+            unified_sub=$(json_get ".dns.sub_domain_unified" "")
+            if [[ -z "$unified_sub" ]]; then
+                echo -e "${YELLOW}[WARN] 检测到统一模式但未配置统一子域名" >&2
                 return 2
             fi
         else
             # 分离模式,至少检查默认线路子域名
-            local default_sub=$(grep '^SUB_DOMAIN_DEFAULT=' "$CONFIG_FILE" | cut -d'"' -f2)
-            if [ -z "$default_sub" ]; then
-                echo -e "${YELLOW}[WARN] 检测到分离模式但未配置默认线路子域名${NC}" >&2
+            local default_sub
+            default_sub=$(json_get ".dns.sub_domains.default" "")
+            if [[ -z "$default_sub" ]]; then
+                echo -e "${YELLOW}[WARN] 检测到分离模式但未配置默认线路子域名" >&2
                 return 2
             fi
         fi
         
-    elif [ "$mode" = "single" ]; then
+    elif [[ "$mode" == "single" ]]; then
         # 单线路模式检查
-        local sub_domain=$(grep '^SUB_DOMAIN=' "$CONFIG_FILE" | cut -d'"' -f2)
-        if [ -z "$sub_domain" ]; then
-            echo -e "${YELLOW}[WARN] 检测到单线路模式但未配置子域名(SUB_DOMAIN)${NC}" >&2
+        local sub_domain
+        sub_domain=$(json_get ".dns.sub_domain" "")
+        if [[ -z "$sub_domain" ]]; then
+            echo -e "${YELLOW}[WARN] 检测到单线路模式但未配置子域名(SUB_DOMAIN)" >&2
             return 2
         fi
     fi
@@ -290,100 +323,112 @@ check_config_valid() {
 
 # 运行时配置检测 (更严格的检查)
 check_runtime_config() {
-    local mode=$(grep '^MODE=' "$CONFIG_FILE" | cut -d'"' -f2)
+    local mode
+    mode=$(json_get ".dns.mode" "single")
     
-    echo -e "${CYAN}━━ 运行时配置检测 ━━${NC}"
+    echo -e "${CYAN}━━ 运行时配置检测 ━━"
     echo ""
     
     # 检查域名格式
-    local domain=$(grep '^DOMAIN=' "$CONFIG_FILE" | cut -d'"' -f2)
+    local domain
+    domain=$(json_get ".dns.domain" "")
     if [[ ! "$domain" =~ ^[a-zA-Z0-9]([a-zA-Z0-9\-]*[a-zA-Z0-9])?\.[a-zA-Z]{2,}$ ]]; then
-        echo -e "${RED}[ERROR] 域名格式不合法: ${domain}${NC}"
+        echo -e "${RED}[ERROR] 域名格式不合法: ${domain}"
         echo "   示例: drxian.cn, example.com"
         return 1
     else
-        echo -e "${GREEN}[OK] 域名格式正确: ${domain}${NC}"
+        echo -e "${GREEN}[OK] 域名格式正确: ${domain}"
     fi
     
     # 检查 API 密钥长度
-    local secretid=$(grep '^SECRETID=' "$CONFIG_FILE" | cut -d'"' -f2)
-    local secretkey=$(grep '^SECRETKEY=' "$CONFIG_FILE" | cut -d'"' -f2)
+    local secretid secretkey
+    secretid=$(json_get ".api.id" "")
+    secretkey=$(json_get ".api.token" "")
     
-    if [ ${#secretid} -lt 10 ]; then
-        echo -e "${RED}[ERROR] SECRETID 长度异常: ${#secretid} 字符${NC}"
+    if [[ ${#secretid} -lt 10 ]]; then
+        echo -e "${RED}[ERROR] SECRETID 长度异常: ${#secretid} 字符"
         return 1
     else
-        echo -e "${GREEN}[OK] SECRETID 长度正常: ${#secretid} 字符${NC}"
+        echo -e "${GREEN}[OK] SECRETID 长度正常: ${#secretid} 字符"
     fi
     
-    if [ ${#secretkey} -lt 20 ]; then
-        echo -e "${RED}[ERROR] SECRETKEY 长度异常: ${#secretkey} 字符${NC}"
+    if [[ ${#secretkey} -lt 20 ]]; then
+        echo -e "${RED}[ERROR] SECRETKEY 长度异常: ${#secretkey} 字符"
         return 1
     else
-        echo -e "${GREEN}[OK] SECRETKEY 长度正常: ${#secretkey} 字符${NC}"
+        echo -e "${GREEN}[OK] SECRETKEY 长度正常: ${#secretkey} 字符"
     fi
     
     # 根据模式检查
-    if [ "$mode" = "multi" ]; then
+    if [[ "$mode" == "multi" ]]; then
         echo ""
-        echo -e "${CYAN}多线路模式检查:${NC}"
+        echo -e "${CYAN}多线路模式检查:"
         
-        local isp_lines=$(grep '^ISP_LINES=' "$CONFIG_FILE" | cut -d'"' -f2)
-        local strategy=$(grep '^SUBDOMAIN_STRATEGY=' "$CONFIG_FILE" | cut -d'"' -f2)
+        local isp_lines strategy
+        isp_lines=$(json_get ".dns.isp_lines" "默认")
+        strategy=$(json_get ".dns.subdomain_strategy" "separate")
         
         echo -e "  运营商线路: ${isp_lines}"
         
         # 转换为中文显示
-        if [ "$strategy" = "unified" ]; then
-            echo -e "  ${GREEN}[OK]${NC} 子域名策略: 统一模式"
-        elif [ "$strategy" = "separate" ]; then
-            echo -e "  ${GREEN}[OK]${NC} 子域名策略: 分离模式"
+        if [[ "$strategy" == "unified" ]]; then
+            echo -e "  ${GREEN}[OK] 子域名策略: 统一模式"
+        elif [[ "$strategy" == "separate" ]]; then
+            echo -e "  ${GREEN}[OK] 子域名策略: 分离模式"
         else
-            echo -e "  ${RED}[ERROR]${NC} 子域名策略: ${strategy:-未设置} (${YELLOW}不合法${NC})"
-            echo -e "  ${CYAN}提示${NC}: 多线路模式的 SUBDOMAIN_STRATEGY 必须为 separate 或 unified"
-            echo -e "  ${CYAN}解决${NC}: 请运行 setup.sh → 5) 修改配置 → 9) 子域名策略"
+            echo -e "  ${RED}[ERROR] 子域名策略: ${strategy:-未设置} (${YELLOW}不合法)"
+            echo -e "  ${CYAN}提示: 多线路模式的 SUBDOMAIN_STRATEGY 必须为 separate 或 unified"
+            echo -e "  ${CYAN}解决: 请运行 setup.sh → 5) 修改配置 → 9) 子域名策略"
             return 1
         fi
         
         # 检查 IP 文件是否存在 (如果配置了)
         local has_ip_files=false
-        for line in $isp_lines; do
+        IFS=' ' read -ra lines_array <<< "$isp_lines"
+        for line in "${lines_array[@]}"; do
+            line=$(echo "$line" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
+            if [[ -z "$line" ]]; then
+                continue
+            fi
+            
             local ip_file=""
             case "$line" in
-                "默认") ip_file=$(grep '^IP_FILE_DEFAULT=' "$CONFIG_FILE" | cut -d'"' -f2) ;;
-                "联通") ip_file=$(grep '^IP_FILE_UNICOM=' "$CONFIG_FILE" | cut -d'"' -f2) ;;
-                "移动") ip_file=$(grep '^IP_FILE_MOBILE=' "$CONFIG_FILE" | cut -d'"' -f2) ;;
-                "电信") ip_file=$(grep '^IP_FILE_TELECOM=' "$CONFIG_FILE" | cut -d'"' -f2) ;;
+                "默认") ip_file=$(json_get ".ip_source.files.default" "") ;;
+                "联通") ip_file=$(json_get ".ip_source.files.unicom" "") ;;
+                "移动") ip_file=$(json_get ".ip_source.files.mobile" "") ;;
+                "电信") ip_file=$(json_get ".ip_source.files.telecom" "") ;;
             esac
             
-            if [ -n "$ip_file" ] && [ ! -f "$ip_file" ]; then
-                echo -e "  ${YELLOW}[WARN] IP 文件不存在: ${ip_file} (${line})${NC}"
+            if [[ -n "$ip_file" ]] && [[ ! -f "$ip_file" ]]; then
+                echo -e "  ${YELLOW}[WARN] IP 文件不存在: ${ip_file} (${line})"
                 has_ip_files=true
             fi
         done
         
-        if [ "$has_ip_files" = false ]; then
-            echo -e "  ${GREEN}[OK] IP 文件检查通过${NC}"
+        if [[ "$has_ip_files" == false ]]; then
+            echo -e "  ${GREEN}[OK] IP 文件检查通过"
         fi
         
-    elif [ "$mode" = "single" ]; then
+    elif [[ "$mode" == "single" ]]; then
         echo ""
-        echo -e "${CYAN}单线路模式检查:${NC}"
+        echo -e "${CYAN}单线路模式检查:"
         
-        local sub_domain=$(grep '^SUB_DOMAIN=' "$CONFIG_FILE" | cut -d'"' -f2)
+        local sub_domain
+        sub_domain=$(json_get ".dns.sub_domain" "dns")
         echo -e "  子域名: ${sub_domain}"
         
         # 检查 IP 文件
-        local ip_file=$(grep '^IP_FILE=' "$CONFIG_FILE" | cut -d'"' -f2)
-        if [ -n "$ip_file" ] && [ ! -f "$ip_file" ]; then
-            echo -e "  ${YELLOW}[WARN] IP 文件不存在: ${ip_file}${NC}"
+        local ip_file
+        ip_file=$(json_get ".ip_source.file_path" "")
+        if [[ -n "$ip_file" ]] && [[ ! -f "$ip_file" ]]; then
+            echo -e "  ${YELLOW}[WARN] IP 文件不存在: ${ip_file}"
         else
-            echo -e "  ${GREEN}[OK] IP 文件检查通过${NC}"
+            echo -e "  ${GREEN}[OK] IP 文件检查通过"
         fi
     fi
     
     echo ""
-    echo -e "${GREEN}[OK] 运行时配置检测通过${NC}"
+    echo -e "${GREEN}[OK] 运行时配置检测通过"
     echo ""
     
     return 0
@@ -394,18 +439,18 @@ check_runtime_config() {
 quick_run() {
     local mode="$1"
     
-    echo -e "${CYAN}${MENU_BORDER}${NC}"
-    if [ "$mode" = "single" ]; then
-        echo -e " ${YELLOW}快速运行 - 单线路模式${NC}"
+    echo -e "${CYAN}${MENU_BORDER}"
+    if [[ "$mode" == "single" ]]; then
+        echo -e " ${YELLOW}快速运行 - 单线路模式"
     else
-        echo -e " ${YELLOW}快速运行 - 多线路模式${NC}"
+        echo -e " ${YELLOW}快速运行 - 多线路模式"
     fi
-    echo -e "${CYAN}${MENU_BORDER_BOTTOM}${NC}"
+    echo -e "${CYAN}${MENU_BORDER_BOTTOM}"
     echo ""
     
     # 检查配置文件
-    if [ ! -f "$CONFIG_FILE" ]; then
-        echo -e "${RED}错误${NC}: 找不到配置文件 ${CONFIG_FILE}"
+    if [[ ! -f "$CONFIG_FILE" ]]; then
+        echo -e "${RED}错误: 找不到配置文件 ${CONFIG_FILE}"
         echo ""
         echo "请先运行配置向导生成配置文件:"
         echo "  ./setup.sh (选择 1)"
@@ -416,40 +461,46 @@ quick_run() {
     # 运行时配置检测
     echo ""
     if ! check_runtime_config; then
-        echo -e "${RED}[ERROR] 配置检测失败,请修复后重试${NC}"
+        echo -e "${RED}[ERROR] 配置检测失败,请修复后重试"
         echo ""
         echo "建议操作:"
         echo "  1. 选择 5 (修改配置) 修复问题"
         echo "  2. 或选择 1 (完整配置向导) 重新配置"
         echo ""
-        read -p "按回车键继续..."
+        read -r -p "按回车键继续..."
         return 1
     fi
     
     # 显示当前配置摘要
-    echo -e "${BLUE}摘要${NC} 当前配置摘要:"
+    echo -e "${BLUE}摘要 当前配置摘要:"
     
     # 临时加载配置 (使用子shell避免污染当前环境变量)
     (
-        source "$CONFIG_FILE"
+        local mode domain sub_domain isp_lines max_ips
+        mode=$(jq -r '.dns.mode // "single"' "$CONFIG_FILE" 2>/dev/null)
+        domain=$(jq -r '.dns.domain // ""' "$CONFIG_FILE" 2>/dev/null)
+        sub_domain=$(jq -r '.dns.sub_domain // "dns"' "$CONFIG_FILE" 2>/dev/null)
+        isp_lines=$(jq -r '.dns.isp_lines // "默认"' "$CONFIG_FILE" 2>/dev/null)
+        max_ips=$(jq -r '.dns.max_ips_per_record // 2' "$CONFIG_FILE" 2>/dev/null)
+        
         # 转换为中文显示
-        if [ "$MODE" = "multi" ]; then
+        if [[ "$mode" == "multi" ]]; then
             echo "  工作模式:   多线路模式"
         else
             echo "  工作模式:   单线路模式"
         fi
-        echo "  域名:       ${SUB_DOMAIN}.${DOMAIN}"
-        if [ "$MODE" = "multi" ]; then
-            echo "  运营商线路: ${ISP_LINES}"
+        echo "  域名:       ${sub_domain}.${domain}"
+        if [[ "$mode" == "multi" ]]; then
+            echo "  运营商线路: ${isp_lines}"
         fi
-        echo "  IP 数量限制: ${MAX_IPS_PER_RECORD:-2}"
+        echo "  IP 数量限制: ${max_ips}"
     )
     echo ""
     
     # 确认运行
-    read -p "是否立即运行? (y/n): " confirm
+    read -r -p "是否立即运行? (y/n): " confirm
     
-    if [ "$confirm" != "y" ] && [ "$confirm" != "Y" ]; then
+    if [[ "$confirm" != "y" ]] && [[ "$confirm" != "Y" ]]; then
         echo "已取消"
         return 0
     fi
@@ -460,14 +511,14 @@ quick_run() {
     
     # 根据模式运行相应脚本
     local script_file=""
-    if [ "$mode" = "single" ]; then
-        script_file="$(dirname "$0")/dnspod.sh"
+    if [[ "$mode" == "single" ]]; then
+        script_file="$(dirname "$0")/core.sh"
     else
-        script_file="$(dirname "$0")/dnspod-isp.sh"
+        script_file="$(dirname "$0")/core.sh"
     fi
     
-    if [ ! -f "$script_file" ]; then
-        echo -e "${RED}错误${NC}: 找不到脚本文件 ${script_file}"
+    if [[ ! -f "$script_file" ]]; then
+        echo -e "${RED}错误: 找不到脚本文件 ${script_file}"
         return 1
     fi
     
@@ -479,93 +530,104 @@ quick_run() {
     "$script_file"
     
     echo ""
-    echo -e "${CYAN}${MENU_BORDER}${NC}"
-    echo -e " ${GREEN}[OK] 运行完成${NC}"
-    echo -e "${CYAN}${MENU_BORDER_BOTTOM}${NC}"
+    echo -e "${CYAN}${MENU_BORDER}"
+    echo -e " ${GREEN}[OK] 运行完成"
+    echo -e "${CYAN}${MENU_BORDER_BOTTOM}"
 }
 
 # 查看配置
 view_config() {
-    if [ ! -f "$CONFIG_FILE" ]; then
-        echo -e "${RED}错误${NC}: 配置文件不存在"
+    if [[ ! -f "$CONFIG_FILE" ]]; then
+        echo -e "${RED}错误: 配置文件不存在"
         echo "请先运行配置向导"
         return 1
     fi
     
-    echo -e "${CYAN}${MENU_BORDER}${NC}"
-    echo -e " ${YELLOW}当前配置信息${NC}"
-    echo -e "${CYAN}${MENU_BORDER_BOTTOM}${NC}"
+    echo -e "${CYAN}${MENU_BORDER}"
+    echo -e " ${YELLOW}当前配置信息"
+    echo -e "${CYAN}${MENU_BORDER_BOTTOM}"
     echo ""
     
     # 加载配置
-    source "$CONFIG_FILE"
+    local domain sub_domain secretid
+    domain=$(json_get ".dns.domain" "")
+    sub_domain=$(json_get ".dns.sub_domain" "dns")
+    secretid=$(json_get ".api.id" "")
     
-    echo -e "${CYAN}基本配置:${NC}"
-    echo "  域名:         ${SUB_DOMAIN}.${DOMAIN}"
-    echo "  SecretId:     ${SECRETID:0:8}...${SECRETID: -4}"
+    echo -e "${CYAN}基本配置:"
+    echo "  域名:         ${sub_domain}.${domain}"
+    echo "  SecretId:     ${secretid:0:8}...${secretid: -4}"
     echo "  SecretKey:    **** (已隐藏)"
     echo ""
     
-    echo -e "${CYAN}工作模式:${NC}"
-    echo "  模式:         ${MODE}"
-    if [ "$MODE" = "multi" ]; then
-        echo "  运营商线路:   ${ISP_LINES}"
+    echo -e "${CYAN}工作模式:"
+    local mode isp_lines max_ips request_timeout max_retries
+    mode=$(json_get ".dns.mode" "single")
+    isp_lines=$(json_get ".dns.isp_lines" "默认")
+    max_ips=$(json_get ".dns.max_ips_per_record" "2")
+    request_timeout=$(json_get ".api.timeout" "10")
+    max_retries=$(json_get ".api.max_retries" "3")
+    
+    echo "  模式:         ${mode}"
+    if [[ "$mode" == "multi" ]]; then
+        echo "  运营商线路:   ${isp_lines}"
     fi
     echo ""
     
-    echo -e "${CYAN}高级配置:${NC}"
-    echo "  IP 数量限制   = ${MAX_IPS_PER_RECORD:-2} 个/记录"
-    echo "  请求超时时间  = ${REQUEST_TIMEOUT:-10} 秒"
-    echo "  最大重试次数  = ${MAX_RETRIES:-3} 次"
+    echo -e "${CYAN}高级配置:"
+    echo "  IP 数量限制   = ${max_ips} 个/记录"
+    echo "  请求超时时间  = ${request_timeout} 秒"
+    echo "  最大重试次数  = ${max_retries} 次"
     echo ""
     
-    echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+    echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 }
 
 # 快速修改 IP 数量限制
 modify_ip_limit() {
-    if [ ! -f "$CONFIG_FILE" ]; then
-        echo -e "${RED}错误${NC}: 配置文件不存在"
+    if [[ ! -f "$CONFIG_FILE" ]]; then
+        echo -e "${RED}错误: 配置文件不存在"
         echo "请先运行完整配置向导生成配置文件"
         return 1
     fi
     
-    echo -e "\n${CYAN}${MENU_BORDER}${NC}"
-    echo -e " ${YELLOW}快速修改 IP 数量限制${NC}"
-    echo -e "${CYAN}${MENU_BORDER_BOTTOM}${NC}"
+    echo -e "\n${CYAN}${MENU_BORDER}"
+    echo -e " ${YELLOW}快速修改 IP 数量限制"
+    echo -e "${CYAN}${MENU_BORDER_BOTTOM}"
     echo ""
     
     # 读取当前值
-    local current_limit=$(grep '^MAX_IPS_PER_RECORD=' "$CONFIG_FILE" | cut -d'=' -f2)
-    echo -e "${CYAN}当前设置: ${current_limit:-2} 个/记录${NC}"
+    local current_limit
+    current_limit=$(json_get ".dns.max_ips_per_record" "2")
+    echo -e "${CYAN}当前设置: ${current_limit:-2} 个/记录"
     echo ""
-    echo -e "${YELLOW}说明:${NC}"
+    echo -e "${YELLOW}说明:"
     echo "  - 设置每条 DNS 记录最多包含几个 IP 地址"
     echo "  - 例如: 设置为 2，则每个域名最多解析到 2 个 IP"
     echo "  - 设置为 0 表示不限制（需要套餐支持）"
     echo ""
-    echo "${CYAN}提示${NC} DNSPod 套餐负载均衡记录数限制:"
+    echo -e "${CYAN}提示: DNSPod 套餐负载均衡记录数限制:"
     echo "  - 免费版: 2 条 (默认) ← 推荐"
     echo "  - 专业版: 10 条"
     echo "  - 企业版: 100 条"
     echo "  - 尊享版: 不限制 (输入 0)"
     echo ""
-    echo -e "  ${CYAN}文档${NC} 官方文档: https://cloud.tencent.com/document/product/302/104713"
+    echo -e "  ${CYAN}文档: 官方文档: https://cloud.tencent.com/document/product/302/104713"
     echo ""
-    echo -e "${YELLOW}警告${NC}注意: 免费版超出限制会导致 API 报错"
+    echo -e "${YELLOW}警告: 注意: 免费版超出限制会导致 API 报错"
     echo "   脚本会自动截取前 N 个 IP,避免报错"
     echo ""
     
-    read -p "请输入每条记录的 IP 数量 (0=不限制, 直接回车保持 ${current_limit:-2}): " new_limit
+    read -r -p "请输入每条记录的 IP 数量 (0=不限制, 直接回车保持 ${current_limit:-2}): " new_limit
     
-    if [ -z "$new_limit" ]; then
-        echo -e "${YELLOW}[INFO] 保持当前设置不变 (${current_limit:-2})${NC}"
+    if [[ -z "$new_limit" ]]; then
+        echo -e "${YELLOW}[INFO] 保持当前设置不变 (${current_limit:-2})"
         return 0
     fi
     
     # 验证是否为数字
     if ! [[ "$new_limit" =~ ^[0-9]+$ ]]; then
-        echo -e "${RED}[ERROR] 请输入有效的数字${NC}"
+        echo -e "${RED}[ERROR] 请输入有效的数字"
         return 1
     fi
     
@@ -573,62 +635,62 @@ modify_ip_limit() {
     update_config_value "MAX_IPS_PER_RECORD" "$new_limit"
     
     echo ""
-    if [ "$new_limit" -eq 0 ]; then
-        echo -e "${GREEN}[OK] IP 数量限制已取消 (不限制)${NC}"
-        echo -e "   ${YELLOW}[WARN] 请确保您的套餐支持无限负载均衡记录${NC}"
+    if [[ "$new_limit" -eq 0 ]]; then
+        echo -e "${GREEN}[OK] IP 数量限制已取消 (不限制)"
+        echo -e "   ${YELLOW}[WARN] 请确保您的套餐支持无限负载均衡记录"
     else
-        echo -e "${GREEN}[OK] IP 数量限制已更新: 每条记录最多 ${new_limit} 个 IP${NC}"
+        echo -e "${GREEN}[OK] IP 数量限制已更新: 每条记录最多 ${new_limit} 个 IP"
         
-        if [ "$new_limit" -gt 2 ]; then
-            echo -e "   ${YELLOW}[WARN] 请确保您的套餐支持 ${new_limit} 条负载均衡记录${NC}"
+        if [[ "$new_limit" -gt 2 ]]; then
+            echo -e "   ${YELLOW}[WARN] 请确保您的套餐支持 ${new_limit} 条负载均衡记录"
         fi
     fi
     
     echo ""
-    echo -e "${CYAN}提示${NC}: 修改后立即生效,下次运行脚本时将使用新设置"
+    echo -e "${CYAN}提示: 修改后立即生效,下次运行脚本时将使用新设置"
 }
 
 # 启用/禁用模块
 toggle_module_status() {
-    if [ ! -f "$CONFIG_FILE" ]; then
-        echo -e "${RED}错误${NC}: 配置文件不存在"
+    if [[ ! -f "$CONFIG_FILE" ]]; then
+        echo -e "${RED}错误: 配置文件不存在"
         echo "请先运行完整配置向导生成配置文件"
         return 1
     fi
     
-    echo -e "\n${CYAN}${MENU_BORDER}${NC}"
-    echo -e " ${YELLOW}启用/禁用模块${NC}"
-    echo -e "${CYAN}${MENU_BORDER_BOTTOM}${NC}"
+    echo -e "\n${CYAN}${MENU_BORDER}"
+    echo -e " ${YELLOW}启用/禁用模块"
+    echo -e "${CYAN}${MENU_BORDER_BOTTOM}"
     echo ""
     
-    source "$CONFIG_FILE"
-    local current_status="${ENABLED:-false}"
+    local current_status
+    current_status=$(json_get ".enabled" "false")
     
-    if [ "$current_status" = "true" ]; then
-        echo -e "${GREEN}当前状态: ${BOLD}已启用${NC}"
+    if [[ "$current_status" == "true" ]]; then
+        echo -e "${GREEN}当前状态: ${BOLD}已启用"
         echo ""
-        echo -e "${YELLOW}功能说明:${NC}"
+        echo -e "${YELLOW}功能说明:"
         echo "  - IP 同步组件会自动将测速结果写入此模块"
         echo "  - DNS 更新任务会正常执行"
         echo ""
-        read -p "是否禁用此模块? (y/n): " confirm
-        if [ "$confirm" = "y" ] || [ "$confirm" = "Y" ]; then
+        read -r -p "是否禁用此模块? (y/n): " confirm
+        if [[ "$confirm" == "y" ]] || [[ "$confirm" == "Y" ]]; then
             update_config_value "ENABLED" "false"
-            echo -e "${GREEN}[OK] 模块已禁用${NC}"
-            echo -e "${CYAN}提示:${NC} IP 同步和 DNS 更新将跳过此模块"
+            echo -e "${GREEN}[OK] 模块已禁用"
+            echo -e "${CYAN}提示: IP 同步和 DNS 更新将跳过此模块"
         fi
     else
-        echo -e "${RED}当前状态: ${BOLD}已禁用${NC}"
+        echo -e "${RED}当前状态: ${BOLD}已禁用"
         echo ""
-        echo -e "${YELLOW}功能说明:${NC}"
+        echo -e "${YELLOW}功能说明:"
         echo "  - IP 同步组件不会为此模块写入 IP"
         echo "  - DNS 更新任务不会执行"
         echo ""
-        read -p "是否启用此模块? (y/n): " confirm
-        if [ "$confirm" = "y" ] || [ "$confirm" = "Y" ]; then
+        read -r -p "是否启用此模块? (y/n): " confirm
+        if [[ "$confirm" == "y" ]] || [[ "$confirm" == "Y" ]]; then
             update_config_value "ENABLED" "true"
-            echo -e "${GREEN}[OK] 模块已启用${NC}"
-            echo -e "${CYAN}提示:${NC} 下次测速后将自动同步 IP 并支持 DNS 更新"
+            echo -e "${GREEN}[OK] 模块已启用"
+            echo -e "${CYAN}提示: 下次测速后将自动同步 IP 并支持 DNS 更新"
         fi
     fi
 }
@@ -637,35 +699,35 @@ toggle_module_status() {
 
 # 调用系统编辑器修改配置文件
 edit_config() {
-    if [ ! -f "$CONFIG_FILE" ]; then
-        echo -e "${RED}[ERROR] 配置文件不存在，无法编辑。${NC}"
+    if [[ ! -f "$CONFIG_FILE" ]]; then
+        echo -e "${RED}[ERROR] 配置文件不存在，无法编辑。"
         return 1
     fi
     
     # 自动检测并选择可用的终端编辑器
     local editor=""
     for e in nano vim vi; do
-        if command -v $e &> /dev/null; then
-            editor=$e
+        if command -v "$e" &> /dev/null; then
+            editor="$e"
             break
         fi
     done
     
-    if [ -z "$editor" ]; then
-        echo -e "${RED}[ERROR] 未检测到可用的终端编辑器 (nano/vim/vi)。${NC}"
+    if [[ -z "$editor" ]]; then
+        echo -e "${RED}[ERROR] 未检测到可用的终端编辑器 (nano/vim/vi)。"
         echo "请手动编辑文件: ${CONFIG_FILE}"
         return 1
     fi
     
     echo "正在启动 ${editor} 编辑器..."
-    $editor "$CONFIG_FILE"
-    echo -e "\n${GREEN}[OK] 配置文件已保存并更新。${NC}"
+    "$editor" "$CONFIG_FILE"
+    echo -e "\n${GREEN}[OK] 配置文件已保存并更新。"
 }
 
 # 配置修改二级菜单入口
 modify_config_menu() {
-    if [ ! -f "$CONFIG_FILE" ]; then
-        echo -e "${RED}[ERROR] 配置文件不存在${NC}"
+    if [[ ! -f "$CONFIG_FILE" ]]; then
+        echo -e "${RED}[ERROR] 配置文件不存在"
         echo "请先运行完整配置向导生成配置文件"
         return 1
     fi
@@ -673,26 +735,27 @@ modify_config_menu() {
     show_modify_menu
     
     # 根据模式确定选项范围
-    local current_mode=$(grep '^MODE=' "$CONFIG_FILE" | cut -d'"' -f2)
-    current_mode=${current_mode:-single}
+    local current_mode
+    current_mode=$(json_get ".dns.mode" "single")
     
-    if [ "$current_mode" = "multi" ]; then
-        read -p "请选择要修改的配置项 (0-9): " modify_choice
+    if [[ "$current_mode" == "multi" ]]; then
+        read -r -p "请选择要修改的配置项 (0-9): " modify_choice
     else
-        read -p "请选择要修改的配置项 (0-8): " modify_choice
+        read -r -p "请选择要修改的配置项 (0-8): " modify_choice
     fi
     
     case "$modify_choice" in
         1)
             # 全部重新配置
             echo ""
-            echo -e "${CYAN}提示${NC}: 将进入完整配置向导,重新配置所有项目"
-            read -p "确认继续? (y/n): " confirm
-            if [ "$confirm" = "y" ] || [ "$confirm" = "Y" ]; then
+            echo -e "${CYAN}提示: 将进入完整配置向导,重新配置所有项目"
+            read -r -p "确认继续? (y/n): " confirm
+            if [[ "$confirm" == "y" ]] || [[ "$confirm" == "Y" ]]; then
+                # shellcheck disable=SC2034
                 RECONFIGURE_ALL=true
                 return 2
             else
-                echo -e "${YELLOW}[INFO] 已取消${NC}"
+                echo -e "${YELLOW}[INFO] 已取消"
                 return 0
             fi
             ;;
@@ -739,9 +802,9 @@ modify_config_menu() {
             return 0
             ;;
         *)
-            echo -e "${RED}[ERROR] 无效的选择${NC}"
+            echo -e "${RED}[ERROR] 无效的选择"
             echo ""
-            read -p "按回车键继续..."
+            read -r -p "按回车键继续..."
             # 不清屏,让循环自然继续,下次循环开始时会清屏
             ;;
     esac
@@ -750,111 +813,85 @@ modify_config_menu() {
 # 修改域名配置
 modify_domain_config() {
     echo ""
-    echo -e "${CYAN}━━ 域名配置管理 ━━${NC}"
+    echo -e "${CYAN}━━ 域名配置管理 ━━"
     
-    source "$CONFIG_FILE"
-    echo "当前解析记录: ${SUB_DOMAIN}.${DOMAIN}"
+    local domain sub_domain
+    domain=$(json_get ".dns.domain" "")
+    sub_domain=$(json_get ".dns.sub_domain" "dns")
+    echo "当前解析记录: ${sub_domain}.${domain}"
     echo ""
     
-    read -p "请输入主域名 (例如: example.com, 直接回车保持不变): " new_domain
-    if [ -n "$new_domain" ]; then
+    read -r -p "请输入主域名 (例如: example.com, 直接回车保持不变): " new_domain
+    if [[ -n "$new_domain" ]]; then
         # 校验域名格式合法性 (支持多级域名)
         if ! [[ "$new_domain" =~ ^[a-zA-Z0-9]([a-zA-Z0-9\-]*[a-zA-Z0-9])?(\.[a-zA-Z0-9]([a-zA-Z0-9\-]*[a-zA-Z0-9])?)*$ ]]; then
-            echo -e "${RED}[ERROR] 无效的域名格式，请检查输入。${NC}"
+            echo -e "${RED}[ERROR] 无效的域名格式，请检查输入。"
             return 0
         fi
-        DOMAIN="$new_domain"
+        update_config_value "DOMAIN" "$new_domain"
+        domain="$new_domain"
     fi
     
-    read -p "请输入子域名 (例如: www, @, blog, 直接回车保持不变): " new_subdomain
-    if [ -n "$new_subdomain" ]; then
+    read -r -p "请输入子域名 (例如: www, @, blog, 直接回车保持不变): " new_subdomain
+    if [[ -n "$new_subdomain" ]]; then
         # 校验子域名格式合法性 (允许字母、数字、连字符及根记录符号 @)
         if ! [[ "$new_subdomain" =~ ^[a-zA-Z0-9\-@]+$ ]]; then
-            echo -e "${RED}[ERROR] 无效的子域名格式。${NC}"
+            echo -e "${RED}[ERROR] 无效的子域名格式。"
             return 0
         fi
-        SUB_DOMAIN="$new_subdomain"
+        update_config_value "SUB_DOMAIN" "$new_subdomain"
+        sub_domain="$new_subdomain"
     fi
     
-    # 采用原子化方式更新配置文件，防止写入中断导致文件损坏
-    local temp_conf=$(mktemp)
-    while IFS= read -r line; do
-        if [[ "$line" =~ ^DOMAIN= ]]; then
-            echo "DOMAIN=\"${DOMAIN}\""
-        elif [[ "$line" =~ ^SUB_DOMAIN= ]] && ! [[ "$line" =~ ^SUB_DOMAIN_ ]]; then
-            echo "SUB_DOMAIN=\"${SUB_DOMAIN}\""
-        else
-            echo "$line"
-        fi
-    done < "$CONFIG_FILE" > "$temp_conf"
-    mv "$temp_conf" "$CONFIG_FILE"
-    
-    echo -e "\n${GREEN}[OK] 域名配置已更新: ${SUB_DOMAIN}.${DOMAIN}${NC}"
+    echo -e "\n${GREEN}[OK] 域名配置已更新: ${sub_domain}.${domain}"
     echo ""
-    read -p "按回车键继续..."
+    read -r -p "按回车键继续..."
 }
 
 # 修改 API 密钥
 modify_api_keys() {
     echo ""
-    echo -e "${CYAN}━━ 修改 API 密钥 ━━${NC}"
+    echo -e "${CYAN}━━ 修改 API 密钥 ━━"
     echo ""
-    echo -e "${CYAN}提示${NC}: 如果还没有密钥,请访问:"
+    echo -e "${CYAN}提示: 如果还没有密钥,请访问:"
     echo "   https://console.cloud.tencent.com/cam/capi"
     echo ""
     
-    read -p "请输入 SecretId (直接回车保持不变): " new_secretid
-    if [ -n "$new_secretid" ]; then
+    read -r -p "请输入 SecretId (直接回车保持不变): " new_secretid
+    if [[ -n "$new_secretid" ]]; then
         # 安全校验：防止 Shell 注入攻击
         if [[ "$new_secretid" =~ [\;\|\&\$\`\\] ]]; then
-            echo -e "${RED}[ERROR] SecretId 包含非法字符，请重新输入。${NC}"
+            echo -e "${RED}[ERROR] SecretId 包含非法字符，请重新输入。"
             return 0
         fi
-        # 采用临时文件替换法更新配置，确保数据一致性
-        local temp_conf=$(mktemp)
-        while IFS= read -r line; do
-            if [[ "$line" =~ ^SECRETID= ]]; then
-                echo "SECRETID=\"${new_secretid}\""
-            else
-                echo "$line"
-            fi
-        done < "$CONFIG_FILE" > "$temp_conf"
-        mv "$temp_conf" "$CONFIG_FILE"
-        echo -e "${GREEN}[OK] SecretId 已更新${NC}"
+        update_config_value "SECRETID" "$new_secretid"
+        echo -e "${GREEN}[OK] SecretId 已更新"
     fi
     
-    read -p "请输入 SecretKey (直接回车保持不变): " new_secretkey
-    if [ -n "$new_secretkey" ]; then
+    read -r -p "请输入 SecretKey (直接回车保持不变): " new_secretkey
+    if [[ -n "$new_secretkey" ]]; then
         # 验证输入不包含危险字符
         if [[ "$new_secretkey" =~ [\;\|\&\$\`\\] ]]; then
-            echo -e "${RED}[ERROR] SecretKey 包含非法字符${NC}"
+            echo -e "${RED}[ERROR] SecretKey 包含非法字符"
             return 0
         fi
-        # 使用临时文件方式避免 sed 注入
-        local temp_conf=$(mktemp)
-        while IFS= read -r line; do
-            if [[ "$line" =~ ^SECRETKEY= ]]; then
-                echo "SECRETKEY=\"${new_secretkey}\""
-            else
-                echo "$line"
-            fi
-        done < "$CONFIG_FILE" > "$temp_conf"
-        mv "$temp_conf" "$CONFIG_FILE"
-        echo -e "${GREEN}[OK] SecretKey 已更新${NC}"
+        update_config_value "SECRETKEY" "$new_secretkey"
+        echo -e "${GREEN}[OK] SecretKey 已更新"
     fi
     echo ""
-    read -p "按回车键继续..."
+    read -r -p "按回车键继续..."
 }
 
 # 修改工作模式
 modify_work_mode() {
     echo ""
-    echo -e "${CYAN}━━ 修改工作模式 ━━${NC}"
+    echo -e "${CYAN}━━ 修改工作模式 ━━"
     echo ""
     
     # 获取当前模式
-    local current_mode=$(grep '^MODE=' "$CONFIG_FILE" | cut -d'"' -f2)
-    if [ "$current_mode" = "multi" ]; then
+    local current_mode
+    current_mode=$(json_get ".dns.mode" "single")
+    if [[ "$current_mode" == "multi" ]]; then
         echo "当前模式: 多线路模式"
     else
         echo "当前模式: 单线路模式"
@@ -864,34 +901,30 @@ modify_work_mode() {
     echo "  2) 多线路模式 - 为不同运营商设置不同的 CF 优选 IP"
     echo ""
     
-    read -p "请选择新模式 (1/2): " mode_choice
+    read -r -p "请选择新模式 (1/2): " mode_choice
     
-    if [ "$mode_choice" = "1" ]; then
+    if [[ "$mode_choice" == "1" ]]; then
         # 切换至单线路解析模式
-        if [ "$current_mode" = "multi" ]; then
+        if [[ "$current_mode" == "multi" ]]; then
             # 处理从多线路分流模式向单线路模式的迁移逻辑
             echo ""
-            echo -e "${RED}[WARN] 警告：即将从多线路模式切换至单线路模式${NC}"
+            echo -e "${RED}[WARN] 警告：即将从多线路模式切换至单线路模式"
             echo ""
             
             # 提取当前的子域名策略配置
-            local current_strategy=$(grep '^SUBDOMAIN_STRATEGY=' "$CONFIG_FILE" | cut -d'"' -f2)
+            local current_strategy
+            current_strategy=$(json_get ".dns.subdomain_strategy" "separate")
             
-            # 若未显式配置策略，则默认为分离模式 (separate)
-            if [ -z "$current_strategy" ]; then
-                current_strategy="separate"
-            fi
-            
-            local unified_subdomain=$(grep '^SUB_DOMAIN_UNIFIED=' "$CONFIG_FILE" | cut -d'"' -f2)
-            unified_subdomain=${unified_subdomain:-dns}
-            local domain=$(grep '^DOMAIN=' "$CONFIG_FILE" | cut -d'"' -f2)
+            local unified_subdomain domain
+            unified_subdomain=$(json_get ".dns.sub_domain_unified" "dns")
+            domain=$(json_get ".dns.domain" "")
             
             # 调试输出：显示当前策略
-            echo -e "${CYAN}[调试] 当前 SUBDOMAIN_STRATEGY: ${current_strategy}${NC}"
+            echo -e "${CYAN}[调试] 当前 SUBDOMAIN_STRATEGY: ${current_strategy}"
             echo ""
             
-            if [ "$current_strategy" = "unified" ]; then
-                echo -e "${YELLOW}检测到当前为统一模式，存在记录：${unified_subdomain}.${domain}${NC}"
+            if [[ "$current_strategy" == "unified" ]]; then
+                echo -e "${YELLOW}检测到当前为统一模式，存在记录：${unified_subdomain}.${domain}"
                 echo ""
                 echo "此操作将会："
                 echo "  1. ${RED}删除${NC} ${unified_subdomain}.${domain} 的联通、移动、电信线路记录"
@@ -907,17 +940,17 @@ modify_work_mode() {
                 echo "     - 立即输入新的子域名"
                 echo "     - 自动创建单线路记录"
                 echo ""
-                read -p "请选择 (1/2, 默认 1): " handle_default_record
+                read -r -p "请选择 (1/2, 默认 1): " handle_default_record
                 handle_default_record=${handle_default_record:-1}
                 
-                if [ "$handle_default_record" = "2" ]; then
+                if [[ "$handle_default_record" == "2" ]]; then
                     echo ""
-                    read -p "请输入新的子域名 [dns]: " new_subdomain
+                    read -r -p "请输入新的子域名 [dns]: " new_subdomain
                     new_subdomain=${new_subdomain:-dns}
                     
                     # 验证子域名格式
                     if ! [[ "$new_subdomain" =~ ^[a-zA-Z0-9\-@]+$ ]]; then
-                        echo -e "${RED}[ERROR] 无效的子域名格式${NC}"
+                        echo -e "${RED}[ERROR] 无效的子域名格式"
                         return 0
                     fi
                     
@@ -931,10 +964,10 @@ modify_work_mode() {
                 fi
             else
                 # 当前是分离模式，询问如何处理
-                local default_subdomain=$(grep '^SUB_DOMAIN_DEFAULT=' "$CONFIG_FILE" | cut -d'"' -f2)
-                default_subdomain=${default_subdomain:-default}
+                local default_subdomain
+                default_subdomain=$(json_get ".dns.sub_domains.default" "default")
                 
-                echo -e "${YELLOW}检测到当前为分离模式${NC}"
+                echo -e "${YELLOW}检测到当前为分离模式"
                 echo ""
                 echo "请选择如何处理 DNS 记录："
                 echo ""
@@ -951,21 +984,21 @@ modify_work_mode() {
                 echo "  3) 取消切换"
                 echo "     - 保持多线路模式"
                 echo ""
-                read -p "请选择 (1/2/3, 默认 1): " handle_separate_choice
+                read -r -p "请选择 (1/2/3, 默认 1): " handle_separate_choice
                 handle_separate_choice=${handle_separate_choice:-1}
                 
-                if [ "$handle_separate_choice" = "1" ]; then
+                if [[ "$handle_separate_choice" == "1" ]]; then
                     # 使用默认线路的子域名
                     handle_separate_record="use_default"
                     new_single_subdomain="$default_subdomain"
-                elif [ "$handle_separate_choice" = "2" ]; then
+                elif [[ "$handle_separate_choice" == "2" ]]; then
                     echo ""
-                    read -p "请输入新的子域名 [${default_subdomain}]: " new_subdomain
+                    read -r -p "请输入新的子域名 [${default_subdomain}]: " new_subdomain
                     new_subdomain=${new_subdomain:-${default_subdomain}}
                     
                     # 验证子域名格式
                     if ! [[ "$new_subdomain" =~ ^[a-zA-Z0-9\-@]+$ ]]; then
-                        echo -e "${RED}[ERROR] 无效的子域名格式${NC}"
+                        echo -e "${RED}[ERROR] 无效的子域名格式"
                         return 0
                     fi
                     
@@ -973,131 +1006,129 @@ modify_work_mode() {
                     new_single_subdomain="$new_subdomain"
                 else
                     # 取消切换
-                    echo -e "${YELLOW}[INFO] 已取消切换${NC}"
+                    echo -e "${YELLOW}[INFO] 已取消切换"
                     echo ""
-                    read -p "按回车键继续..."
+                    read -r -p "按回车键继续..."
                     return 0
                 fi
             fi
         fi
         
         update_config_value "MODE" "single"
-        echo -e "${GREEN}[OK] 已切换为单线路模式${NC}"
+        echo -e "${GREEN}[OK] 已切换为单线路模式"
         echo ""
         
         # 如果之前是统一模式，处理记录
-        if [ "$handle_unified_record" = "delete_multi" ]; then
+        if [[ "$handle_unified_record" == "delete_multi" ]]; then
             # 只删除非默认线路，保留默认线路
             pause_unified_non_default_records
             
             # 使用统一模式的子域名作为单线路的子域名
-            local unified_subdomain=$(grep '^SUB_DOMAIN_UNIFIED=' "$CONFIG_FILE" | cut -d'"' -f2)
-            unified_subdomain=${unified_subdomain:-dns}
+            local unified_subdomain
+            unified_subdomain=$(json_get ".dns.sub_domain_unified" "dns")
             update_config_value "SUB_DOMAIN" "$unified_subdomain"
             
             echo ""
-            echo -e "${GREEN}[OK] 已将单线路子域名设置为: ${unified_subdomain}${NC}"
-            echo -e "${CYAN}提示${NC}: 完整域名为 ${unified_subdomain}.${domain}"
+            echo -e "${GREEN}[OK] 已将单线路子域名设置为: ${unified_subdomain}"
+            echo -e "${CYAN}提示: 完整域名为 ${unified_subdomain}.${domain}"
             echo ""
-        elif [ "$handle_unified_record" = "delete_all" ]; then
+        elif [[ "$handle_unified_record" == "delete_all" ]]; then
             # 删除所有统一模式记录
-            echo -e "${CYAN}正在删除统一模式的所有记录...${NC}"
+            echo -e "${CYAN}正在删除统一模式的所有记录..."
             pause_unified_record
             
             local delete_result=$?
-            if [ $delete_result -ne 0 ]; then
-                echo -e "${RED}[ERROR] 删除失败，但已切换为单线路模式${NC}"
+            if [[ $delete_result -ne 0 ]]; then
+                echo -e "${RED}[ERROR] 删除失败，但已切换为单线路模式"
             fi
             
             # 设置新的子域名
             update_config_value "SUB_DOMAIN" "$new_single_subdomain"
             
             echo ""
-            echo -e "${GREEN}[OK] 已将单线路子域名设置为: ${new_single_subdomain}${NC}"
-            echo -e "${CYAN}提示${NC}: 完整域名为 ${new_single_subdomain}.${domain}"
+            echo -e "${GREEN}[OK] 已将单线路子域名设置为: ${new_single_subdomain}"
+            echo -e "${CYAN}提示: 完整域名为 ${new_single_subdomain}.${domain}"
             echo ""
             
             # 自动创建 DNS 记录
-            echo -e "${CYAN}正在创建 DNS 记录...${NC}"
-            chmod +x "$(dirname "$0")/dnspod.sh"
-            "$(dirname "$0")/dnspod.sh"
+            echo -e "${CYAN}正在创建 DNS 记录..."
+            chmod +x "$(dirname "$0")/core.sh"
+            "$(dirname "$0")/core.sh"
             
             local create_result=$?
             if [ $create_result -eq 0 ]; then
                 echo ""
-                echo -e "${GREEN}[OK] DNS 记录创建成功${NC}"
+                echo -e "${GREEN}[OK] DNS 记录创建成功"
             else
                 echo ""
-                echo -e "${YELLOW}[WARN] DNS 记录创建失败（退出码: ${create_result}）${NC}"
-                echo -e "${CYAN}提示${NC}: 可以稍后手动运行 ./run.sh 创建"
+                echo -e "${YELLOW}[WARN] DNS 记录创建失败（退出码: ${create_result}）"
+                echo -e "${CYAN}提示: 可以稍后手动运行 ./core.sh 创建"
             fi
             echo ""
-        elif [ "$handle_separate_record" = "use_default" ] || [ "$handle_separate_record" = "use_custom" ]; then
+        elif [[ "$handle_separate_record" == "use_default" ]] || [[ "$handle_separate_record" == "use_custom" ]]; then
             # 删除所有分离模式的记录
-            echo -e "${CYAN}正在删除分离模式的记录...${NC}"
+            echo -e "${CYAN}正在删除分离模式的记录..."
             pause_separate_records
             
             local delete_result=$?
-            if [ $delete_result -ne 0 ]; then
-                echo -e "${RED}[ERROR] 删除失败，但已切换为单线路模式${NC}"
+            if [[ $delete_result -ne 0 ]]; then
+                echo -e "${RED}[ERROR] 删除失败，但已切换为单线路模式"
             fi
             
             # 设置子域名
             update_config_value "SUB_DOMAIN" "$new_single_subdomain"
             
             echo ""
-            echo -e "${GREEN}[OK] 已将单线路子域名设置为: ${new_single_subdomain}${NC}"
-            echo -e "${CYAN}提示${NC}: 完整域名为 ${new_single_subdomain}.${domain}"
+            echo -e "${GREEN}[OK] 已将单线路子域名设置为: ${new_single_subdomain}"
+            echo -e "${CYAN}提示: 完整域名为 ${new_single_subdomain}.${domain}"
             echo ""
             
             # 自动创建 DNS 记录
-            echo -e "${CYAN}正在创建 DNS 记录...${NC}"
-            chmod +x "$(dirname "$0")/dnspod.sh"
-            "$(dirname "$0")/dnspod.sh"
+            echo -e "${CYAN}正在创建 DNS 记录..."
+            chmod +x "$(dirname "$0")/core.sh"
+            "$(dirname "$0")/core.sh"
             
             local create_result=$?
-            if [ $create_result -eq 0 ]; then
+            if [[ $create_result -eq 0 ]]; then
                 echo ""
-                echo -e "${GREEN}[OK] DNS 记录创建成功${NC}"
+                echo -e "${GREEN}[OK] DNS 记录创建成功"
             else
                 echo ""
-                echo -e "${YELLOW}[WARN] DNS 记录创建失败（退出码: ${create_result}）${NC}"
-                echo -e "${CYAN}提示${NC}: 可以稍后手动运行 ./run.sh 创建"
+                echo -e "${YELLOW}[WARN] DNS 记录创建失败（退出码: ${create_result}）"
+                echo -e "${CYAN}提示: 可以稍后手动运行 ./core.sh 创建"
             fi
             echo ""
         fi
         
         # 检查单线路必需配置
-        local sub_domain=$(grep '^SUB_DOMAIN=' "$CONFIG_FILE" | cut -d'"' -f2)
-        local domain=$(grep '^DOMAIN=' "$CONFIG_FILE" | cut -d'"' -f2)
-        if [ -z "$domain" ]; then
-            domain="你的域名"
-        fi
+        local sub_domain domain
+        sub_domain=$(json_get ".dns.sub_domain" "")
+        domain=$(json_get ".dns.domain" "你的域名")
         
-        if [ -z "$sub_domain" ]; then
+        if [[ -z "$sub_domain" ]]; then
             # SUB_DOMAIN 未配置,需要引导
-            echo -e "${YELLOW}[WARN] 检测到单线路模式但未配置子域名(SUB_DOMAIN)${NC}"
+            echo -e "${YELLOW}[WARN] 检测到单线路模式但未配置子域名(SUB_DOMAIN)"
             echo ""
             echo "单线路模式需要配置一个子域名,例如:"
             echo "  - 如果你的域名是 drxian.cn"
             echo "  - 设置 SUB_DOMAIN=dns"
             echo "  - 最终解析为: dns.drxian.cn"
             echo ""
-            echo -e "${CYAN}请选择:${NC}"
+            echo -e "${CYAN}请选择:"
             echo "  y - 现在立即配置子域名"
             echo "  n - 取消切换,保持单线路模式"
             echo ""
-            read -p "请输入 (y/n, 默认 y): " config_now
+            read -r -p "请输入 (y/n, 默认 y): " config_now
             config_now=${config_now:-y}
             
-            if [ "$config_now" = "y" ] || [ "$config_now" = "Y" ]; then
+            if [[ "$config_now" == "y" ]] || [[ "$config_now" == "Y" ]]; then
                 echo ""
-                read -p "请输入子域名 [dns]: " input_subdomain
+                read -r -p "请输入子域名 [dns]: " input_subdomain
                 input_subdomain=${input_subdomain:-dns}
                 
                 # 验证子域名格式
                 if ! [[ "$input_subdomain" =~ ^[a-zA-Z0-9\-@]+$ ]]; then
-                    echo -e "${RED}[ERROR] 无效的子域名格式${NC}"
+                    echo -e "${RED}[ERROR] 无效的子域名格式"
                     return 0
                 fi
                 
@@ -1109,70 +1140,71 @@ modify_work_mode() {
                 fi
                 
                 echo ""
-                echo -e "${GREEN}[OK] 子域名已配置: ${input_subdomain}${NC}"
-                echo -e "${CYAN}提示${NC}: 完整域名为 ${input_subdomain}.${domain}"
+                echo -e "${GREEN}[OK] 子域名已配置: ${input_subdomain}"
+                echo -e "${CYAN}提示: 完整域名为 ${input_subdomain}.${domain}"
             else
                 echo ""
-                echo -e "${YELLOW}[INFO] 已取消切换，保持当前模式${NC}"
+                echo -e "${YELLOW}[INFO] 已取消切换，保持当前模式"
                 return 0
             fi
         else
             # SUB_DOMAIN 已配置,显示提示
-            echo -e "${GREEN}[OK] 单线路配置检查通过${NC}"
+            echo -e "${GREEN}[OK] 单线路配置检查通过"
             echo ""
             echo "当前子域名: ${sub_domain}"
-            echo -e "${CYAN}提示${NC}: 完整域名为 ${sub_domain}.${domain}"
+            echo -e "${CYAN}提示: 完整域名为 ${sub_domain}.${domain}"
             echo ""
-            echo -e "${CYAN}注意${NC}: 请确保 DNSPod 中已存在该子域名的解析记录"
+            echo -e "${CYAN}注意: 请确保 DNSPod 中已存在该子域名的解析记录"
         fi
         
-    elif [ "$mode_choice" = "2" ]; then
+    elif [[ "$mode_choice" == "2" ]]; then
         # 切换到多线路模式
-        if [ "$current_mode" = "single" ]; then
+        if [[ "$current_mode" == "single" ]]; then
             echo ""
-            echo -e "${CYAN}[INFO] 从单线路切换到多线路模式${NC}"
+            echo -e "${CYAN}[INFO] 从单线路切换到多线路模式"
         fi
         
         update_config_value "MODE" "multi"
-        echo -e "${GREEN}[OK] 已切换为多线路模式${NC}"
+        echo -e "${GREEN}[OK] 已切换为多线路模式"
         echo "  配置文件中的 MODE 已更新为: multi"
         echo ""
         
         # 检查是否已配置多线路所需参数
-        local current_lines=$(grep '^ISP_LINES=' "$CONFIG_FILE" | cut -d'"' -f2)
-        local current_strategy=$(grep '^SUBDOMAIN_STRATEGY=' "$CONFIG_FILE" | cut -d'"' -f2)
+        local current_lines current_strategy
+        current_lines=$(json_get ".dns.isp_lines" "")
+        current_strategy=$(json_get ".dns.subdomain_strategy" "")
         
         # 判断是否需要引导配置
         local need_config=false
         local config_reason=""
         
-        if [ -z "$current_lines" ] || [ "$current_lines" = "默认" ]; then
+        if [[ -z "$current_lines" ]] || [[ "$current_lines" == "默认" ]]; then
             need_config=true
             config_reason="未配置运营商线路"
-        elif [ -z "$current_strategy" ]; then
+        elif [[ -z "$current_strategy" ]]; then
             need_config=true
             config_reason="未配置子域名策略"
         fi
         
-        if [ "$need_config" = true ]; then
-            echo -e "${YELLOW}[WARN] 检测到${config_reason}${NC}"
+        if [[ "$need_config" == true ]]; then
+            echo -e "${YELLOW}[WARN] 检测到${config_reason}"
             echo ""
             echo "多线路模式需要配置以下内容:"
             echo "  1. 运营商线路选择 (至少选择一个)"
             echo "  2. 子域名策略 (分离模式/统一模式)"
             echo ""
-            echo -e "${CYAN}请选择:${NC}"
+            echo -e "${CYAN}请选择:"
             echo "  y - 现在立即配置多线路参数"
             echo "  n - 取消切换,保持分离模式"
             echo ""
-            read -p "请输入 (y/n, 默认 y): " configure_now
+            read -r -p "请输入 (y/n, 默认 y): " configure_now
             configure_now=${configure_now:-y}
             
-            if [ "$configure_now" = "y" ] || [ "$configure_now" = "Y" ]; then
+            if [[ "$configure_now" == "y" ]] || [[ "$configure_now" == "Y" ]]; then
                 # 清屏后进入配置流程
                 clear
                 echo ""
-                echo -e "${CYAN}━━ 配置多线路参数 ━━${NC}"
+                echo -e "${CYAN}━━ 配置多线路参数 ━━"
                 echo ""
                 
                 # 1. 配置运营商线路
@@ -1186,9 +1218,9 @@ modify_work_mode() {
                 echo ""
                 echo "示例输入: 1 2 3 4  (选择默认、联通、移动、电信)"
                 echo ""
-                read -p "请输入选择的号码: " line_choices
+                read -r -p "请输入选择的号码: " line_choices
                 
-                if [ -n "$line_choices" ]; then
+                if [[ -n "$line_choices" ]]; then
                     # 将数字转换为线路名称
                     local ISP_LINES=""
                     declare -A line_map=(
@@ -1199,8 +1231,8 @@ modify_work_mode() {
                     )
                     
                     for choice in $line_choices; do
-                        if [ -n "${line_map[$choice]}" ]; then
-                            if [ -z "$ISP_LINES" ]; then
+                        if [[ -n "${line_map[$choice]}" ]]; then
+                            if [[ -z "$ISP_LINES" ]]; then
                                 ISP_LINES="${line_map[$choice]}"
                             else
                                 ISP_LINES="$ISP_LINES ${line_map[$choice]}"
@@ -1208,41 +1240,33 @@ modify_work_mode() {
                         fi
                     done
                     
-                    if [ -n "$ISP_LINES" ]; then
-                        # 使用安全的文件更新方式
-                        local temp_conf=$(mktemp)
-                        while IFS= read -r line; do
-                            if [[ "$line" =~ ^ISP_LINES= ]]; then
-                                echo "ISP_LINES=\"${ISP_LINES}\""
-                            else
-                                echo "$line"
-                            fi
-                        done < "$CONFIG_FILE" > "$temp_conf"
-                        mv "$temp_conf" "$CONFIG_FILE"
-                        echo -e "${GREEN}[OK] 线路配置: ${ISP_LINES}${NC}"
+                    if [[ -n "$ISP_LINES" ]]; then
+                        # 使用 jq 更新配置
+                        local temp_conf
+                        temp_conf=$(mktemp)
+                        if jq --arg lines "$ISP_LINES" '.dns.isp_lines = $lines' "$CONFIG_FILE" > "$temp_conf" 2>/dev/null; then
+                            mv "$temp_conf" "$CONFIG_FILE"
+                            chmod 600 "$CONFIG_FILE"
+                            echo -e "${GREEN}[OK] 线路配置: ${ISP_LINES}"
+                        else
+                            rm -f "$temp_conf"
+                            echo -e "${RED}[ERROR] 更新配置失败"
+                        fi
                     else
-                        echo -e "${YELLOW}[INFO] 使用默认配置: 默认${NC}"
-                        local temp_conf=$(mktemp)
-                        while IFS= read -r line; do
-                            if [[ "$line" =~ ^ISP_LINES= ]]; then
-                                echo 'ISP_LINES="默认"'
-                            else
-                                echo "$line"
-                            fi
-                        done < "$CONFIG_FILE" > "$temp_conf"
-                        mv "$temp_conf" "$CONFIG_FILE"
+                        echo -e "${YELLOW}[INFO] 使用默认配置: 默认"
+                        local temp_conf
+                        temp_conf=$(mktemp)
+                        if jq '.dns.isp_lines = "默认"' "$CONFIG_FILE" > "$temp_conf" 2>/dev/null; then
+                            mv "$temp_conf" "$CONFIG_FILE"
+                            chmod 600 "$CONFIG_FILE"
+                        else
+                            rm -f "$temp_conf"
+                            echo -e "${RED}[ERROR] 更新配置失败"
+                        fi
                     fi
                 else
-                    echo -e "${YELLOW}[INFO] 使用默认配置: 默认${NC}"
-                    local temp_conf=$(mktemp)
-                    while IFS= read -r line; do
-                        if [[ "$line" =~ ^ISP_LINES= ]]; then
-                            echo 'ISP_LINES="默认"'
-                        else
-                            echo "$line"
-                        fi
-                    done < "$CONFIG_FILE" > "$temp_conf"
-                    mv "$temp_conf" "$CONFIG_FILE"
+                    echo -e "${YELLOW}[INFO] 使用默认配置: 默认"
+                    update_config_value "ISP_LINES" "默认"
                 fi
                 
                 echo ""
@@ -1258,20 +1282,15 @@ modify_work_mode() {
                 echo "     例如: dns.drxian.cn (通过 DNSPod 线路区分)"
                 echo "     优点: 配置简单,只需一个子域名"
                 echo ""
-                read -p "请选择策略 (1/2, 默认 1): " strategy_choice
+                read -r -p "请选择策略 (1/2, 默认 1): " strategy_choice
                 
-                if [ -z "$strategy_choice" ]; then
+                if [[ -z "$strategy_choice" ]]; then
                     strategy_choice="1"
                 fi
                 
-                if [ "$strategy_choice" = "1" ]; then
-                    # 检查配置项是否存在
-                    if grep -q '^SUBDOMAIN_STRATEGY=' "$CONFIG_FILE"; then
-                        update_config_value "SUBDOMAIN_STRATEGY" "separate"
-                    else
-                        echo 'SUBDOMAIN_STRATEGY="separate"' >> "$CONFIG_FILE"
-                    fi
-                    echo -e "${GREEN}[OK] 已选择: 分离模式${NC}"
+                if [[ "$strategy_choice" == "1" ]]; then
+                    update_config_value "SUBDOMAIN_STRATEGY" "separate"
+                    echo -e "${GREEN}[OK] 已选择: 分离模式"
                     echo ""
                     echo "各线路子域名前缀 (使用默认值):"
                     echo "  - default (默认线路)"
@@ -1279,22 +1298,17 @@ modify_work_mode() {
                     echo "  - mobile (移动线路)"
                     echo "  - telecom (电信线路)"
                     echo ""
-                    echo -e "${CYAN}提示${NC}: 如需自定义,可在配置文件中修改:"
+                    echo -e "${CYAN}提示: 如需自定义,可在配置文件中修改:"
                     echo "  SUB_DOMAIN_DEFAULT, SUB_DOMAIN_UNICOM 等"
                 else
-                    # 检查配置项是否存在
-                    if grep -q '^SUBDOMAIN_STRATEGY=' "$CONFIG_FILE"; then
-                        update_config_value "SUBDOMAIN_STRATEGY" "unified"
-                    else
-                        echo 'SUBDOMAIN_STRATEGY="unified"' >> "$CONFIG_FILE"
-                    fi
-                    echo -e "${GREEN}[OK] 已选择: 统一模式${NC}"
+                    update_config_value "SUBDOMAIN_STRATEGY" "unified"
+                    echo -e "${GREEN}[OK] 已选择: 统一模式"
                     echo ""
-                    read -p "请输入统一子域名 [dns]: " unified_subdomain
+                    read -r -p "请输入统一子域名 [dns]: " unified_subdomain
                     unified_subdomain=${unified_subdomain:-dns}
                     # 验证子域名格式
                     if ! [[ "$unified_subdomain" =~ ^[a-zA-Z0-9\-]+$ ]]; then
-                        echo -e "${RED}[ERROR] 无效的子域名格式${NC}"
+                        echo -e "${RED}[ERROR] 无效的子域名格式"
                         return 0
                     fi
                     # 检查配置项是否存在
@@ -1305,28 +1319,27 @@ modify_work_mode() {
                     fi
                     echo ""
                     # 获取实际域名
-                    local domain=$(grep '^DOMAIN=' "$CONFIG_FILE" | cut -d'"' -f2)
-                    if [ -z "$domain" ]; then
-                        domain="你的域名"
-                    fi
-                    echo -e "${CYAN}提示${NC}: 所有线路将使用: ${unified_subdomain}.${domain}"
+                    local domain
+                    domain=$(json_get ".dns.domain" "你的域名")
+                    echo -e "${CYAN}提示: 所有线路将使用: ${unified_subdomain}.${domain}"
                 fi
                 
                 echo ""
-                echo -e "${GREEN}[OK] 多线路配置完成!${NC}"
+                echo -e "${GREEN}[OK] 多线路配置完成!"
                 echo ""
                 
                 # 检查是否需要处理单线路的记录
-                local old_subdomain=$(grep '^SUB_DOMAIN=' "$CONFIG_FILE" | cut -d'"' -f2)
-                if [ -n "$old_subdomain" ] && [ "$current_mode" = "single" ]; then
-                    echo -e "${YELLOW}[WARN] 检测到从单线路切换到多线路模式${NC}"
+                local old_subdomain
+                old_subdomain=$(json_get ".dns.sub_domain" "")
+                if [[ -n "$old_subdomain" ]] && [[ "$current_mode" == "single" ]]; then
+                    echo -e "${YELLOW}[WARN] 检测到从单线路切换到多线路模式"
                     echo ""
                     echo "当前单线路子域名: ${old_subdomain}.${domain}"
                     echo ""
                     echo "请选择如何处理 DNS 记录："
                     echo ""
                     echo "  1) 自动处理 (推荐)"
-                    if [ "$strategy_choice" = "2" ]; then
+                    if [[ "$strategy_choice" == "2" ]]; then
                         echo "     - 删除 ${old_subdomain}.${domain} 的单线路记录"
                         echo "     - 为统一子域名 ${unified_subdomain}.${domain} 创建所有运营商线路记录"
                     else
@@ -1343,145 +1356,144 @@ modify_work_mode() {
                     echo "  3) 取消切换"
                     echo "     - 保持单线路模式"
                     echo ""
-                    read -p "请选择 (1/2/3, 默认 1): " handle_single_record
+                    read -r -p "请选择 (1/2/3, 默认 1): " handle_single_record
                     handle_single_record=${handle_single_record:-1}
                     
-                    if [ "$handle_single_record" = "1" ]; then
+                    if [[ "$handle_single_record" == "1" ]]; then
                         # 自动处理 - 删除单线路记录并创建多线路记录
                         echo ""
-                        echo -e "${CYAN}正在删除单线路记录...${NC}"
-                        chmod +x "$(dirname "$0")/dnspod.sh"
-                        "$(dirname "$0")/dnspod.sh" --delete
+                        echo -e "${CYAN}正在删除单线路记录..."
+                        chmod +x "$(dirname "$0")/core.sh"
+                        "$(dirname "$0")/core.sh" --delete
                         
                         local delete_result=$?
-                        if [ $delete_result -ne 0 ]; then
-                            echo -e "${YELLOW}[WARN] 删除失败（退出码: ${delete_result}），但将继续创建多线路记录${NC}"
+                        if [[ $delete_result -ne 0 ]]; then
+                            echo -e "${YELLOW}[WARN] 删除失败（退出码: ${delete_result}），但将继续创建多线路记录"
                         fi
                         
                         echo ""
-                        echo -e "${CYAN}正在创建多线路记录...${NC}"
-                        chmod +x "$(dirname "$0")/dnspod-isp.sh"
-                        "$(dirname "$0")/dnspod-isp.sh"
+                        echo -e "${CYAN}正在创建多线路记录..."
+                        chmod +x "$(dirname "$0")/core.sh"
+                        "$(dirname "$0")/core.sh" -m
                         
                         local create_result=$?
-                        if [ $create_result -eq 0 ]; then
+                        if [[ $create_result -eq 0 ]]; then
                             echo ""
-                            echo -e "${GREEN}[OK] 多线路记录创建成功${NC}"
+                            echo -e "${GREEN}[OK] 多线路记录创建成功"
                         else
                             echo ""
-                            echo -e "${YELLOW}[WARN] 多线路记录创建失败（退出码: ${create_result}）${NC}"
-                            echo -e "${CYAN}提示${NC}: 可以稍后手动运行 ./run.sh -m 创建"
+                            echo -e "${YELLOW}[WARN] 多线路记录创建失败（退出码: ${create_result}）"
+                            echo -e "${CYAN}提示: 可以稍后手动运行 ./core.sh -m 创建"
                         fi
-                    elif [ "$handle_single_record" = "2" ]; then
+                    elif [[ "$handle_single_record" == "2" ]]; then
                         # 保留单线路记录，只创建多线路记录
                         echo ""
-                        echo -e "${CYAN}正在创建多线路记录...${NC}"
-                        chmod +x "$(dirname "$0")/dnspod-isp.sh"
-                        "$(dirname "$0")/dnspod-isp.sh"
+                        echo -e "${CYAN}正在创建多线路记录..."
+                        chmod +x "$(dirname "$0")/core.sh"
+                        "$(dirname "$0")/core.sh" -m
                         
                         local create_result=$?
-                        if [ $create_result -eq 0 ]; then
+                        if [[ $create_result -eq 0 ]]; then
                             echo ""
-                            echo -e "${GREEN}[OK] 多线路记录创建成功${NC}"
-                            echo -e "${YELLOW}[WARN] 注意${NC}: 单线路记录 ${old_subdomain}.${domain} 仍然保留"
+                            echo -e "${GREEN}[OK] 多线路记录创建成功"
+                            echo -e "${YELLOW}[WARN] 注意: 单线路记录 ${old_subdomain}.${domain} 仍然保留"
                         else
                             echo ""
-                            echo -e "${YELLOW}[WARN] 多线路记录创建失败（退出码: ${create_result}）${NC}"
-                            echo -e "${CYAN}提示${NC}: 可以稍后手动运行 ./run.sh -m 创建"
+                            echo -e "${YELLOW}[WARN] 多线路记录创建失败（退出码: ${create_result}）"
+                            echo -e "${CYAN}提示: 可以稍后手动运行 ./core.sh -m 创建"
                         fi
                     else
                         # 取消切换
-                        echo -e "${YELLOW}[INFO] 已取消切换，保持单线路模式${NC}"
+                        echo -e "${YELLOW}[INFO] 已取消切换，保持单线路模式"
                         update_config_value "MODE" "single"
                         return 0
                     fi
                 else
                     # 没有单线路记录或不是从单线路切换，直接创建多线路记录
-                    echo -e "${CYAN}下一步${NC}:"
+                    echo -e "${CYAN}下一步:"
                     echo "  1. 确保 IP 文件已准备 ($ROOT_DIR/assets/data/dnspod-dns/)"
-                    echo "  2. 运行 ./run.sh -m 测试多线路更新"
+                    echo "  2. 运行 ./core.sh -m 测试多线路更新"
                     echo ""
-                    echo -e "${CYAN}正在创建多线路记录...${NC}"
-                    chmod +x "$(dirname "$0")/dnspod-isp.sh"
-                    "$(dirname "$0")/dnspod-isp.sh"
+                    echo -e "${CYAN}正在创建多线路记录..."
+                    chmod +x "$(dirname "$0")/core.sh"
+                    "$(dirname "$0")/core.sh" -m
                     
                     local create_result=$?
-                    if [ $create_result -eq 0 ]; then
+                    if [[ $create_result -eq 0 ]]; then
                         echo ""
-                        echo -e "${GREEN}[OK] 多线路记录创建成功${NC}"
+                        echo -e "${GREEN}[OK] 多线路记录创建成功"
                     else
                         echo ""
-                        echo -e "${YELLOW}[WARN] 多线路记录创建失败（退出码: ${create_result}）${NC}"
-                        echo -e "${CYAN}提示${NC}: 可以稍后手动运行 ./run.sh -m 创建"
+                        echo -e "${YELLOW}[WARN] 多线路记录创建失败（退出码: ${create_result}）"
+                        echo -e "${CYAN}提示: 可以稍后手动运行 ./core.sh -m 创建"
                     fi
                 fi
             else
-                echo -e "${YELLOW}[INFO] 已取消切换，保持当前模式${NC}"
+                echo -e "${YELLOW}[INFO] 已取消切换，保持当前模式"
                 return 0
             fi
         else
             # 已有完整配置,显示当前状态
-            echo -e "${GREEN}[OK] 多线路配置已存在，无需重新配置${NC}"
+            echo -e "${GREEN}[OK] 多线路配置已存在，无需重新配置"
             echo ""
             echo "当前配置:"
             echo "  运营商线路: ${current_lines}"
             
             # 转换为中文显示
-            if [ "$current_strategy" = "unified" ]; then
+            if [[ "$current_strategy" == "unified" ]]; then
                 echo "  子域名策略: 统一模式"
-            elif [ "$current_strategy" = "separate" ]; then
+            elif [[ "$current_strategy" == "separate" ]]; then
                 echo "  子域名策略: 分离模式"
             else
                 echo "  子域名策略: ${current_strategy:-未设置}"
             fi
             
-            if [ "$current_strategy" = "unified" ]; then
-                local unified_sub=$(grep '^SUB_DOMAIN_UNIFIED=' "$CONFIG_FILE" | cut -d'"' -f2)
-                echo "  统一子域名: ${unified_sub:-dns}"
+            if [[ "$current_strategy" == "unified" ]]; then
+                local unified_sub
+                unified_sub=$(json_get ".dns.sub_domain_unified" "dns")
+                echo "  统一子域名: ${unified_sub}"
             else
                 echo ""
                 echo "分离模式子域名前缀:"
-                echo "  - $(grep '^SUB_DOMAIN_DEFAULT=' "$CONFIG_FILE" | cut -d'"' -f2) (默认线路)"
+                echo "  - $(json_get ".dns.sub_domains.default" "default") (默认线路)"
                 if [[ "$current_lines" == *"联通"* ]]; then
-                    echo "  - $(grep '^SUB_DOMAIN_UNICOM=' "$CONFIG_FILE" | cut -d'"' -f2) (联通线路)"
+                    echo "  - $(json_get ".dns.sub_domains.unicom" "unicom") (联通线路)"
                 fi
                 if [[ "$current_lines" == *"移动"* ]]; then
-                    echo "  - $(grep '^SUB_DOMAIN_MOBILE=' "$CONFIG_FILE" | cut -d'"' -f2) (移动线路)"
+                    echo "  - $(json_get ".dns.sub_domains.mobile" "mobile") (移动线路)"
                 fi
                 if [[ "$current_lines" == *"电信"* ]]; then
-                    echo "  - $(grep '^SUB_DOMAIN_TELECOM=' "$CONFIG_FILE" | cut -d'"' -f2) (电信线路)"
+                    echo "  - $(json_get ".dns.sub_domains.telecom" "telecom") (电信线路)"
                 fi
             fi
             
             echo ""
-            echo -e "${CYAN}提示${NC}: 如需修改配置,可选择:"
+            echo -e "${CYAN}提示: 如需修改配置,可选择:"
             echo "  - 选项 6 (运营商线路) - 修改线路选择"
             echo "  - 选项 7 (IP 文件路径) - 修改 IP 文件"
         fi
     else
-        echo -e "${YELLOW}[INFO] 无效的选择,未修改${NC}"
+        echo -e "${YELLOW}[INFO] 无效的选择,未修改"
     fi
     echo ""
-    read -p "按回车键继续..."
+    read -r -p "按回车键继续..."
 }
 
 # 修改子域名策略
 modify_subdomain_strategy() {
     echo ""
-    echo -e "${CYAN}━━ 修改子域名策略 ━━${NC}"
+    echo -e "${CYAN}━━ 修改子域名策略 ━━"
     echo ""
     
     # 获取域名
-    local domain=$(grep '^DOMAIN=' "$CONFIG_FILE" | cut -d'"' -f2)
-    if [ -z "$domain" ]; then
-        domain="你的域名"
-    fi
+    local domain mode
+    domain=$(json_get ".dns.domain" "你的域名")
     
     # 检查是否为多线路模式
-    local mode=$(grep '^MODE=' "$CONFIG_FILE" | cut -d'"' -f2)
-    if [ "$mode" != "multi" ]; then
+    mode=$(json_get ".dns.mode" "single")
+    if [[ "$mode" != "multi" ]]; then
         echo -e "${RED}[ERROR]: 此选项仅适用于多线路模式"
-        if [ "$mode" = "multi" ]; then
+        if [[ "$mode" == "multi" ]]; then
             echo "   当前模式: 多线路模式"
         else
             echo "   当前模式: 单线路模式"
@@ -1490,20 +1502,17 @@ modify_subdomain_strategy() {
         echo "请先切换到多线路模式:"
         echo "  选择菜单项 4 (工作模式) → 选择 2 (多线路模式)"
         echo ""
-        read -p "按回车键继续..."
+        read -r -p "按回车键继续..."
         return 0
     fi
     
-    local current_strategy=$(grep '^SUBDOMAIN_STRATEGY=' "$CONFIG_FILE" | cut -d'"' -f2)
-    # 如果策略未设置，默认为分离模式
-    if [ -z "$current_strategy" ]; then
-        current_strategy="separate"
-    fi
+    local current_strategy
+    current_strategy=$(json_get ".dns.subdomain_strategy" "separate")
     
     # 转换为中文显示
-    if [ "$current_strategy" = "unified" ]; then
+    if [[ "$current_strategy" == "unified" ]]; then
         echo "当前策略: 统一模式"
-    elif [ "$current_strategy" = "separate" ]; then
+    elif [[ "$current_strategy" == "separate" ]]; then
         echo "当前策略: 分离模式"
     else
         echo "当前策略: ${current_strategy}"
@@ -1519,25 +1528,26 @@ modify_subdomain_strategy() {
     echo "     例如: dns.drxian.cn (通过 DNSPod 线路区分)"
     echo "     优点: 配置简单,只需一个子域名"
     echo ""
-    read -p "请选择策略 (1/2, 默认 1): " strategy_choice
+    read -r -p "请选择策略 (1/2, 默认 1): " strategy_choice
     
-    if [ -z "$strategy_choice" ]; then
+    if [[ -z "$strategy_choice" ]]; then
         strategy_choice="1"
     fi
     
-    if [ "$strategy_choice" = "1" ]; then
+    if [[ "$strategy_choice" == "1" ]]; then
         # 切换到分离模式
         local old_strategy="$current_strategy"
         update_config_value "SUBDOMAIN_STRATEGY" "separate"
         
         # 如果从统一模式切换过来，询问是否使用统一模式的子域名作为默认线路子域名
         local default_subdomain
-        if [ "$old_strategy" = "unified" ]; then
-            local old_unified_subdomain=$(grep '^SUB_DOMAIN_UNIFIED=' "$CONFIG_FILE" | cut -d'"' -f2)
+        if [[ "$old_strategy" == "unified" ]]; then
+            local old_unified_subdomain
+            old_unified_subdomain=$(json_get ".dns.sub_domain_unified" "dns")
             
-            if [ -n "$old_unified_subdomain" ] && [ "$old_unified_subdomain" != "dns" ]; then
+            if [[ -n "$old_unified_subdomain" ]] && [[ "$old_unified_subdomain" != "dns" ]]; then
                 # 有自定义的统一模式子域名，询问是否使用
-                echo -e "\n${CYAN}检测到统一模式的子域名: ${old_unified_subdomain}${NC}"
+                echo -e "\n${CYAN}检测到统一模式的子域名: ${old_unified_subdomain}"
                 echo ""
                 echo "请选择分离模式默认线路的子域名："
                 echo ""
@@ -1548,12 +1558,12 @@ modify_subdomain_strategy() {
                 echo "  2) 使用默认子域名"
                 echo "     - 默认线路使用: default.${domain}"
                 echo ""
-                read -p "请选择 (1/2, 默认 1): " use_old_subdomain
+                read -r -p "请选择 (1/2, 默认 1): " use_old_subdomain
                 use_old_subdomain=${use_old_subdomain:-1}
                 
-                if [ "$use_old_subdomain" = "1" ]; then
+                if [[ "$use_old_subdomain" == "1" ]]; then
                     default_subdomain="$old_unified_subdomain"
-                    echo -e "${GREEN}[OK] 已选择使用: ${default_subdomain}${NC}"
+                    echo -e "${GREEN}[OK] 已选择使用: ${default_subdomain}"
                 else
                     default_subdomain="default"
                 fi
@@ -1569,7 +1579,7 @@ modify_subdomain_strategy() {
         update_config_value "SUB_DOMAIN" "$default_subdomain"
         update_config_value "SUB_DOMAIN_DEFAULT" "$default_subdomain"
         
-        echo -e "\n${GREEN}[OK] 已切换为: 分离模式${NC}"
+        echo -e "\n${GREEN}[OK] 已切换为: 分离模式"
         echo "  主 SUB_DOMAIN 已更新为: ${default_subdomain}"
         echo ""
         echo "各线路子域名前缀 (使用默认值):"
@@ -1580,8 +1590,8 @@ modify_subdomain_strategy() {
         echo ""
         
         # 如果之前是统一模式，询问是否同步 DNS 记录
-        if [ "$old_strategy" = "unified" ]; then
-            echo -e "${RED}[WARN] 重要提示：从统一模式切换到分离模式${NC}"
+        if [[ "$old_strategy" == "unified" ]]; then
+            echo -e "${RED}[WARN] 重要提示：从统一模式切换到分离模式"
             echo ""
             echo "请选择如何处理 DNS 记录："
             echo ""
@@ -1598,72 +1608,72 @@ modify_subdomain_strategy() {
             echo "  3) 取消切换"
             echo "     - 保持统一模式"
             echo ""
-            read -p "请选择 (1/2/3, 默认 1): " handle_choice
+            read -r -p "请选择 (1/2/3, 默认 1): " handle_choice
             handle_choice=${handle_choice:-1}
             
-            if [ "$handle_choice" = "1" ]; then
+            if [[ "$handle_choice" == "1" ]]; then
                 # 自动处理 - 使用默认子域名
                 echo ""
-                echo -e "${CYAN}正在删除统一模式记录...${NC}"
+                echo -e "${CYAN}正在删除统一模式记录..."
                 pause_unified_record
                 
                 local delete_result=$?
-                if [ $delete_result -ne 0 ]; then
-                    echo -e "${RED}[ERROR] 删除失败，已取消切换${NC}"
+                if [[ $delete_result -ne 0 ]]; then
+                    echo -e "${RED}[ERROR] 删除失败，已取消切换"
                     return 0
                 fi
                 
                 echo ""
-                echo -e "${CYAN}正在创建分离模式记录...${NC}"
+                echo -e "${CYAN}正在创建分离模式记录..."
                 sync_records_separate
-            elif [ "$handle_choice" = "2" ]; then
+            elif [[ "$handle_choice" == "2" ]]; then
                 # 自定义子域名 - 让用户立即输入
                 echo ""
-                echo -e "${CYAN}正在删除统一模式记录...${NC}"
+                echo -e "${CYAN}正在删除统一模式记录..."
                 pause_unified_record
                 
                 local delete_result=$?
-                if [ $delete_result -ne 0 ]; then
-                    echo -e "${RED}[ERROR] 删除失败，已取消切换${NC}"
+                if [[ $delete_result -ne 0 ]]; then
+                    echo -e "${RED}[ERROR] 删除失败，已取消切换"
                     return 0
                 fi
                 
                 echo ""
-                echo -e "${CYAN}请设置各线路的子域名前缀:${NC}"
+                echo -e "${CYAN}请设置各线路的子域名前缀:"
                 echo ""
                 
                 # 读取默认线路子域名
-                read -p "默认线路子域名 [default]: " custom_default
+                read -r -p "默认线路子域名 [default]: " custom_default
                 custom_default=${custom_default:-default}
                 if ! [[ "$custom_default" =~ ^[a-zA-Z0-9\-@]+$ ]]; then
-                    echo -e "${RED}[ERROR] 无效的子域名格式${NC}"
+                    echo -e "${RED}[ERROR] 无效的子域名格式"
                     return 0
                 fi
                 update_config_value "SUB_DOMAIN_DEFAULT" "$custom_default"
                 
                 # 读取联通线路子域名
-                read -p "联通线路子域名 [unicom]: " custom_unicom
+                read -r -p "联通线路子域名 [unicom]: " custom_unicom
                 custom_unicom=${custom_unicom:-unicom}
                 if ! [[ "$custom_unicom" =~ ^[a-zA-Z0-9\-@]+$ ]]; then
-                    echo -e "${RED}[ERROR] 无效的子域名格式${NC}"
+                    echo -e "${RED}[ERROR] 无效的子域名格式"
                     return 0
                 fi
                 update_config_value "SUB_DOMAIN_UNICOM" "$custom_unicom"
                 
                 # 读取移动线路子域名
-                read -p "移动线路子域名 [mobile]: " custom_mobile
+                read -r -p "移动线路子域名 [mobile]: " custom_mobile
                 custom_mobile=${custom_mobile:-mobile}
                 if ! [[ "$custom_mobile" =~ ^[a-zA-Z0-9\-@]+$ ]]; then
-                    echo -e "${RED}[ERROR] 无效的子域名格式${NC}"
+                    echo -e "${RED}[ERROR] 无效的子域名格式"
                     return 0
                 fi
                 update_config_value "SUB_DOMAIN_MOBILE" "$custom_mobile"
                 
                 # 读取电信线路子域名
-                read -p "电信线路子域名 [telecom]: " custom_telecom
+                read -r -p "电信线路子域名 [telecom]: " custom_telecom
                 custom_telecom=${custom_telecom:-telecom}
                 if ! [[ "$custom_telecom" =~ ^[a-zA-Z0-9\-@]+$ ]]; then
-                    echo -e "${RED}[ERROR] 无效的子域名格式${NC}"
+                    echo -e "${RED}[ERROR] 无效的子域名格式"
                     return 0
                 fi
                 update_config_value "SUB_DOMAIN_TELECOM" "$custom_telecom"
@@ -1672,7 +1682,7 @@ modify_subdomain_strategy() {
                 update_config_value "SUB_DOMAIN" "$custom_default"
                 
                 echo ""
-                echo -e "${GREEN}[OK] 子域名配置完成${NC}"
+                echo -e "${GREEN}[OK] 子域名配置完成"
                 echo "  - 默认线路: ${custom_default}.${domain}"
                 echo "  - 联通线路: ${custom_unicom}.${domain}"
                 echo "  - 移动线路: ${custom_mobile}.${domain}"
@@ -1680,37 +1690,38 @@ modify_subdomain_strategy() {
                 echo ""
                 
                 # 自动创建分离模式记录
-                echo -e "${CYAN}正在创建分离模式记录...${NC}"
+                echo -e "${CYAN}正在创建分离模式记录..."
                 sync_records_separate
             else
                 # 取消切换
-                echo -e "${YELLOW}[INFO] 已取消切换，保持统一模式${NC}"
+                echo -e "${YELLOW}[INFO] 已取消切换，保持统一模式"
                 # 恢复配置
                 update_config_value "SUBDOMAIN_STRATEGY" "unified"
                 update_config_value "SUB_DOMAIN" "${SUB_DOMAIN_UNIFIED:-dns}"
                 return 0
             fi
         fi
-    elif [ "$strategy_choice" = "2" ]; then
+    elif [[ "$strategy_choice" == "2" ]]; then
         # 切换到统一模式
         local old_strategy="$current_strategy"
         # 如果旧策略为空，默认为分离模式
-        if [ -z "$old_strategy" ]; then
+        if [[ -z "$old_strategy" ]]; then
             old_strategy="separate"
         fi
         
         # 立即更新策略配置，确保后续脚本使用正确的模式
         update_config_value "SUBDOMAIN_STRATEGY" "unified"
         
-        echo -e "\n${GREEN}[OK] 已切换为: 统一模式${NC}"
+        echo -e "\n${GREEN}[OK] 已切换为: 统一模式"
         echo ""
         
         # 检查是否有分离模式的默认线路子域名
-        local old_default_subdomain=$(grep '^SUB_DOMAIN_DEFAULT=' "$CONFIG_FILE" | cut -d'"' -f2)
+        local old_default_subdomain
+        old_default_subdomain=$(json_get ".dns.sub_domains.default" "default")
         
-        if [ -n "$old_default_subdomain" ] && [ "$old_default_subdomain" != "default" ]; then
+        if [[ -n "$old_default_subdomain" ]] && [[ "$old_default_subdomain" != "default" ]]; then
             # 有自定义的默认线路子域名，询问是否沿用
-            echo -e "${CYAN}检测到分离模式的默认线路子域名: ${old_default_subdomain}${NC}"
+            echo -e "${CYAN}检测到分离模式的默认线路子域名: ${old_default_subdomain}"
             echo ""
             echo "请选择统一模式的子域名："
             echo ""
@@ -1721,24 +1732,24 @@ modify_subdomain_strategy() {
             echo "  2) 使用新的子域名"
             echo "     - 立即输入新的子域名"
             echo ""
-            read -p "请选择 (1/2, 默认 1): " use_old_subdomain
+            read -r -p "请选择 (1/2, 默认 1): " use_old_subdomain
             use_old_subdomain=${use_old_subdomain:-1}
             
-            if [ "$use_old_subdomain" = "1" ]; then
+            if [[ "$use_old_subdomain" == "1" ]]; then
                 unified_subdomain="$old_default_subdomain"
-                echo -e "${GREEN}[OK] 已选择沿用: ${unified_subdomain}${NC}"
+                echo -e "${GREEN}[OK] 已选择沿用: ${unified_subdomain}"
             else
-                read -p "请输入统一子域名 [dns]: " unified_subdomain
+                read -r -p "请输入统一子域名 [dns]: " unified_subdomain
                 unified_subdomain=${unified_subdomain:-dns}
             fi
         else
             # 没有自定义的默认线路子域名，直接让用户输入
-            read -p "请输入统一子域名 [dns]: " unified_subdomain
+            read -r -p "请输入统一子域名 [dns]: " unified_subdomain
             unified_subdomain=${unified_subdomain:-dns}
         fi
         # 验证子域名格式
         if ! [[ "$unified_subdomain" =~ ^[a-zA-Z0-9\-]+$ ]]; then
-            echo -e "${RED}[ERROR] 无效的子域名格式${NC}"
+            echo -e "${RED}[ERROR] 无效的子域名格式"
             return 0
         fi
         update_config_value "SUB_DOMAIN_UNIFIED" "$unified_subdomain"
@@ -1747,13 +1758,13 @@ modify_subdomain_strategy() {
         update_config_value "SUB_DOMAIN" "$unified_subdomain"
         
         echo ""
-        echo -e "${GREEN}[OK] 已切换为: 统一模式${NC}"
+        echo -e "${GREEN}[OK] 已切换为: 统一模式"
         echo "  主 SUB_DOMAIN 已更新为: ${unified_subdomain}"
         
         # 根据旧策略决定如何处理记录
-        if [ "$old_strategy" = "separate" ]; then
+        if [[ "$old_strategy" == "separate" ]]; then
             # 从分离模式切换到统一模式
-            echo -e "${YELLOW}[WARN] 检测到从分离模式切换到统一模式${NC}"
+            echo -e "${YELLOW}[WARN] 检测到从分离模式切换到统一模式"
             echo ""
             echo "请选择如何处理 DNS 记录："
             echo ""
@@ -1769,111 +1780,66 @@ modify_subdomain_strategy() {
             echo "  3) 取消切换"
             echo "     - 保持分离模式"
             echo ""
-            read -p "请选择 (1/2/3, 默认 1): " handle_choice
+            read -r -p "请选择 (1/2/3, 默认 1): " handle_choice
             handle_choice=${handle_choice:-1}
             
-            if [ "$handle_choice" = "1" ]; then
+            if [[ "$handle_choice" == "1" ]]; then
                 # 自动处理 - 删除分线路记录并创建统一模式记录
                 echo ""
-                echo -e "${CYAN}正在删除分线路记录...${NC}"
+                echo -e "${CYAN}正在删除分线路记录..."
                 pause_separate_records
                 
                 local delete_result=$?
-                if [ $delete_result -ne 0 ]; then
-                    echo -e "${YELLOW}[WARN] 删除失败（退出码: ${delete_result}），但将继续创建统一模式记录${NC}"
+                if [[ $delete_result -ne 0 ]]; then
+                    echo -e "${YELLOW}[WARN] 删除失败（退出码: ${delete_result}），但将继续创建统一模式记录"
                 fi
                 
                 echo ""
-                echo -e "${CYAN}正在创建统一模式记录...${NC}"
-                chmod +x "$(dirname "$0")/dnspod-isp.sh"
-                "$(dirname "$0")/dnspod-isp.sh"
+                echo -e "${CYAN}正在创建统一模式记录..."
+                chmod +x "$(dirname "$0")/core.sh"
+                "$(dirname "$0")/core.sh" -m
                 
                 local create_result=$?
-                if [ $create_result -eq 0 ]; then
+                if [[ $create_result -eq 0 ]]; then
                     echo ""
-                    echo -e "${GREEN}[OK] 统一模式记录创建成功${NC}"
+                    echo -e "${GREEN}[OK] 统一模式记录创建成功"
                 else
                     echo ""
-                    echo -e "${YELLOW}[WARN] 统一模式记录创建失败（退出码: ${create_result}）${NC}"
-                    echo -e "${CYAN}提示${NC}: 可以稍后手动运行 ./run.sh -m 创建"
+                    echo -e "${YELLOW}[WARN] 统一模式记录创建失败（退出码: ${create_result}）"
+                    echo -e "${CYAN}提示: 可以稍后手动运行 ./core.sh -m 创建"
                 fi
-            elif [ "$handle_choice" = "2" ]; then
+            elif [[ "$handle_choice" == "2" ]]; then
                 # 保留旧记录，只创建新记录
                 echo ""
-                echo -e "${CYAN}正在创建统一模式记录...${NC}"
-                chmod +x "$(dirname "$0")/dnspod-isp.sh"
-                "$(dirname "$0")/dnspod-isp.sh"
+                echo -e "${CYAN}正在创建统一模式记录..."
+                chmod +x "$(dirname "$0")/core.sh"
+                "$(dirname "$0")/core.sh" -m
                 
                 local create_result=$?
-                if [ $create_result -eq 0 ]; then
+                if [[ $create_result -eq 0 ]]; then
                     echo ""
-                    echo -e "${GREEN}[OK] 统一模式记录创建成功${NC}"
-                    echo -e "${YELLOW}[WARN] 注意${NC}: 分离模式记录仍然保留"
+                    echo -e "${GREEN}[OK] 统一模式记录创建成功"
+                    echo -e "${YELLOW}[WARN] 注意: 分离模式记录仍然保留"
                 else
                     echo ""
-                    echo -e "${YELLOW}[WARN] 统一模式记录创建失败（退出码: ${create_result}）${NC}"
-                    echo -e "${CYAN}提示${NC}: 可以稍后手动运行 ./run.sh -m 创建"
+                    echo -e "${YELLOW}[WARN] 统一模式记录创建失败（退出码: ${create_result}）"
+                    echo -e "${CYAN}提示: 可以稍后手动运行 ./core.sh -m 创建"
                 fi
-            elif [ "$handle_choice" = "2" ]; then
-                # 使用新的统一子域名 - 让用户重新输入
-                echo ""
-                echo -e "${CYAN}正在删除分线路记录...${NC}"
-                pause_separate_records
-                
-                local delete_result=$?
-                if [ $delete_result -ne 0 ]; then
-                    echo -e "${RED}[ERROR] 删除失败，已取消切换${NC}"
-                    return 0
-                fi
-                
-                echo ""
-                read -p "请输入新的统一子域名 [dns]: " new_unified_subdomain
-                new_unified_subdomain=${new_unified_subdomain:-dns}
-                
-                # 验证子域名格式
-                if ! [[ "$new_unified_subdomain" =~ ^[a-zA-Z0-9\-]+$ ]]; then
-                    echo -e "${RED}[ERROR] 无效的子域名格式${NC}"
-                    return 0
-                fi
-                
-                # 更新配置
-                update_config_value "SUB_DOMAIN_UNIFIED" "$new_unified_subdomain"
-                update_config_value "SUB_DOMAIN" "$new_unified_subdomain"
-                
-                echo ""
-                echo -e "${GREEN}[OK] 统一子域名已设置为: ${new_unified_subdomain}${NC}"
-                echo -e "${CYAN}提示${NC}: 完整域名为 ${new_unified_subdomain}.${domain}"
-                echo ""
-                
-                # 自动创建统一模式记录
-                echo -e "${CYAN}正在创建统一模式记录...${NC}"
-                chmod +x "$(dirname "$0")/dnspod-isp.sh"
-                "$(dirname "$0")/dnspod-isp.sh"
-                
-                local create_result=$?
-                if [ $create_result -eq 0 ]; then
-                    echo ""
-                    echo -e "${GREEN}[OK] 统一模式记录创建成功${NC}"
-                else
-                    echo ""
-                    echo -e "${YELLOW}[WARN] 统一模式记录创建失败（退出码: ${create_result}）${NC}"
-                    echo -e "${CYAN}提示${NC}: 可以稍后手动运行 ./run.sh -m 创建"
-                fi
-            else
+            elif [[ "$handle_choice" == "3" ]]; then
                 # 取消切换
-                echo -e "${YELLOW}[INFO] 已取消切换，保持分离模式${NC}"
+                echo -e "${YELLOW}[INFO] 已取消切换，保持分离模式"
                 # 恢复配置
                 update_config_value "SUBDOMAIN_STRATEGY" "separate"
                 update_config_value "SUB_DOMAIN" "${SUB_DOMAIN_DEFAULT:-default}"
                 return 0
             fi
-        elif [ "$old_strategy" = "unified" ]; then
+        elif [[ "$old_strategy" == "unified" ]]; then
             # 从统一模式切换到统一模式（更换子域名）
-            local old_unified_subdomain=$(grep '^SUB_DOMAIN_UNIFIED=' "$CONFIG_FILE" | cut -d'"' -f2)
-            old_unified_subdomain=${old_unified_subdomain:-dns}
+            local old_unified_subdomain
+            old_unified_subdomain=$(json_get ".dns.sub_domain_unified" "dns")
             
-            if [ "$old_unified_subdomain" != "$unified_subdomain" ]; then
-                echo -e "${YELLOW}[WARN] 检测到更换统一子域名${NC}"
+            if [[ "$old_unified_subdomain" != "$unified_subdomain" ]]; then
+                echo -e "${YELLOW}[WARN] 检测到更换统一子域名"
                 echo ""
                 echo "旧子域名: ${old_unified_subdomain}.${domain}"
                 echo "新子域名: ${unified_subdomain}.${domain}"
@@ -1892,54 +1858,54 @@ modify_subdomain_strategy() {
                 echo "  3) 取消切换"
                 echo "     - 恢复为旧的子域名 ${old_unified_subdomain}"
                 echo ""
-                read -p "请选择 (1/2/3, 默认 1): " handle_unified_change
+                read -r -p "请选择 (1/2/3, 默认 1): " handle_unified_change
                 handle_unified_change=${handle_unified_change:-1}
                 
-                if [ "$handle_unified_change" = "1" ]; then
+                if [[ "$handle_unified_change" == "1" ]]; then
                     # 自动处理 - 删除旧记录并创建新记录
                     echo ""
-                    echo -e "${CYAN}正在删除旧统一模式记录...${NC}"
+                    echo -e "${CYAN}正在删除旧统一模式记录..."
                     pause_unified_record
-                    
+                                    
                     local delete_result=$?
-                    if [ $delete_result -ne 0 ]; then
-                        echo -e "${YELLOW}[WARN] 删除失败（退出码: ${delete_result}），但将继续创建新记录${NC}"
+                    if [[ $delete_result -ne 0 ]]; then
+                        echo -e "${YELLOW}[WARN] 删除失败（退出码: ${delete_result}），但将继续创建新记录"
                     fi
-                    
+                                    
                     echo ""
-                    echo -e "${CYAN}正在创建新统一模式记录...${NC}"
-                    chmod +x "$(dirname "$0")/dnspod-isp.sh"
-                    "$(dirname "$0")/dnspod-isp.sh"
-                    
+                    echo -e "${CYAN}正在创建新统一模式记录..."
+                    chmod +x "$(dirname "$0")/core.sh"
+                    "$(dirname "$0")/core.sh" -m
+                                    
                     local create_result=$?
-                    if [ $create_result -eq 0 ]; then
+                    if [[ $create_result -eq 0 ]]; then
                         echo ""
-                        echo -e "${GREEN}[OK] 新统一模式记录创建成功${NC}"
+                        echo -e "${GREEN}[OK] 新统一模式记录创建成功"
                     else
                         echo ""
-                        echo -e "${YELLOW}[WARN] 新统一模式记录创建失败（退出码: ${create_result}）${NC}"
-                        echo -e "${CYAN}提示${NC}: 可以稍后手动运行 ./run.sh -m 创建"
+                        echo -e "${YELLOW}[WARN] 新统一模式记录创建失败（退出码: ${create_result}）"
+                        echo -e "${CYAN}提示: 可以稍后手动运行 ./core.sh -m 创建"
                     fi
-                elif [ "$handle_unified_change" = "2" ]; then
+                elif [[ "$handle_unified_change" == "2" ]]; then
                     # 保留旧记录，只创建新记录
                     echo ""
-                    echo -e "${CYAN}正在创建新统一模式记录...${NC}"
-                    chmod +x "$(dirname "$0")/dnspod-isp.sh"
-                    "$(dirname "$0")/dnspod-isp.sh"
-                    
+                    echo -e "${CYAN}正在创建新统一模式记录..."
+                    chmod +x "$(dirname "$0")/core.sh"
+                    "$(dirname "$0")/core.sh" -m
+                                    
                     local create_result=$?
-                    if [ $create_result -eq 0 ]; then
+                    if [[ $create_result -eq 0 ]]; then
                         echo ""
-                        echo -e "${GREEN}[OK] 新统一模式记录创建成功${NC}"
-                        echo -e "${YELLOW}[WARN] 注意${NC}: 旧记录 ${old_unified_subdomain}.${domain} 仍然保留"
+                        echo -e "${GREEN}[OK] 新统一模式记录创建成功"
+                        echo -e "${YELLOW}[WARN] 注意: 旧记录 ${old_unified_subdomain}.${domain} 仍然保留"
                     else
                         echo ""
-                        echo -e "${YELLOW}[WARN] 新统一模式记录创建失败（退出码: ${create_result}）${NC}"
-                        echo -e "${CYAN}提示${NC}: 可以稍后手动运行 ./run.sh -m 创建"
+                        echo -e "${YELLOW}[WARN] 新统一模式记录创建失败（退出码: ${create_result}）"
+                        echo -e "${CYAN}提示: 可以稍后手动运行 ./core.sh -m 创建"
                     fi
                 else
                     # 取消切换
-                    echo -e "${YELLOW}[INFO] 已取消切换，恢复为旧子域名${NC}"
+                    echo -e "${YELLOW}[INFO] 已取消切换，恢复为旧子域名"
                     update_config_value "SUB_DOMAIN_UNIFIED" "$old_unified_subdomain"
                     update_config_value "SUB_DOMAIN" "$old_unified_subdomain"
                     return 0
@@ -1947,85 +1913,86 @@ modify_subdomain_strategy() {
             else
                 # 子域名相同，直接创建记录
                 echo ""
-                echo -e "${CYAN}正在创建统一模式记录...${NC}"
-                chmod +x "$(dirname "$0")/dnspod-isp.sh"
-                "$(dirname "$0")/dnspod-isp.sh"
+                echo -e "${CYAN}正在创建统一模式记录..."
+                chmod +x "$(dirname "$0")/core.sh"
+                "$(dirname "$0")/core.sh" -m
                 
                 local create_result=$?
-                if [ $create_result -eq 0 ]; then
+                if [[ $create_result -eq 0 ]]; then
                     echo ""
-                    echo -e "${GREEN}[OK] 统一模式记录创建成功${NC}"
+                    echo -e "${GREEN}[OK] 统一模式记录创建成功"
                 else
                     echo ""
-                    echo -e "${YELLOW}[WARN] 统一模式记录创建失败（退出码: ${create_result}）${NC}"
-                    echo -e "${CYAN}提示${NC}: 可以稍后手动运行 ./run.sh -m 创建"
+                    echo -e "${YELLOW}[WARN] 统一模式记录创建失败（退出码: ${create_result}）"
+                    echo -e "${CYAN}提示: 可以稍后手动运行 ./core.sh -m 创建"
                 fi
             fi
         else
             # 从其他模式（如单线路）切换到统一模式，直接创建记录
             echo ""
-            echo -e "${CYAN}正在创建统一模式记录...${NC}"
-            chmod +x "$(dirname "$0")/dnspod-isp.sh"
-            "$(dirname "$0")/dnspod-isp.sh"
+            echo -e "${CYAN}正在创建统一模式记录..."
+            chmod +x "$(dirname "$0")/core.sh"
+            "$(dirname "$0")/core.sh" -m
             
             local create_result=$?
-            if [ $create_result -eq 0 ]; then
+            if [[ $create_result -eq 0 ]]; then
                 echo ""
-                echo -e "${GREEN}[OK] 统一模式记录创建成功${NC}"
+                echo -e "${GREEN}[OK] 统一模式记录创建成功"
             else
                 echo ""
-                echo -e "${YELLOW}[WARN] 统一模式记录创建失败（退出码: ${create_result}）${NC}"
-                echo -e "${CYAN}提示${NC}: 可以稍后手动运行 ./run.sh -m 创建"
+                echo -e "${YELLOW}[WARN] 统一模式记录创建失败（退出码: ${create_result}）"
+                echo -e "${CYAN}提示: 可以稍后手动运行 ./core.sh -m 创建"
             fi
         fi
         
-        echo -e "${CYAN}提示${NC}: 所有线路将使用: ${unified_subdomain}.${domain}"
+        echo -e "${CYAN}提示: 所有线路将使用: ${unified_subdomain}.${domain}"
     else
-        echo -e "${RED}[ERROR] 无效的选择${NC}"
+        echo -e "${RED}[ERROR] 无效的选择"
         return 0
     fi
     
     echo ""
-    echo -e "${GREEN}[OK] 子域名策略已更新${NC}"
+    echo -e "${GREEN}[OK] 子域名策略已更新"
     echo ""
-    read -p "按回车键继续..."
+    read -r -p "按回车键继续..."
 }
 
 # 同步 DNS 记录到分离模式
 sync_records_separate() {
     echo ""
-    echo -e "${CYAN}正在运行更新脚本创建各线路解析...${NC}"
+    echo -e "${CYAN}正在运行更新脚本创建各线路解析..."
     echo ""
     
     # 直接调用多线路更新脚本
-    chmod +x "$(dirname "$0")/dnspod-isp.sh"
-    "$(dirname "$0")/dnspod-isp.sh"
+    chmod +x "$(dirname "$0")/core.sh"
+    "$(dirname "$0")/core.sh" -m
     
     local exit_code=$?
     echo ""
     
-    if [ $exit_code -eq 0 ]; then
-        echo -e "${GREEN}[OK] DNS 记录同步完成${NC}"
+    if [[ $exit_code -eq 0 ]]; then
+        echo -e "${GREEN}[OK] DNS 记录同步完成"
         echo ""
-        echo -e "${CYAN}提示${NC}: 各线路已自动创建解析记录"
+        echo -e "${CYAN}提示: 各线路已自动创建解析记录"
     else
-        echo -e "${RED}[ERROR] DNS 记录同步失败 (退出码: ${exit_code})${NC}"
+        echo -e "${RED}[ERROR] DNS 记录同步失败 (退出码: ${exit_code})"
         echo ""
-        echo -e "${CYAN}提示${NC}: 请检查配置文件和 IP 文件是否正确"
+        echo -e "${CYAN}提示: 请检查配置文件和 IP 文件是否正确"
     fi
 }
 
 # 暂停分线路解析记录
 pause_separate_records() {
     echo ""
-    echo -e "${CYAN}正在删除分线路的 DNS 记录...${NC}"
+    echo -e "${CYAN}正在删除分线路的 DNS 记录..."
     echo ""
     
     # 读取配置
-    local domain=$(grep '^DOMAIN=' "$CONFIG_FILE" | cut -d'"' -f2)
-    local lines=$(grep '^ISP_LINES=' "$CONFIG_FILE" | cut -d'"' -f2)
+    local domain lines
+    domain=$(json_get ".dns.domain" "")
+    lines=$(json_get ".dns.isp_lines" "默认")
     
-    if [ -z "$domain" ]; then
+    if [[ -z "$domain" ]]; then
         echo -e "${RED}[ERROR]: 配置文件不完整"
         return 1
     fi
@@ -2039,11 +2006,12 @@ pause_separate_records() {
         return 1
     fi
     
-    echo -e "${CYAN}将删除以下线路的记录: ${delete_lines}${NC}"
+    echo -e "${CYAN}将删除以下线路的记录: ${delete_lines}"
     echo ""
     
     # 临时保存原 ISP_LINES，然后设置为要删除的线路
-    local original_isp_lines=$(grep '^ISP_LINES=' "$CONFIG_FILE")
+    local original_isp_lines
+    original_isp_lines=$(grep '^ISP_LINES=' "$CONFIG_FILE")
     if [ -n "$original_isp_lines" ]; then
         sed -i "s/^ISP_LINES=.*/ISP_LINES=\"${delete_lines}\"/" "$CONFIG_FILE"
     else
@@ -2051,13 +2019,13 @@ pause_separate_records() {
     fi
     
     # 直接调用删除脚本，并传递线路参数
-    chmod +x "$(dirname "$0")/dnspod-isp.sh"
-    "$(dirname "$0")/dnspod-isp.sh" --delete $delete_lines
+    chmod +x "$(dirname "$0")/core.sh"
+    "$(dirname "$0")/core.sh" -d "$delete_lines"
     
     local exit_code=$?
     
     # 恢复原来的 ISP_LINES 配置
-    if [ -n "$original_isp_lines" ]; then
+    if [[ -n "$original_isp_lines" ]]; then
         # 删除刚添加的行
         sed -i '/^ISP_LINES=/d' "$CONFIG_FILE"
         # 添加原来的配置
@@ -2069,27 +2037,27 @@ pause_separate_records() {
     
     echo ""
     
-    if [ $exit_code -eq 0 ]; then
-        echo -e "${GREEN}[OK] 分线路记录删除完成${NC}"
+    if [[ $exit_code -eq 0 ]]; then
+        echo -e "${GREEN}[OK] 分线路记录删除完成"
     else
-        echo -e "${RED}[ERROR] 删除失败 (退出码: ${exit_code})${NC}"
+        echo -e "${RED}[ERROR] 删除失败 (退出码: ${exit_code})"
     fi
 }
 
 # 删除统一模式的记录
 pause_unified_record() {
     echo ""
-    echo -e "${CYAN}正在删除统一模式的 DNS 记录...${NC}"
+    echo -e "${CYAN}正在删除统一模式的 DNS 记录..."
     echo ""
     
     # 读取配置
-    local domain=$(grep '^DOMAIN=' "$CONFIG_FILE" | cut -d'"' -f2)
-    local unified_subdomain=$(grep '^SUB_DOMAIN_UNIFIED=' "$CONFIG_FILE" | cut -d'"' -f2)
-    unified_subdomain=${unified_subdomain:-dns}
-    local secretid=$(grep '^SECRETID=' "$CONFIG_FILE" | cut -d'"' -f2)
-    local secretkey=$(grep '^SECRETKEY=' "$CONFIG_FILE" | cut -d'"' -f2)
+    local domain unified_subdomain secretid secretkey
+    domain=$(json_get ".dns.domain" "")
+    unified_subdomain=$(json_get ".dns.sub_domain_unified" "dns")
+    secretid=$(json_get ".api.id" "")
+    secretkey=$(json_get ".api.token" "")
     
-    if [ -z "$domain" ] || [ -z "$secretid" ] || [ -z "$secretkey" ]; then
+    if [[ -z "$domain" ]] || [[ -z "$secretid" ]] || [[ -z "$secretkey" ]]; then
         echo -e "${RED}[ERROR]: 配置文件不完整"
         return 1
     fi
@@ -2097,35 +2065,35 @@ pause_unified_record() {
     echo -e "  将删除: ${unified_subdomain}.${domain} 的所有运营商线路记录"
     echo ""
     
-    # 调用 dnspod-isp.sh 删除所有线路的统一模式记录
+    # 调用 core.sh 删除所有线路的统一模式记录
     # 传递 --delete-unified 参数
-    chmod +x "$(dirname "$0")/dnspod-isp.sh"
-    "$(dirname "$0")/dnspod-isp.sh" --delete-unified "$unified_subdomain"
+    chmod +x "$(dirname "$0")/core.sh"
+    "$(dirname "$0")/core.sh" --delete-unified "$unified_subdomain"
     
     local exit_code=$?
     echo ""
     
-    if [ $exit_code -eq 0 ]; then
-        echo -e "${GREEN}[OK] 统一模式记录删除完成${NC}"
+    if [[ $exit_code -eq 0 ]]; then
+        echo -e "${GREEN}[OK] 统一模式记录删除完成"
     else
-        echo -e "${RED}[ERROR] 删除失败 (退出码: ${exit_code})${NC}"
+        echo -e "${RED}[ERROR] 删除失败 (退出码: ${exit_code})"
     fi
 }
 
 # 删除统一模式中的非默认线路记录（保留默认线路供单线路使用）
 pause_unified_non_default_records() {
     echo ""
-    echo -e "${CYAN}正在删除统一模式的非默认线路记录...${NC}"
+    echo -e "${CYAN}正在删除统一模式的非默认线路记录..."
     echo ""
     
     # 读取配置
-    local domain=$(grep '^DOMAIN=' "$CONFIG_FILE" | cut -d'"' -f2)
-    local unified_subdomain=$(grep '^SUB_DOMAIN_UNIFIED=' "$CONFIG_FILE" | cut -d'"' -f2)
-    unified_subdomain=${unified_subdomain:-dns}
-    local secretid=$(grep '^SECRETID=' "$CONFIG_FILE" | cut -d'"' -f2)
-    local secretkey=$(grep '^SECRETKEY=' "$CONFIG_FILE" | cut -d'"' -f2)
+    local domain unified_subdomain secretid secretkey
+    domain=$(json_get ".dns.domain" "")
+    unified_subdomain=$(json_get ".dns.sub_domain_unified" "dns")
+    secretid=$(json_get ".api.id" "")
+    secretkey=$(json_get ".api.token" "")
     
-    if [ -z "$domain" ] || [ -z "$secretid" ] || [ -z "$secretkey" ]; then
+    if [[ -z "$domain" ]] || [[ -z "$secretid" ]] || [[ -z "$secretkey" ]]; then
         echo -e "${RED}[ERROR]: 配置文件不完整"
         return 1
     fi
@@ -2134,26 +2102,26 @@ pause_unified_non_default_records() {
     echo -e "  保留: ${unified_subdomain}.${domain} 的默认线路记录"
     echo ""
     
-    # 调用 dnspod-isp.sh 删除非默认线路
-    chmod +x "$(dirname "$0")/dnspod-isp.sh"
-    "$(dirname "$0")/dnspod-isp.sh" --delete-unified-non-default "$unified_subdomain"
+    # 调用 core.sh 删除非默认线路
+    chmod +x "$(dirname "$0")/core.sh"
+    "$(dirname "$0")/core.sh" --delete-unified-non-default "$unified_subdomain"
     
     local exit_code=$?
     echo ""
     
-    if [ $exit_code -eq 0 ]; then
-        echo -e "${GREEN}[OK] 非默认线路记录删除完成${NC}"
+    if [[ $exit_code -eq 0 ]]; then
+        echo -e "${GREEN}[OK] 非默认线路记录删除完成"
     else
-        echo -e "${RED}[ERROR] 删除失败 (退出码: ${exit_code})${NC}"
+        echo -e "${RED}[ERROR] 删除失败 (退出码: ${exit_code})"
     fi
 }
 
 # 修改运营商线路
 modify_isp_lines() {
     echo ""
-    echo -e "${CYAN}━━ 修改运营商线路 ━━${NC}"
+    echo -e "${CYAN}━━ 修改运营商线路 ━━"
     echo ""
-    echo "当前线路: $(grep '^ISP_LINES=' "$CONFIG_FILE" | cut -d'"' -f2)"
+    echo "当前线路: $(json_get ".dns.isp_lines" "默认")"
     echo ""
     echo "请选择需要更新的运营商线路 (可多选,用空格分隔):"
     echo ""
@@ -2165,12 +2133,12 @@ modify_isp_lines() {
     echo ""
     echo "示例输入: 1 2 3 4  (选择默认、联通、移动、电信)"
     echo ""
-    read -p "请输入选择的号码: " line_choices
+    read -r -p "请输入选择的号码: " line_choices
     
-    if [ -z "$line_choices" ]; then
-        echo -e "${YELLOW}[INFO] 未输入,保持当前设置${NC}"
+    if [[ -z "$line_choices" ]]; then
+        echo -e "${YELLOW}[INFO] 未输入,保持当前设置"
         echo ""
-        read -p "按回车键继续..."
+        read -r -p "按回车键继续..."
         return 0
     fi
     
@@ -2184,8 +2152,8 @@ modify_isp_lines() {
     )
     
     for choice in $line_choices; do
-        if [ -n "${line_map[$choice]}" ]; then
-            if [ -n "$ISP_LINES" ]; then
+        if [[ -n "${line_map[$choice]}" ]]; then
+            if [[ -n "$ISP_LINES" ]]; then
                 ISP_LINES="$ISP_LINES ${line_map[$choice]}"
             else
                 ISP_LINES="${line_map[$choice]}"
@@ -2193,54 +2161,57 @@ modify_isp_lines() {
         fi
     done
     
-    if [ -z "$ISP_LINES" ]; then
-        echo -e "${RED}[ERROR] 无效的选择${NC}"
+    if [[ -z "$ISP_LINES" ]]; then
+        echo -e "${RED}[ERROR] 无效的选择"
         echo ""
-        read -p "按回车键继续..."
+        read -r -p "按回车键继续..."
         return 1
     fi
     
     update_config_value "ISP_LINES" "$ISP_LINES"
-    echo -e "${GREEN}[OK] 运营商线路已更新: ${ISP_LINES}${NC}"
+    echo -e "${GREEN}[OK] 运营商线路已更新: ${ISP_LINES}"
     echo ""
-    read -p "按回车键继续..."
+    read -r -p "按回车键继续..."
 }
 
 # 修改 IP 文件路径
 modify_ip_files() {
     echo ""
-    echo -e "${CYAN}━━ 修改 IP 文件路径 ━━${NC}"
+    echo -e "${CYAN}━━ 修改 IP 文件路径 ━━"
     echo ""
     
-    source "$CONFIG_FILE"
+    local mode
+    mode=$(json_get ".dns.mode" "single")
     
-    if [ "$MODE" = "single" ]; then
-        local current_ip_file=$(grep '^IP_FILE_SINGLE=' "$CONFIG_FILE" | cut -d'"' -f2)
+    if [[ "$mode" == "single" ]]; then
+        local current_ip_file
+        current_ip_file=$(json_get ".ip_source.file_path" "")
         echo "当前 IP 文件: ${current_ip_file}"
         echo ""
-        echo -e "${CYAN}提示${NC}: IP 文件包含优选的 Cloudflare IP 列表"
+        echo -e "${CYAN}提示: IP 文件包含优选的 Cloudflare IP 列表"
         echo "   格式: 每行一个 IP,或用逗号分隔"
         echo "   示例: $ROOT_DIR/assets/data/dnspod-dns/mobile.txt"
         echo ""
-        read -p "请输入新的 IP 文件路径 [${current_ip_file}]: " new_ip_file
+        read -r -p "请输入新的 IP 文件路径 [${current_ip_file}]: " new_ip_file
         new_ip_file=${new_ip_file:-$current_ip_file}
         
-        if [ -n "$new_ip_file" ]; then
+        if [[ -n "$new_ip_file" ]]; then
             # 验证路径格式(只允许字母数字、下划线、斜杠、点、横线)
             if ! [[ "$new_ip_file" =~ ^[a-zA-Z0-9_./-]+$ ]]; then
-                echo -e "${RED}[ERROR] 无效的文件路径格式${NC}"
+                echo -e "${RED}[ERROR] 无效的文件路径格式"
                 return 0
             fi
             update_config_value "IP_FILE_SINGLE" "$new_ip_file"
-            echo -e "${GREEN}[OK] IP 文件路径已更新: ${new_ip_file}${NC}"
+            echo -e "${GREEN}[OK] IP 文件路径已更新: ${new_ip_file}"
         fi
     else
         echo "多线路模式下,每个线路有独立的 IP 文件:"
         echo ""
-        local ip_default=$(grep '^IP_FILE_DEFAULT=' "$CONFIG_FILE" | cut -d'"' -f2)
-        local ip_unicom=$(grep '^IP_FILE_UNICOM=' "$CONFIG_FILE" | cut -d'"' -f2)
-        local ip_mobile=$(grep '^IP_FILE_MOBILE=' "$CONFIG_FILE" | cut -d'"' -f2)
-        local ip_telecom=$(grep '^IP_FILE_TELECOM=' "$CONFIG_FILE" | cut -d'"' -f2)
+        local ip_default ip_unicom ip_mobile ip_telecom
+        ip_default=$(json_get ".ip_source.files.default" "")
+        ip_unicom=$(json_get ".ip_source.files.unicom" "")
+        ip_mobile=$(json_get ".ip_source.files.mobile" "")
+        ip_telecom=$(json_get ".ip_source.files.telecom" "")
         
         echo "  1) 默认线路: ${ip_default}"
         echo "  2) 联通线路: ${ip_unicom}"
@@ -2249,76 +2220,76 @@ modify_ip_files() {
         echo ""
         echo "  0) 返回上级菜单"
         echo ""
-        echo -e "${CYAN}提示${NC}: IP 文件包含优选的 Cloudflare IP 列表"
+        echo -e "${CYAN}提示: IP 文件包含优选的 Cloudflare IP 列表"
         echo "   格式: 每行一个 IP,或用逗号分隔"
         echo ""
         
-        read -p "请选择要修改的线路 (0-4): " line_choice
+        read -r -p "请选择要修改的线路 (0-4): " line_choice
         
         case "$line_choice" in
             0)
-                echo -e "${YELLOW}[INFO] 已取消${NC}"
+                echo -e "${YELLOW}[INFO] 已取消"
                 return 0
                 ;;
             1)
-                read -p "请输入默认线路 IP 文件路径 [${ip_default}]: " new_path
+                read -r -p "请输入默认线路 IP 文件路径 [${ip_default}]: " new_path
                 new_path=${new_path:-$ip_default}
-                if [ -n "$new_path" ]; then
+                if [[ -n "$new_path" ]]; then
                     # 验证路径格式
                     if ! [[ "$new_path" =~ ^[a-zA-Z0-9_./-]+$ ]]; then
-                        echo -e "${RED}[ERROR] 无效的文件路径格式${NC}"
+                        echo -e "${RED}[ERROR] 无效的文件路径格式"
                         return 0
                     fi
                     update_config_value "IP_FILE_DEFAULT" "$new_path"
-                    echo -e "${GREEN}[OK] 默认线路 IP 文件已更新: ${new_path}${NC}"
+                    echo -e "${GREEN}[OK] 默认线路 IP 文件已更新: ${new_path}"
                 fi
                 ;;
             2)
-                read -p "请输入联通线路 IP 文件路径 [${ip_unicom}]: " new_path
+                read -r -p "请输入联通线路 IP 文件路径 [${ip_unicom}]: " new_path
                 new_path=${new_path:-$ip_unicom}
-                if [ -n "$new_path" ]; then
+                if [[ -n "$new_path" ]]; then
                     # 验证路径格式
                     if ! [[ "$new_path" =~ ^[a-zA-Z0-9_./-]+$ ]]; then
-                        echo -e "${RED}[ERROR] 无效的文件路径格式${NC}"
+                        echo -e "${RED}[ERROR] 无效的文件路径格式"
                         return 0
                     fi
                     update_config_value "IP_FILE_UNICOM" "$new_path"
-                    echo -e "${GREEN}[OK] 联通线路 IP 文件已更新: ${new_path}${NC}"
+                    echo -e "${GREEN}[OK] 联通线路 IP 文件已更新: ${new_path}"
                 fi
                 ;;
             3)
-                read -p "请输入移动线路 IP 文件路径 [${ip_mobile}]: " new_path
+                read -r -p "请输入移动线路 IP 文件路径 [${ip_mobile}]: " new_path
                 new_path=${new_path:-$ip_mobile}
-                if [ -n "$new_path" ]; then
+                if [[ -n "$new_path" ]]; then
                     # 验证路径格式
                     if ! [[ "$new_path" =~ ^[a-zA-Z0-9_./-]+$ ]]; then
-                        echo -e "${RED}[ERROR] 无效的文件路径格式${NC}"
+                        echo -e "${RED}[ERROR] 无效的文件路径格式"
                         return 0
                     fi
                     update_config_value "IP_FILE_MOBILE" "$new_path"
-                    echo -e "${GREEN}[OK] 移动线路 IP 文件已更新: ${new_path}${NC}"
+                    echo -e "${GREEN}[OK] 移动线路 IP 文件已更新: ${new_path}"
                 fi
                 ;;
             4)
-                read -p "请输入电信线路 IP 文件路径 [${ip_telecom}]: " new_path
+                read -r -p "请输入电信线路 IP 文件路径 [${ip_telecom}]: " new_path
                 new_path=${new_path:-$ip_telecom}
                 if [ -n "$new_path" ]; then
                     # 验证路径格式
                     if ! [[ "$new_path" =~ ^[a-zA-Z0-9_./-]+$ ]]; then
-                        echo -e "${RED}[ERROR] 无效的文件路径格式${NC}"
+                        echo -e "${RED}[ERROR] 无效的文件路径格式"
                         return 0
                     fi
                     update_config_value "IP_FILE_TELECOM" "$new_path"
-                    echo -e "${GREEN}[OK] 电信线路 IP 文件已更新: ${new_path}${NC}"
+                    echo -e "${GREEN}[OK] 电信线路 IP 文件已更新: ${new_path}"
                 fi
                 ;;
             *)
-                echo -e "${YELLOW}[INFO] 无效的选择${NC}"
+                echo -e "${YELLOW}[INFO] 无效的选择"
                 ;;
         esac
     fi
     echo ""
-    read -p "按回车键继续..."
+    read -r -p "按回车键继续..."
 }
 
 # ==================== IP 数据管理功能 ====================
@@ -2326,97 +2297,103 @@ modify_ip_files() {
 # IP 内容管理入口
 manage_ip_content() {
     echo ""
-    echo -e "${CYAN}━━ IP 优选数据管理 ━━${NC}"
+    echo -e "${CYAN}━━ IP 优选数据管理 ━━"
     echo ""
     
-    source "$CONFIG_FILE"
+    local mode ip_file
+    mode=$(json_get ".dns.mode" "single")
     
-    if [ "$MODE" = "single" ]; then
+    if [[ "$mode" = "single" ]]; then
         # 单线路模式下的 IP 文件处理
-        local ip_file="$IP_FILE_SINGLE"
+        ip_file=$(json_get ".ip_source.file_path" "")
         echo "当前运行模式: 单线路解析"
         echo "数据存储路径: ${ip_file}"
         
-        if [ -f "$ip_file" ]; then
+        if [[ -f "$ip_file" ]]; then
             # 提取并展平所有有效 IP (支持逗号或换行分隔)
-            local all_ips=$(cat "$ip_file" | tr ',' '\n' | grep -v '^\s*#' | grep -v '^\s*$' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
-            local ip_count=$(echo "$all_ips" | wc -l)
+            local all_ips
+            all_ips=$(cat "$ip_file" | tr ',' '\n' | grep -v '^\s*#' | grep -v '^\s*$' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
+            local ip_count
+            ip_count=$(echo "$all_ips" | wc -l)
             echo "当前收录 IP 数量: ${ip_count}"
             echo ""
             echo "已录入 IP 列表:"
             echo "$all_ips" | nl -ba
         else
-            echo -e "${RED}[ERROR] 目标 IP 数据文件不存在。${NC}"
+            echo -e "${RED}[ERROR] 目标 IP 数据文件不存在。"
         fi
         
         echo ""
-        echo -e "${CYAN}请选择操作:${NC}"
+        echo -e "${CYAN}请选择操作:"
         echo ""
-        echo -e "  ${GREEN}➤${NC} 1. 输入/编辑 IP     ${YELLOW}[推荐]${NC}"
-        echo -e "  ${GREEN}➤${NC} 2. 清空所有 IP"
-        echo -e "  ${GREEN}➤${NC} 3. 查看完整列表"
-        echo -e "  ${GREEN}➤${NC} 4. 删除指定 IP"
+        echo -e "  ${GREEN}[OK] 1. 输入/编辑 IP     ${YELLOW}[推荐]"
+        echo -e "  ${GREEN}[OK] 2. 清空所有 IP"
+        echo -e "  ${GREEN}[OK] 3. 查看完整列表"
+        echo -e "  ${GREEN}[OK] 4. 删除指定 IP"
         echo ""
-        echo -e "  ${RED}➤${NC} 0. 返回主菜单"
+        echo -e "  ${RED}[BACK] 0. 返回主菜单"
         echo ""
-        read -p "  请输入选项 [0-4]: " action
+        read -r -p "  请输入选项 [0-4]: " action
         
         case "$action" in
             1)
                 # 执行 IP 录入或编辑流程
                 clear
-                if [ -f "$ip_file" ]; then
-                    local old_count=$(cat "$ip_file" | tr ',' '\n' | grep -v '^\s*#' | grep -v '^\s*$' | wc -l)
+                if [[ -f "$ip_file" ]]; then
+                    local old_count
+                    old_count=$(grep -v '^\s*#' "$ip_file" | grep -cv '^\s*$')
                     echo ""
-                    echo -e "${CYAN}检测到现有文件 (${old_count} 个 IP)${NC}"
+                    echo -e "${CYAN}检测到现有文件 (${old_count} 个 IP)"
                     echo ""
-                    echo -e "${CYAN}请选择操作:${NC}"
+                    echo -e "${CYAN}请选择操作:"
                     echo ""
-                    echo -e "  ${GREEN}➤${NC} 1. 覆盖     ${YELLOW}[备份后清空]${NC}"
-                    echo -e "  ${GREEN}➤${NC} 2. 追加     ${YELLOW}[在现有基础上添加]${NC}"
-                    echo -e "  ${GREEN}➤${NC} 3. 清空     ${RED}[备份后删除所有]${NC}"
-                    echo -e "  ${GREEN}➤${NC} 4. 跳过     ${CYAN}[取消操作]${NC}"
+                    echo -e "  ${GREEN}[OK] 1. 覆盖     ${YELLOW}[备份后清空]"
+                    echo -e "  ${GREEN}[OK] 2. 追加     ${YELLOW}[在现有基础上添加]"
+                    echo -e "  ${GREEN}[OK] 3. 清空     ${RED}[备份后删除所有]"
+                    echo -e "  ${GREEN}[OK] 4. 跳过     ${CYAN}[取消操作]"
                     echo ""
-                    read -p "  请输入选项 [1-4, 默认 1]: " choice
+                    read -r -p "  请输入选项 [1-4, 默认 1]: " choice
                     choice=${choice:-1}
                     
                     case "$choice" in
                         1)
                             cp "$ip_file" "${ip_file}.bak.$(date +%s)"
-                            echo -e "\n  ${GREEN}[OK]${NC} 已备份旧文件"
-                            echo -e "  ${YELLOW}[WARN]${NC} 将清空现有内容，准备输入新 IP"
-                            > "$ip_file"
+                            echo -e "\n  ${GREEN}[OK] 已备份旧文件"
+                            echo -e "  ${YELLOW}[WARN] 将清空现有内容，准备输入新 IP"
+                            true > "$ip_file"
                             ;;
                         2)
-                            echo -e "\n  ${GREEN}[INFO]${NC} 提示: 将在现有 ${old_count} 个 IP 后追加"
+                            echo -e "\n  ${GREEN}[INFO] 提示: 将在现有 ${old_count} 个 IP 后追加"
                             ;;
                         3)
                             cp "$ip_file" "${ip_file}.bak.$(date +%s)"
-                            > "$ip_file"
-                            echo -e "\n  ${GREEN}[OK]${NC} 已清空文件 (已备份)"
-                            echo -e "  ${YELLOW}[WARN]${NC} 所有 IP 已删除，准备输入新 IP"
+                            true > "$ip_file"
+                            echo -e "\n  ${GREEN}[OK] 已清空文件 (已备份)"
+                            echo -e "  ${YELLOW}[WARN] 所有 IP 已删除，准备输入新 IP"
                             ;;
                         4)
-                            echo -e "\n  ${CYAN}[INFO]${NC} 已取消操作"
-                            read -p "  按回车键继续..."
+                            echo -e "\n  ${CYAN}[INFO] 已取消操作"
+                            read -r -p "  按回车键继续..."
                             return 0
                             ;;
                     esac
                 fi
                 
                 echo ""
-                echo -e "${CYAN}请输入 IP 地址 (支持格式: 每行一个 或 逗号分隔):${NC}"
+                echo -e "${CYAN}请输入 IP 地址 (支持格式: 每行一个 或 逗号分隔):"
                 echo "示例: 104.16.132.229,104.16.133.229"
                 echo "      或每行一个 IP"
                 echo "空行结束输入"
                 echo ""
                 
-                local temp_file=$(mktemp)
+                local temp_file
+                temp_file=$(mktemp)
                 local valid_count=0
+                # shellcheck disable=SC2034
                 local invalid_count=0
                 
                 while IFS= read -r line; do
-                    [ -z "$line" ] && break
+                    [[ -z "$line" ]] && break
                     
                     # 将逗号、分号分隔转换为换行，并逐个验证
                     echo "$line" | tr ',;' '\n' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//' | grep -v '^$' | while read -r ip; do
@@ -2426,41 +2403,42 @@ manage_ip_content() {
                             local valid=true
                             IFS='.' read -ra octets <<< "$ip"
                             for octet in "${octets[@]}"; do
-                                if [ "$octet" -gt 255 ] 2>/dev/null; then
+                                if [[ "$octet" -gt 255 ]] 2>/dev/null; then
                                     valid=false
                                     break
                                 fi
                             done
                             
-                            if [ "$valid" = true ]; then
+                            if [[ "$valid" == true ]]; then
                                 echo "$ip" >> "$temp_file"
-                                echo -e "  ${GREEN}[OK]${NC} $ip"
+                                echo -e "  ${GREEN}[OK] $ip"
                             else
-                                echo -e "  ${RED}[ERROR]${NC} $ip ${YELLOW}(无效的 IP 地址)${NC}"
+                                echo -e "  ${RED}[ERROR] $ip ${YELLOW}(无效的 IP 地址)"
                             fi
                         else
-                            echo -e "  ${RED}[ERROR]${NC} $ip ${YELLOW}(格式错误)${NC}"
+                            echo -e "  ${RED}[ERROR] $ip ${YELLOW}(格式错误)"
                         fi
                     done
                 done
                 
                 # 统计结果
-                if [ -s "$temp_file" ]; then
+                if [[ -s "$temp_file" ]]; then
                     valid_count=$(wc -l < "$temp_file")
                 fi
                 
                 # 追加到目标文件
-                if [ -s "$temp_file" ]; then
+                if [[ -s "$temp_file" ]]; then
                     cat "$temp_file" >> "$ip_file"
                     chmod 644 "$ip_file"
                     
-                    local new_count=$(cat "$ip_file" | tr ',' '\n' | grep -v '^\s*#' | grep -v '^\s*$' | wc -l)
+                    local new_count
+                    new_count=$(grep -v '^\s*#' "$ip_file" | grep -cv '^\s*$')
                     echo ""
-                    echo -e "${GREEN}[OK] 已保存 ${valid_count} 个有效 IP${NC}"
+                    echo -e "${GREEN}[OK] 已保存 ${valid_count} 个有效 IP"
                     echo -e "   当前总 IP 数: ${new_count}"
                 else
                     echo ""
-                    echo -e "${YELLOW}[INFO] 未输入任何有效 IP${NC}"
+                    echo -e "${YELLOW}[INFO] 未输入任何有效 IP"
                 fi
                 
                 rm -f "$temp_file"
@@ -2468,40 +2446,42 @@ manage_ip_content() {
             2)
                 # 清空
                 clear
-                if [ -f "$ip_file" ]; then
+                if [[ -f "$ip_file" ]]; then
                     cp "$ip_file" "${ip_file}.bak.$(date +%s)"
-                    > "$ip_file"
-                    echo -e "${GREEN}[OK] 已清空所有 IP (已备份)${NC}"
+                    true > "$ip_file"
+                    echo -e "${GREEN}[OK] 已清空所有 IP (已备份)"
                 else
-                    echo -e "${YELLOW}[INFO] 文件不存在,无需清空${NC}"
+                    echo -e "${YELLOW}[INFO] 文件不存在,无需清空"
                 fi
                 ;;
             3)
                 # 查看
                 clear
-                if [ -f "$ip_file" ]; then
+                if [[ -f "$ip_file" ]]; then
                     echo ""
                     echo "完整 IP 列表:"
                     cat "$ip_file" | tr ',' '\n' | grep -v '^\s*#' | grep -v '^\s*$' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//' | nl -ba
                 else
-                    echo -e "${RED}[ERROR] 文件不存在${NC}"
+                    echo -e "${RED}[ERROR] 文件不存在"
                 fi
                 ;;
             4)
                 # 删除指定 IP
                 clear
-                if [ ! -f "$ip_file" ]; then
-                    echo -e "${RED}[ERROR] 文件不存在${NC}"
-                    read -p "按回车键继续..."
+                if [[ ! -f "$ip_file" ]]; then
+                    echo -e "${RED}[ERROR] 文件不存在"
+                    read -r -p "按回车键继续..."
                     return 0
                 fi
                 
-                local all_ips=$(cat "$ip_file" | tr ',' '\n' | grep -v '^\s*#' | grep -v '^\s*$' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
-                local ip_count=$(echo "$all_ips" | wc -l)
+                local all_ips
+                all_ips=$(cat "$ip_file" | tr ',' '\n' | grep -v '^\s*#' | grep -v '^\s*$' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
+                local ip_count
+                ip_count=$(echo "$all_ips" | wc -l)
                 
-                if [ "$ip_count" -eq 0 ]; then
-                    echo -e "${YELLOW}[INFO] 文件中没有 IP${NC}"
-                    read -p "按回车键继续..."
+                if [[ "$ip_count" -eq 0 ]]; then
+                    echo -e "${YELLOW}[INFO] 文件中没有 IP"
+                    read -r -p "按回车键继续..."
                     return 0
                 fi
                 
@@ -2512,37 +2492,39 @@ manage_ip_content() {
                 echo "请输入要删除的 IP 行号 (多个行号用空格分隔):"
                 echo "例如: 2 或 1 3 5"
                 echo ""
-                read -p "请输入行号: " delete_lines
+                read -r -p "请输入行号: " delete_lines
                 
-                if [ -z "$delete_lines" ]; then
-                    echo -e "${YELLOW}[INFO] 未输入,取消删除${NC}"
-                    read -p "按回车键继续..."
+                if [[ -z "$delete_lines" ]]; then
+                    echo -e "${YELLOW}[INFO] 未输入,取消删除"
+                    read -r -p "按回车键继续..."
                     return 0
                 fi
                 
                 # 验证输入是否为数字(允许多个数字用空格分隔)
                 if ! [[ "$delete_lines" =~ ^[0-9]+([[:space:]]+[0-9]+)*$ ]]; then
-                    echo -e "${RED}[ERROR] 无效的行号格式,请输入数字(多个用空格分隔)${NC}"
-                    read -p "按回车键继续..."
+                    echo -e "${RED}[ERROR] 无效的行号格式,请输入数字(多个用空格分隔)"
+                    read -r -p "按回车键继续..."
                     return 0
                 fi
                 
                 # 验证行号是否在有效范围内
-                local lines_to_delete_arr=($delete_lines)
+                local -a lines_to_delete_arr
+                mapfile -t lines_to_delete_arr <<< "$delete_lines"
                 for del_line in "${lines_to_delete_arr[@]}"; do
-                    if [ "$del_line" -lt 1 ] || [ "$del_line" -gt "$ip_count" ]; then
-                        echo -e "${RED}[ERROR] 行号 ${del_line} 超出范围 (1-${ip_count})${NC}"
-                        read -p "按回车键继续..."
+                    if [[ "$del_line" -lt 1 ]] || [[ "$del_line" -gt "$ip_count" ]]; then
+                        echo -e "${RED}[ERROR] 行号 ${del_line} 超出范围 (1-${ip_count})"
+                        read -r -p "按回车键继续..."
                         return 0
                     fi
                 done
                 
                 # 备份原文件
                 cp "$ip_file" "${ip_file}.bak.$(date +%s)"
-                echo -e "${GREEN}[OK] 已备份原文件${NC}"
+                echo -e "${GREEN}[OK] 已备份原文件"
                 
                 # 将行号转换为数组
-                local lines_to_delete=($delete_lines)
+                local -a lines_to_delete
+                mapfile -t lines_to_delete <<< "$delete_lines"
                 
                 # 构建新的IP列表(排除要删除的行)
                 local new_ips=""
@@ -2551,14 +2533,14 @@ manage_ip_content() {
                     line_num=$((line_num + 1))
                     local should_delete=false
                     for del_line in "${lines_to_delete[@]}"; do
-                        if [ "$line_num" -eq "$del_line" ]; then
+                        if [[ "$line_num" -eq "$del_line" ]]; then
                             should_delete=true
                             break
                         fi
                     done
                     
-                    if [ "$should_delete" = false ]; then
-                        if [ -n "$new_ips" ]; then
+                    if [[ "$should_delete" == false ]]; then
+                        if [[ -n "$new_ips" ]]; then
                             new_ips="${new_ips}
 ${ip}"
                         else
@@ -2572,329 +2554,57 @@ ${ip}"
                 chmod 644 "$ip_file"
                 
                 local deleted_count=${#lines_to_delete[@]}
-                local remaining_count=$(cat "$ip_file" | tr ',' '\n' | grep -v '^\s*#' | grep -v '^\s*$' | wc -l)
-                echo -e "${GREEN}[OK] 已删除 ${deleted_count} 个 IP,剩余 ${remaining_count} 个${NC}"
+                local remaining_count
+                remaining_count=$(grep -v '^\s*#' "$ip_file" | grep -cv '^\s*$')
+                echo -e "${GREEN}[OK] 已删除 ${deleted_count} 个 IP,剩余 ${remaining_count} 个"
                 ;;
             0)
                 return 0
                 ;;
             *)
-                echo -e "${RED}[ERROR] 无效的选择${NC}"
+                echo -e "${RED}[ERROR] 无效的选择"
                 ;;
         esac
         
         echo ""
-        read -p "按回车键继续..."
-    else
-        # 多线路模式
-        echo "当前模式: 多线路模式"
-        echo ""
-        
-        local lines=("默认" "联通" "移动" "电信")
-        local files=("$IP_FILE_DEFAULT" "$IP_FILE_UNICOM" "$IP_FILE_MOBILE" "$IP_FILE_TELECOM")
-        
-        echo "各线路 IP 文件状态:"
-        for i in "${!lines[@]}"; do
-            local file="${files[$i]}"
-            if [ -f "$file" ]; then
-                # 过滤掉注释行,只统计有效IP(支持逗号分隔)
-                local count=$(cat "$file" | tr ',' '\n' | grep -v '^\s*#' | grep -v '^\s*$' | wc -l)
-                echo "  ${lines[$i]}: ${count} 个 IP (${file})"
-            else
-                echo "  ${lines[$i]}: 文件不存在 (${file})"
-            fi
-        done
-        
-        echo ""
-        echo "请选择要管理的线路:"
-        echo "  1) 默认线路"
-        echo "  2) 联通线路"
-        echo "  3) 移动线路"
-        echo "  4) 电信线路"
-        echo "  0) 返回"
-        echo ""
-        read -p "请选择 (0-4): " line_choice
-        
-        if [ "$line_choice" -ge 1 ] && [ "$line_choice" -le 4 ]; then
-            local idx=$((line_choice - 1))
-            local ip_file="${files[$idx]}"
-            local line_name="${lines[$idx]}"
-            
-            echo ""
-            echo "当前线路: ${line_name}"
-            echo "IP 文件: ${ip_file}"
-            
-            if [ -f "$ip_file" ]; then
-                # 读取并展平所有IP(支持逗号和换行分隔)
-                local all_ips=$(cat "$ip_file" | tr ',' '\n' | grep -v '^\s*#' | grep -v '^\s*$' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
-                local ip_count=$(echo "$all_ips" | wc -l)
-                echo "当前 IP 数量: ${ip_count}"
-                echo ""
-                echo "IP 列表 (每行一个):"
-                echo "$all_ips" | nl -ba
-            else
-                echo -e "${RED}[ERROR] IP 文件不存在${NC}"
-            fi
-            
-            echo ""
-            echo "请选择操作:"
-            echo "  1) 输入/编辑 IP"
-            echo "  2) 清空所有 IP"
-            echo "  3) 查看完整列表"
-            echo "  4) 删除指定 IP"
-            echo "  0) 返回"
-            echo ""
-            read -p "请选择 (0-4): " action
-            
-            case "$action" in
-                1)
-                    if [ -f "$ip_file" ]; then
-                        local old_count=$(cat "$ip_file" | tr ',' '\n' | grep -v '^\s*#' | grep -v '^\s*$' | wc -l)
-                        echo ""
-                        echo -e "${CYAN}检测到现有文件 (${old_count} 个 IP)${NC}"
-                        echo ""
-                        echo -e "${CYAN}请选择操作:${NC}"
-                        echo ""
-                        echo -e "  ${GREEN}➤${NC} 1. 覆盖     ${YELLOW}[备份后清空]${NC}"
-                        echo -e "  ${GREEN}➤${NC} 2. 追加     ${YELLOW}[在现有基础上添加]${NC}"
-                        echo -e "  ${GREEN}➤${NC} 3. 清空     ${RED}[备份后删除所有]${NC}"
-                        echo -e "  ${GREEN}➤${NC} 4. 跳过     ${CYAN}[取消操作]${NC}"
-                        echo ""
-                        read -p "  请输入选项 [1-4, 默认 1]: " choice
-                        choice=${choice:-1}
-                        
-                        case "$choice" in
-                            1)
-                                cp "$ip_file" "${ip_file}.bak.$(date +%s)"
-                                echo -e "\n  ${GREEN}[OK]${NC} 已备份旧文件"
-                                echo -e "  ${YELLOW}[WARN]${NC} 将清空现有内容，准备输入新 IP"
-                                > "$ip_file"
-                                ;;
-                            2)
-                                echo -e "\n  ${GREEN}[INFO]${NC} 提示: 将在现有 ${old_count} 个 IP 后追加"
-                                ;;
-                            3)
-                                cp "$ip_file" "${ip_file}.bak.$(date +%s)"
-                                > "$ip_file"
-                                echo -e "\n  ${GREEN}[OK]${NC} 已清空文件 (已备份)"
-                                echo -e "  ${YELLOW}[WARN]${NC} 所有 IP 已删除，准备输入新 IP"
-                                ;;
-                            4)
-                                echo -e "\n  ${CYAN}[INFO]${NC} 已取消操作"
-                                read -p "  按回车键继续..."
-                                return 0
-                                ;;
-                        esac
-                    fi
-                    
-                    echo ""
-                    echo -e "${CYAN}请输入 IP 地址 (支持格式: 每行一个 或 逗号分隔):${NC}"
-                    echo "示例: 104.16.132.229,104.16.133.229"
-                    echo "      或每行一个 IP"
-                    echo "空行结束输入"
-                    echo ""
-                    
-                    local temp_file=$(mktemp)
-                    local valid_count=0
-                    local invalid_count=0
-                    
-                    while IFS= read -r line; do
-                        [ -z "$line" ] && break
-                        
-                        # 将逗号、分号分隔转换为换行，并逐个验证
-                        echo "$line" | tr ',;' '\n' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//' | grep -v '^$' | while read -r ip; do
-                            # 实时验证 IP 格式
-                            if [[ "$ip" =~ ^([0-9]{1,3}\.){3}[0-9]{1,3}$ ]]; then
-                                # 进一步验证每个段是否 <= 255
-                                local valid=true
-                                IFS='.' read -ra octets <<< "$ip"
-                                for octet in "${octets[@]}"; do
-                                    if [ "$octet" -gt 255 ] 2>/dev/null; then
-                                        valid=false
-                                        break
-                                    fi
-                                done
-                                
-                                if [ "$valid" = true ]; then
-                                    echo "$ip" >> "$temp_file"
-                                    echo -e "  ${GREEN}[OK]${NC} $ip"
-                                else
-                                    echo -e "  ${RED}[ERROR]${NC} $ip ${YELLOW}(无效的 IP 地址)${NC}"
-                                fi
-                            else
-                                echo -e "  ${RED}[ERROR]${NC} $ip ${YELLOW}(格式错误)${NC}"
-                            fi
-                        done
-                    done
-                    
-                    # 统计结果
-                    if [ -s "$temp_file" ]; then
-                        valid_count=$(wc -l < "$temp_file")
-                    fi
-                    
-                    # 追加到目标文件
-                    if [ -s "$temp_file" ]; then
-                        cat "$temp_file" >> "$ip_file"
-                        chmod 644 "$ip_file"
-                        
-                        local new_count=$(cat "$ip_file" | tr ',' '\n' | grep -v '^\s*#' | grep -v '^\s*$' | wc -l)
-                        echo ""
-                        echo -e "${GREEN}[OK] ${line_name}线路已保存 ${valid_count} 个有效 IP${NC}"
-                        echo -e "   当前总 IP 数: ${new_count}"
-                    else
-                        echo ""
-                        echo -e "${YELLOW}[INFO] 未输入任何有效 IP${NC}"
-                    fi
-                    
-                    rm -f "$temp_file"
-                    ;;
-                2)
-                    if [ -f "$ip_file" ]; then
-                        cp "$ip_file" "${ip_file}.bak.$(date +%s)"
-                        > "$ip_file"
-                        echo -e "${GREEN}[OK] 已清空 ${line_name}线路的所有 IP (已备份)${NC}"
-                    fi
-                    ;;
-                3)
-                    if [ -f "$ip_file" ]; then
-                        echo ""
-                        echo "${line_name}线路完整 IP 列表:"
-                        cat "$ip_file" | tr ',' '\n' | grep -v '^\s*#' | grep -v '^\s*$' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//' | nl -ba
-                    fi
-                    ;;
-                4)
-                    # 删除指定 IP
-                    if [ ! -f "$ip_file" ]; then
-                        echo -e "${RED}[ERROR] 文件不存在${NC}"
-                        return 0
-                    fi
-                    
-                    local all_ips=$(cat "$ip_file" | tr ',' '\n' | grep -v '^\s*#' | grep -v '^\s*$' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
-                    local ip_count=$(echo "$all_ips" | wc -l)
-                    
-                    if [ "$ip_count" -eq 0 ]; then
-                        echo -e "${YELLOW}[INFO] 文件中没有 IP${NC}"
-                        return 0
-                    fi
-                    
-                    echo ""
-                    echo "当前 IP 列表:"
-                    echo "$all_ips" | nl -ba
-                    echo ""
-                    echo "请输入要删除的 IP 行号 (多个行号用空格分隔):"
-                    echo "例如: 2 或 1 3 5"
-                    echo ""
-                    read -p "请输入行号: " delete_lines
-                    
-                    if [ -z "$delete_lines" ]; then
-                        echo -e "${YELLOW}[INFO] 未输入,取消删除${NC}"
-                        return 0
-                    fi
-                    
-                    # 验证输入是否为数字(允许多个数字用空格分隔)
-                    if ! [[ "$delete_lines" =~ ^[0-9]+([[:space:]]+[0-9]+)*$ ]]; then
-                        echo -e "${RED}[ERROR] 无效的行号格式,请输入数字(多个用空格分隔)${NC}"
-                        return 0
-                    fi
-                    
-                    # 验证行号是否在有效范围内
-                    local lines_to_delete=($delete_lines)
-                    for del_line in "${lines_to_delete[@]}"; do
-                        if [ "$del_line" -lt 1 ] || [ "$del_line" -gt "$ip_count" ]; then
-                            echo -e "${RED}[ERROR] 行号 ${del_line} 超出范围 (1-${ip_count})${NC}"
-                            return 0
-                        fi
-                    done
-                    
-                    # 备份原文件
-                    cp "$ip_file" "${ip_file}.bak.$(date +%s)"
-                    echo -e "${GREEN}[OK] 已备份原文件${NC}"
-                    
-                    # 将行号转换为数组
-                    local lines_to_delete=($delete_lines)
-                    
-                    # 构建新的IP列表(排除要删除的行)
-                    local new_ips=""
-                    local line_num=0
-                    while IFS= read -r ip; do
-                        line_num=$((line_num + 1))
-                        local should_delete=false
-                        for del_line in "${lines_to_delete[@]}"; do
-                            if [ "$line_num" -eq "$del_line" ]; then
-                                should_delete=true
-                                break
-                            fi
-                        done
-                        
-                        if [ "$should_delete" = false ]; then
-                            if [ -n "$new_ips" ]; then
-                                new_ips="${new_ips}
-${ip}"
-                            else
-                                new_ips="$ip"
-                            fi
-                        fi
-                    done <<< "$all_ips"
-                    
-                    # 写入新文件
-                    echo "$new_ips" > "$ip_file"
-                    chmod 644 "$ip_file"
-                    
-                    local deleted_count=${#lines_to_delete[@]}
-                    local remaining_count=$(cat "$ip_file" | tr ',' '\n' | grep -v '^\s*#' | grep -v '^\s*$' | wc -l)
-                    echo -e "${GREEN}[OK] ${line_name}线路已删除 ${deleted_count} 个 IP,剩余 ${remaining_count} 个${NC}"
-                    ;;
-                0)
-                    return 0
-                    ;;
-            esac
-        fi
+        read -r -p "按回车键继续..."
     fi
-    echo ""
-    read -p "按回车键继续..."
 }
 
 # 修改 TTL 值
 modify_ttl() {
     echo ""
-    echo -e "${CYAN}━━ 修改 TTL 值 ━━${NC}"
+    echo -e "${CYAN}━━ 修改 TTL 值 ━━"
     echo ""
     
-    local current_ttl=$(grep '^TTL=' "$CONFIG_FILE" | cut -d'=' -f2)
+    local current_ttl
+    current_ttl=$(json_get ".dns.ttl" "600")
     echo "当前 TTL: ${current_ttl:-600} 秒"
     echo ""
-    echo -e "${CYAN}提示${NC}: TTL 是 DNS 记录的生存时间"
+    echo -e "${CYAN}提示: TTL 是 DNS 记录的生存时间"
     echo "   推荐值: 600 (10分钟)"
     echo ""
     
-    read -p "请输入新的 TTL 值 (秒, 直接回车保持 ${current_ttl:-600}): " new_ttl
+    read -r -p "请输入新的 TTL 值 (秒, 直接回车保持 ${current_ttl:-600}): " new_ttl
     
-    if [ -n "$new_ttl" ]; then
+    if [[ -n "$new_ttl" ]]; then
         if [[ "$new_ttl" =~ ^[0-9]+$ ]]; then
-            # 使用安全的文件更新方式
-            local temp_conf=$(mktemp)
-            while IFS= read -r line; do
-                if [[ "$line" =~ ^TTL= ]]; then
-                    echo "TTL=${new_ttl}"
-                else
-                    echo "$line"
-                fi
-            done < "$CONFIG_FILE" > "$temp_conf"
-            mv "$temp_conf" "$CONFIG_FILE"
-            echo -e "${GREEN}[OK] TTL 值已更新: ${new_ttl} 秒${NC}"
+            update_config_value "TTL" "$new_ttl"
+            echo -e "${GREEN}[OK] TTL 值已更新: ${new_ttl} 秒"
         else
-            echo -e "${RED}[ERROR] 请输入有效的数字${NC}"
+            echo -e "${RED}[ERROR] 请输入有效的数字"
         fi
     else
-        echo -e "${YELLOW}[INFO] 保持当前设置不变${NC}"
+        echo -e "${YELLOW}[INFO] 保持当前设置不变"
     fi
     echo ""
-    read -p "按回车键继续..."
+    read -r -p "按回车键继续..."
 }
 
 # 日志管理
 manage_logs() {
-    local log_dir="$(dirname "$0")/log"
+    local log_dir
+    log_dir="$(dirname "$0")/log"
     
     # 创建日志目录
     if [ ! -d "$log_dir" ]; then
@@ -2902,17 +2612,18 @@ manage_logs() {
     fi
     
     clear
-    echo -e "${CYAN}${MENU_BORDER}${NC}"
-    echo -e " ${YELLOW}日志管理${NC}"
-    echo -e "${CYAN}${MENU_BORDER_BOTTOM}${NC}"
+    echo -e "${CYAN}${MENU_BORDER}"
+    echo -e " ${YELLOW}日志管理"
+    echo -e "${CYAN}${MENU_BORDER_BOTTOM}"
     echo ""
     
     # 显示日志文件列表
-    local log_files=($(ls -t "$log_dir"/*.log 2>/dev/null))
+    local -a log_files
+    mapfile -t log_files < <(ls -t "$log_dir"/*.log 2>/dev/null)
     local log_count=${#log_files[@]}
     
-    if [ $log_count -eq 0 ]; then
-        echo -e "${YELLOW}[INFO] 暂无日志文件${NC}"
+    if [[ "$log_count" -eq 0 ]]; then
+        echo -e "${YELLOW}[INFO] 暂无日志文件"
         echo ""
         echo "日志将在运行脚本时自动生成"
     else
@@ -2922,22 +2633,25 @@ manage_logs() {
         # 显示前10个最新的日志
         local show_count=0
         for log_file in "${log_files[@]}"; do
-            if [ $show_count -ge 10 ]; then
+            if [[ $show_count -ge 10 ]]; then
                 break
             fi
             
-            local filename=$(basename "$log_file")
-            local filesize=$(du -h "$log_file" | cut -f1)
-            local filetime=$(stat -c %y "$log_file" 2>/dev/null | cut -d. -f1 || stat -f %Sm "$log_file" 2>/dev/null)
+            local filename
+            filename=$(basename "$log_file")
+            local filesize
+            filesize=$(du -h "$log_file" | cut -f1)
+            local filetime
+            filetime=$(stat -c %y "$log_file" 2>/dev/null | cut -d. -f1 || stat -f %Sm "$log_file" 2>/dev/null)
             
-            echo -e "  ${BLUE}$((show_count+1))${NC}) ${filename} (${filesize})"
+            echo -e "  ${BLUE}$((show_count+1))) ${filename} (${filesize})"
             echo "     时间: ${filetime}"
             
             show_count=$((show_count + 1))
         done
         
-        if [ $log_count -gt 10 ]; then
-            echo -e "  ${YELLOW}... 还有 $((log_count - 10)) 个日志文件${NC}"
+        if [[ $log_count -gt 10 ]]; then
+            echo -e "  ${YELLOW}... 还有 $((log_count - 10)) 个日志文件"
         fi
     fi
     
@@ -2950,96 +2664,157 @@ manage_logs() {
     echo "  0) 返回主菜单"
     echo ""
     
-    read -p "请选择 (0-4): " log_choice
+    read -r -p "请选择 (0-4): " log_choice
     
     case "$log_choice" in
         1)
             # 查看最新日志
-            if [ $log_count -eq 0 ]; then
-                echo -e "${YELLOW}[INFO] 暂无日志${NC}"
+            if [[ $log_count -eq 0 ]]; then
+                echo -e "${YELLOW}[INFO] 暂无日志"
             else
                 local latest_log="${log_files[0]}"
                 echo ""
-                echo -e "${CYAN}━━ 最新日志: $(basename "$latest_log") ━━${NC}"
+                echo -e "${CYAN}━━ 最新日志: $(basename "$latest_log") ━━"
                 echo ""
                 tail -n 50 "$latest_log"
                 echo ""
-                echo -e "${CYAN}提示${NC}: 使用 less 或 cat 查看完整日志"
+                echo -e "${CYAN}提示: 使用 less 或 cat 查看完整日志"
                 echo "   less $latest_log"
             fi
             ;;
         2)
             # 查看所有日志
-            if [ $log_count -eq 0 ]; then
-                echo -e "${YELLOW}[INFO] 暂无日志${NC}"
+            if [[ $log_count -eq 0 ]]; then
+                echo -e "${YELLOW}[INFO] 暂无日志"
             else
                 echo ""
-                echo -e "${CYAN}━━ 所有日志文件 ━━${NC}"
+                echo -e "${CYAN}━━ 所有日志文件 ━━"
                 echo ""
-                ls -lh "$log_dir"/*.log 2>/dev/null | awk '{print $9, "("$5")", $6, $7, $8}'
+                find "$log_dir" -name "*.log" -type f -printf '%f (%s) %TY-%Tm-%Td %TH:%TM\n' 2>/dev/null | head -n 10
             fi
             ;;
         3)
             # 清理旧日志(保留7天)
             echo ""
-            echo -e "${YELLOW}[WARN] 将删除7天前的日志文件${NC}"
-            read -p "确认执行? (y/n): " confirm
-            if [ "$confirm" = "y" ] || [ "$confirm" = "Y" ]; then
-                local deleted=$(find "$log_dir" -name "*.log" -mtime +7 -delete -print | wc -l)
-                echo -e "${GREEN}[OK] 已清理 ${deleted} 个旧日志文件${NC}"
+            echo -e "${YELLOW}[WARN] 将删除7天前的日志文件"
+            read -r -p "确认执行? (y/n): " confirm
+            if [[ "$confirm" == "y" ]] || [[ "$confirm" == "Y" ]]; then
+                local deleted
+                deleted=$(find "$log_dir" -name "*.log" -mtime +7 -delete -print | wc -l)
+                echo -e "${GREEN}[OK] 已清理 ${deleted} 个旧日志文件"
             else
-                echo -e "${YELLOW}[INFO] 已取消${NC}"
+                echo -e "${YELLOW}[INFO] 已取消"
             fi
             ;;
         4)
             # 清空所有日志
             echo ""
-            echo -e "${RED}[WARN] 警告: 将删除所有日志文件!${NC}"
-            read -p "确认执行? (y/n): " confirm
-            if [ "$confirm" = "y" ] || [ "$confirm" = "Y" ]; then
+            echo -e "${RED}[WARN] 警告: 将删除所有日志文件!"
+            read -r -p "确认执行? (y/n): " confirm
+            if [[ "$confirm" == "y" ]] || [[ "$confirm" == "Y" ]]; then
                 rm -f "$log_dir"/*.log
-                echo -e "${GREEN}[OK] 已清空所有日志${NC}"
+                echo -e "${GREEN}[OK] 已清空所有日志"
             else
-                echo -e "${YELLOW}[INFO] 已取消${NC}"
+                echo -e "${YELLOW}[INFO] 已取消"
             fi
             ;;
         0)
             return 0
             ;;
         *)
-            echo -e "${RED}[ERROR] 无效的选择${NC}"
+            echo -e "${RED}[ERROR] 无效的选择"
             ;;
     esac
     
     echo ""
-    read -p "按回车键继续..."
+    read -r -p "按回车键继续..."
 }
 
 # 安全更新配置文件函数 (避免 sed 注入)
+# 更新配置值 (JSON 格式)
+# 用法: update_config_value "KEY" "VALUE"
+# KEY 映射:
+#   MODE -> .dns.mode
+#   DOMAIN -> .dns.domain
+#   SUB_DOMAIN -> .dns.sub_domain
+#   SECRETID -> .api.id
+#   SECRETKEY -> .api.token
+#   TTL -> .dns.ttl
+#   MAX_IPS_PER_RECORD -> .dns.max_ips_per_record
+#   ISP_LINES -> .dns.isp_lines
+#   SUBDOMAIN_STRATEGY -> .dns.subdomain_strategy
+#   SUB_DOMAIN_UNIFIED -> .dns.sub_domain_unified
+#   SUB_DOMAIN_DEFAULT -> .dns.sub_domains.default
+#   SUB_DOMAIN_UNICOM -> .dns.sub_domains.unicom
+#   SUB_DOMAIN_MOBILE -> .dns.sub_domains.mobile
+#   SUB_DOMAIN_TELECOM -> .dns.sub_domains.telecom
+#   IP_FILE_SINGLE -> .ip_source.file_path
+#   IP_FILE_DEFAULT -> .ip_source.files.default
+#   IP_FILE_UNICOM -> .ip_source.files.unicom
+#   IP_FILE_MOBILE -> .ip_source.files.mobile
+#   IP_FILE_TELECOM -> .ip_source.files.telecom
+#   ENABLED -> .enabled
 update_config_value() {
     local key="$1"
     local value="$2"
-    local temp_conf=$(mktemp)
-    local found=false
+    local json_path=""
     
-    while IFS= read -r line; do
-        if [[ "$line" =~ ^${key}= ]]; then
-            echo "${key}=\"${value}\""
-            found=true
+    # 将旧 key 映射到 JSON 路径
+    case "$key" in
+        "MODE") json_path=".dns.mode" ;;
+        "DOMAIN") json_path=".dns.domain" ;;
+        "SUB_DOMAIN") json_path=".dns.sub_domain" ;;
+        "SECRETID") json_path=".api.id" ;;
+        "SECRETKEY") json_path=".api.token" ;;
+        "TTL") json_path=".dns.ttl" ;;
+        "MAX_IPS_PER_RECORD") json_path=".dns.max_ips_per_record" ;;
+        "ISP_LINES") json_path=".dns.isp_lines" ;;
+        "SUBDOMAIN_STRATEGY") json_path=".dns.subdomain_strategy" ;;
+        "SUB_DOMAIN_UNIFIED") json_path=".dns.sub_domain_unified" ;;
+        "SUB_DOMAIN_DEFAULT") json_path=".dns.sub_domains.default" ;;
+        "SUB_DOMAIN_UNICOM") json_path=".dns.sub_domains.unicom" ;;
+        "SUB_DOMAIN_MOBILE") json_path=".dns.sub_domains.mobile" ;;
+        "SUB_DOMAIN_TELECOM") json_path=".dns.sub_domains.telecom" ;;
+        "IP_FILE_SINGLE") json_path=".ip_source.file_path" ;;
+        "IP_FILE_DEFAULT") json_path=".ip_source.files.default" ;;
+        "IP_FILE_UNICOM") json_path=".ip_source.files.unicom" ;;
+        "IP_FILE_MOBILE") json_path=".ip_source.files.mobile" ;;
+        "IP_FILE_TELECOM") json_path=".ip_source.files.telecom" ;;
+        "ENABLED") json_path=".enabled" ;;
+        *)
+            echo -e "${RED}[ERROR] 未知的配置键: ${key}"
+            return 1
+            ;;
+    esac
+    
+    # 使用 jq 更新配置
+    local temp_conf
+    temp_conf=$(mktemp)
+    
+    # 判断值是数字还是字符串
+    if [[ "$value" =~ ^[0-9]+$ ]]; then
+        # 数字类型
+        if jq --argjson val "$value" "${json_path} = \$val" "$CONFIG_FILE" > "$temp_conf" 2>/dev/null; then
+            mv "$temp_conf" "$CONFIG_FILE"
+            chmod 600 "$CONFIG_FILE"
+            return 0
         else
-            echo "$line"
+            rm -f "$temp_conf"
+            echo -e "${RED}[ERROR] 更新配置失败: ${key}"
+            return 1
         fi
-    done < "$CONFIG_FILE" > "$temp_conf"
-    
-    # 如果配置项不存在，添加到文件末尾
-    if [ "$found" = false ]; then
-        echo "${key}=\"${value}\"" >> "$temp_conf"
+    else
+        # 字符串类型
+        if jq --arg val "$value" "${json_path} = \$val" "$CONFIG_FILE" > "$temp_conf" 2>/dev/null; then
+            mv "$temp_conf" "$CONFIG_FILE"
+            chmod 600 "$CONFIG_FILE"
+            return 0
+        else
+            rm -f "$temp_conf"
+            echo -e "${RED}[ERROR] 更新配置失败: ${key}"
+            return 1
+        fi
     fi
-    
-    mv "$temp_conf" "$CONFIG_FILE"
-    
-    # 自动修复配置文件权限为 600
-    chmod 600 "$CONFIG_FILE"
 }
 
 # ==================== 公共 HTTP 和工具函数 ====================
@@ -3048,37 +2823,43 @@ update_config_value() {
 http_request() {
     local method="$1"
     local url="$2"
+    # shellcheck disable=SC2034
     local secret_id="$3"
+    # shellcheck disable=SC2034
     local secret_key="$4"
     local data="${5:-}"
     local max_retries="${6:-3}"
     local retry_count=0
     local response=""
     
-    while [ $retry_count -lt $max_retries ]; do
-        if [ "$method" = "GET" ]; then
+    while [[ $retry_count -lt $max_retries ]]; do
+        if [[ "$method" == "GET" ]]; then
             response=$(curl -s -w "\n%{http_code}" -X GET "$url" \
                 --max-time 10)
-        elif [ "$method" = "POST" ]; then
+        elif [[ "$method" == "POST" ]]; then
             response=$(curl -s -w "\n%{http_code}" -X POST "$url" \
                 -H "Content-Type: application/json" \
                 -d "$data" \
                 --max-time 10)
         fi
         
-        local http_code=$(echo "$response" | tail -n1)
-        local body=$(echo "$response" | sed '$d')
+        local http_code
+        http_code=$(echo "$response" | tail -n1)
+        # shellcheck disable=SC2034
+        local body
+        # shellcheck disable=SC2034
+        body=$(echo "$response" | sed '$d')
         
         # 成功或客户端错误不需要重试
-        if [ "$http_code" = "200" ] || [ "$http_code" = "204" ] || [[ "$http_code" =~ ^4 ]]; then
+        if [[ "$http_code" == "200" ]] || [[ "$http_code" == "204" ]] || [[ "$http_code" =~ ^4 ]]; then
             echo "$response"
             return 0
         fi
         
         # 服务器错误需要重试
         retry_count=$((retry_count + 1))
-        if [ $retry_count -lt $max_retries ]; then
-            echo -e "${YELLOW}[WARN] API 请求失败 (HTTP ${http_code}), 第 ${retry_count}/${max_retries} 次重试...${NC}" >&2
+        if [[ $retry_count -lt $max_retries ]]; then
+            echo -e "${YELLOW}[WARN] API 请求失败 (HTTP ${http_code}), 第 ${retry_count}/${max_retries} 次重试..." >&2
             sleep 2
         fi
     done
@@ -3099,24 +2880,26 @@ sanitize_log() {
 log_message() {
     local level="$1"
     local message="$2"
-    local timestamp=$(date '+%Y-%m-%d %H:%M:%S')
+    local timestamp
+    timestamp=$(date '+%Y-%m-%d %H:%M:%S')
     
     # 脱敏消息
-    local sanitized_msg=$(sanitize_log "$message")
+    local sanitized_msg
+    sanitized_msg=$(sanitize_log "$message")
     
     case "$level" in
         "INFO")
-            echo -e "${GREEN}[${timestamp}] [INFO] ${sanitized_msg}${NC}"
+            echo -e "${GREEN}[${timestamp}] [INFO] ${sanitized_msg}"
             ;;
         "WARN")
-            echo -e "${YELLOW}[${timestamp}] [WARN] ${sanitized_msg}${NC}"
+            echo -e "${YELLOW}[${timestamp}] [WARN] ${sanitized_msg}"
             ;;
         "ERROR")
-            echo -e "${RED}[${timestamp}] [ERROR] ${sanitized_msg}${NC}"
+            echo -e "${RED}[${timestamp}] [ERROR] ${sanitized_msg}"
             ;;
         "DEBUG")
             if [ "${DEBUG_MODE:-0}" = "1" ]; then
-                echo -e "${CYAN}[${timestamp}] [DEBUG] ${sanitized_msg}${NC}"
+                echo -e "${CYAN}[${timestamp}] [DEBUG] ${sanitized_msg}"
             fi
             ;;
     esac
@@ -3162,13 +2945,13 @@ if [ $# -gt 0 ]; then
             echo "  ./setup.sh --modify     # 修改配置 (二级菜单)"
             echo ""
             echo "其他命令:"
-            echo "  ./dnspod.sh             # 直接运行单线路脚本"
-            echo "  ./dnspod-isp.sh         # 直接运行多线路脚本"
+            echo "  ./core.sh             # 直接运行单线路脚本"
+            echo "  ./core.sh -m          # 直接运行多线路脚本"
             echo ""
             exit 0
             ;;
         *)
-            echo -e "${RED}[ERROR] 未知参数: $1${NC}"
+            echo -e "${RED}[ERROR] 未知参数: $1"
             echo ""
             echo "使用 --help 查看帮助"
             exit 1
@@ -3186,16 +2969,16 @@ if [ $config_check_result -eq 0 ]; then
     :
 elif [ $config_check_result -eq 2 ]; then
     # 配置不完整(多线路模式缺少必要配置)
-    echo -e "\n${CYAN}${MENU_BORDER}${NC}"
-    echo -e " ${YELLOW}DNSPod DNS 更新器 - 配置检测${NC}"
-    echo -e "${CYAN}${MENU_BORDER_BOTTOM}${NC}"
+    echo -e "\n${CYAN}${MENU_BORDER}"
+    echo -e " ${YELLOW}DNSPod DNS 更新器 - 配置检测"
+    echo -e "${CYAN}${MENU_BORDER_BOTTOM}"
     echo ""
     
-    echo -e "${RED}[ERROR] 检测到配置不完整${NC}"
+    echo -e "${RED}[ERROR] 检测到配置不完整"
     echo ""
     
     # 读取当前模式
-    current_mode=$(grep '^MODE=' "$CONFIG_FILE" | cut -d'"' -f2)
+    current_mode=$(json_get ".dns.mode" "single")
     
     # 转换为中文显示
     if [ "$current_mode" = "multi" ]; then
@@ -3210,41 +2993,41 @@ elif [ $config_check_result -eq 2 ]; then
         echo "多线路模式需要以下配置:"
         echo ""
         
-        isp_lines=$(grep '^ISP_LINES=' "$CONFIG_FILE" | cut -d'"' -f2)
-        strategy=$(grep '^SUBDOMAIN_STRATEGY=' "$CONFIG_FILE" | cut -d'"' -f2)
+        isp_lines=$(json_get ".dns.isp_lines" "")
+        strategy=$(json_get ".dns.subdomain_strategy" "")
         
         if [ -z "$isp_lines" ]; then
-            echo -e "  ${RED}[ERROR]${NC} 运营商线路 (ISP_LINES) - 未配置"
+            echo -e "  ${RED}[ERROR] 运营商线路 (ISP_LINES) - 未配置"
         else
-            echo -e "  ${GREEN}[OK]${NC} 运营商线路: ${isp_lines}"
+            echo -e "  ${GREEN}[OK] 运营商线路: ${isp_lines}"
         fi
         
         if [ -z "$strategy" ]; then
-            echo -e "  ${RED}[ERROR]${NC} 子域名策略 (SUBDOMAIN_STRATEGY) - 未配置"
+            echo -e "  ${RED}[ERROR] 子域名策略 (SUBDOMAIN_STRATEGY) - 未配置"
         else
             # 转换为中文显示
             if [ "$strategy" = "unified" ]; then
-                echo -e "  ${GREEN}[OK]${NC} 子域名策略: 统一模式"
+                echo -e "  ${GREEN}[OK] 子域名策略: 统一模式"
             elif [ "$strategy" = "separate" ]; then
-                echo -e "  ${GREEN}[OK]${NC} 子域名策略: 分离模式"
+                echo -e "  ${GREEN}[OK] 子域名策略: 分离模式"
             else
-                echo -e "  ${YELLOW}[WARN]${NC} 子域名策略: ${strategy} (不合法)"
+                echo -e "  ${YELLOW}[WARN] 子域名策略: ${strategy} (不合法)"
             fi
             
             # 检查具体子域名配置
             if [ "$strategy" = "unified" ]; then
-                unified_sub=$(grep '^SUB_DOMAIN_UNIFIED=' "$CONFIG_FILE" | cut -d'"' -f2)
+                unified_sub=$(json_get ".dns.sub_domain_unified" "")
                 if [ -z "$unified_sub" ]; then
-                    echo -e "  ${RED}[ERROR]${NC} 统一子域名 (SUB_DOMAIN_UNIFIED) - 未配置"
+                    echo -e "  ${RED}[ERROR] 统一子域名 (SUB_DOMAIN_UNIFIED) - 未配置"
                 else
-                    echo -e "  ${GREEN}[OK]${NC} 统一子域名: ${unified_sub}"
+                    echo -e "  ${GREEN}[OK] 统一子域名: ${unified_sub}"
                 fi
             else
-                default_sub=$(grep '^SUB_DOMAIN_DEFAULT=' "$CONFIG_FILE" | cut -d'"' -f2)
+                default_sub=$(json_get ".dns.sub_domains.default" "")
                 if [ -z "$default_sub" ]; then
-                    echo -e "  ${RED}[ERROR]${NC} 默认线路子域名 (SUB_DOMAIN_DEFAULT) - 未配置"
+                    echo -e "  ${RED}[ERROR] 默认线路子域名 (SUB_DOMAIN_DEFAULT) - 未配置"
                 else
-                    echo -e "  ${GREEN}[OK]${NC} 默认线路子域名: ${default_sub}"
+                    echo -e "  ${GREEN}[OK] 默认线路子域名: ${default_sub}"
                 fi
             fi
         fi
@@ -3254,23 +3037,23 @@ elif [ $config_check_result -eq 2 ]; then
         echo "单线路模式需要以下配置:"
         echo ""
         
-        sub_domain=$(grep '^SUB_DOMAIN=' "$CONFIG_FILE" | cut -d'"' -f2)
+        sub_domain=$(json_get ".dns.sub_domain" "")
         if [ -z "$sub_domain" ]; then
-            echo -e "  ${RED}[ERROR]${NC} 子域名 (SUB_DOMAIN) - 未配置"
+            echo -e "  ${RED}[ERROR] 子域名 (SUB_DOMAIN) - 未配置"
         else
-            echo -e "  ${GREEN}[OK]${NC} 子域名: ${sub_domain}"
+            echo -e "  ${GREEN}[OK] 子域名: ${sub_domain}"
         fi
     fi
         
         echo ""
-        echo -e "${YELLOW}[WARN] 配置不完整将导致脚本无法正常运行${NC}"
+        echo -e "${YELLOW}[WARN] 配置不完整将导致脚本无法正常运行"
         echo ""
-        echo -e "${CYAN}建议操作${NC}:"
+        echo -e "${CYAN}建议操作:"
         echo "  1) 立即补全配置 (推荐) - 交互式引导,简单快速"
         echo "  0) 退出脚本"
         echo ""
         
-        read -p "请选择操作 (0-1): " fix_choice
+        read -r -p "请选择操作 (0-1): " fix_choice
         
         case "$fix_choice" in
             1)
@@ -3279,9 +3062,9 @@ elif [ $config_check_result -eq 2 ]; then
                 echo ""
                 
                 if [ "$current_mode" = "multi" ]; then
-                    echo -e "${CYAN}━━ 补全多线路配置 ━━${NC}"
+                    echo -e "${CYAN}━━ 补全多线路配置 ━━"
                 else
-                    echo -e "${CYAN}━━ 补全单线路配置 ━━${NC}"
+                    echo -e "${CYAN}━━ 补全单线路配置 ━━"
                 fi
                 echo ""
                 
@@ -3299,7 +3082,7 @@ elif [ $config_check_result -eq 2 ]; then
                         echo ""
                         echo "示例输入: 1 2 3 4  (选择默认、联通、移动、电信)"
                         echo ""
-                        read -p "请输入选择的号码: " line_choices
+                        read -r -p "请输入选择的号码: " line_choices
                         
                         if [ -n "$line_choices" ]; then
                             ISP_LINES=""
@@ -3327,7 +3110,7 @@ elif [ $config_check_result -eq 2 ]; then
                                 else
                                     echo "ISP_LINES=\"${ISP_LINES}\"" >> "$CONFIG_FILE"
                                 fi
-                                echo -e "${GREEN}[OK] 线路配置: ${ISP_LINES}${NC}"
+                                echo -e "${GREEN}[OK] 线路配置: ${ISP_LINES}"
                             fi
                         fi
                         
@@ -3345,7 +3128,7 @@ elif [ $config_check_result -eq 2 ]; then
                         echo "  2) 统一模式 (省心) - 所有线路共用同一子域名"
                         echo "     例如: dns.drxian.cn (通过 DNSPod 线路区分)"
                         echo ""
-                        read -p "请选择策略 (1/2, 默认 1): " strategy_choice
+                        read -r -p "请选择策略 (1/2, 默认 1): " strategy_choice
                         
                         if [ -z "$strategy_choice" ]; then
                             strategy_choice="1"
@@ -3358,7 +3141,7 @@ elif [ $config_check_result -eq 2 ]; then
                             else
                                 echo 'SUBDOMAIN_STRATEGY="separate"' >> "$CONFIG_FILE"
                             fi
-                            echo -e "${GREEN}[OK] 已选择: 分离模式${NC}"
+                            echo -e "${GREEN}[OK] 已选择: 分离模式"
                         else
                             # 检查配置项是否存在
                             if grep -q '^SUBDOMAIN_STRATEGY=' "$CONFIG_FILE"; then
@@ -3366,13 +3149,13 @@ elif [ $config_check_result -eq 2 ]; then
                             else
                                 echo 'SUBDOMAIN_STRATEGY="unified"' >> "$CONFIG_FILE"
                             fi
-                            echo -e "${GREEN}[OK] 已选择: 统一模式${NC}"
+                            echo -e "${GREEN}[OK] 已选择: 统一模式"
                             
-                            read -p "请输入统一子域名 [dns]: " unified_subdomain
+                            read -r -p "请输入统一子域名 [dns]: " unified_subdomain
                             unified_subdomain=${unified_subdomain:-dns}
                             # 验证子域名格式
                             if ! [[ "$unified_subdomain" =~ ^[a-zA-Z0-9\-]+$ ]]; then
-                                echo -e "${RED}[ERROR] 无效的子域名格式${NC}"
+                                echo -e "${RED}[ERROR] 无效的子域名格式"
                                 return 0
                             fi
                             # 检查配置项是否存在
@@ -3388,7 +3171,7 @@ elif [ $config_check_result -eq 2 ]; then
                     
                 elif [ "$current_mode" = "single" ]; then
                     # 单线路配置补全
-                    sub_domain=$(grep '^SUB_DOMAIN=' "$CONFIG_FILE" | cut -d'"' -f2)
+                    sub_domain=$(json_get ".dns.sub_domain" "")
                     if [ -z "$sub_domain" ]; then
                         echo "单线路模式需要配置子域名"
                         echo ""
@@ -3397,12 +3180,12 @@ elif [ $config_check_result -eq 2 ]; then
                         echo "  - 设置 SUB_DOMAIN=dns"
                         echo "  - 最终解析为: dns.drxian.cn"
                         echo ""
-                        read -p "请输入子域名 [dns]: " input_subdomain
+                        read -r -p "请输入子域名 [dns]: " input_subdomain
                         input_subdomain=${input_subdomain:-dns}
                         
                         # 验证子域名格式
                         if ! [[ "$input_subdomain" =~ ^[a-zA-Z0-9\-@]+$ ]]; then
-                            echo -e "${RED}[ERROR] 无效的子域名格式${NC}"
+                            echo -e "${RED}[ERROR] 无效的子域名格式"
                             return 0
                         fi
                         
@@ -3413,76 +3196,76 @@ elif [ $config_check_result -eq 2 ]; then
                             echo "SUB_DOMAIN=\"${input_subdomain}\"" >> "$CONFIG_FILE"
                         fi
                         
-                        echo -e "${GREEN}[OK] 子域名已配置: ${input_subdomain}${NC}"
+                        echo -e "${GREEN}[OK] 子域名已配置: ${input_subdomain}"
                         echo ""
                     fi
                 fi
                 
-                echo -e "${GREEN}[OK] 配置补全完成!${NC}"
+                echo -e "${GREEN}[OK] 配置补全完成!"
                 echo ""
-                read -p "按回车键继续..."
+                read -r -p "按回车键继续..."
                 clear
                 ;;
             0|*)
                 echo ""
-                echo -e "${YELLOW}[INFO] 已退出${NC}"
+                echo -e "${YELLOW}[INFO] 已退出"
                 exit 0
                 ;;
         esac
 else
     # 配置无效,提示用户并开始引导
-    echo -e "\n${CYAN}${MENU_BORDER}${NC}"
-    echo -e " ${YELLOW}DNSPod DNS 更新器 - 初始化检测${NC}"
-    echo -e "${CYAN}${MENU_BORDER_BOTTOM}${NC}"
+    echo -e "\n${CYAN}${MENU_BORDER}"
+    echo -e " ${YELLOW}DNSPod DNS 更新器 - 初始化检测"
+    echo -e "${CYAN}${MENU_BORDER_BOTTOM}"
     echo ""
     
     if [ ! -f "$CONFIG_FILE" ]; then
-        echo -e "${RED}[ERROR] 配置文件不存在${NC}"
+        echo -e "${RED}[ERROR] 配置文件不存在"
         echo "   首次使用需要先进行配置"
     elif [ ! -s "$CONFIG_FILE" ]; then
-        echo -e "${RED}[ERROR] 配置文件为空${NC}"
+        echo -e "${RED}[ERROR] 配置文件为空"
         echo "   文件存在但没有内容,需要重新配置"
     else
-        echo -e "${RED}[ERROR] 配置文件格式错误${NC}"
+        echo -e "${RED}[ERROR] 配置文件格式错误"
         echo "   检测到缺少必要的配置项:"
         
         # 检查具体缺少哪些配置
-        has_domain=$(grep -E '^DOMAIN="[^"]+"' "$CONFIG_FILE" | wc -l)
-        has_secretid=$(grep -E '^SECRETID="[^"]+"' "$CONFIG_FILE" | wc -l)
-        has_secretkey=$(grep -E '^SECRETKEY="[^"]+"' "$CONFIG_FILE" | wc -l)
+        has_domain=$(grep -cE '^DOMAIN="[^"]+"' "$CONFIG_FILE")
+        has_secretid=$(grep -cE '^SECRETID="[^"]+"' "$CONFIG_FILE")
+        has_secretkey=$(grep -cE '^SECRETKEY="[^"]+"' "$CONFIG_FILE")
         
         if [ "$has_domain" -eq 0 ]; then
-            echo -e "   ${YELLOW}- DOMAIN (域名)${NC}"
+            echo -e "   ${YELLOW}- DOMAIN (域名)"
         fi
         if [ "$has_secretid" -eq 0 ]; then
-            echo -e "   ${YELLOW}- SECRETID (API密钥ID)${NC}"
+            echo -e "   ${YELLOW}- SECRETID (API密钥ID)"
         fi
         if [ "$has_secretkey" -eq 0 ]; then
-            echo -e "   ${YELLOW}- SECRETKEY (API密钥)${NC}"
+            echo -e "   ${YELLOW}- SECRETKEY (API密钥)"
         fi
         
         echo ""
-        echo -e "${YELLOW}[WARN] 配置不规范可能导致脚本运行失败${NC}"
+        echo -e "${YELLOW}[WARN] 配置不规范可能导致脚本运行失败"
     fi
     
     echo ""
-    echo -e "${CYAN}提示${NC}: 完成配置后即可使用所有功能"
+    echo -e "${CYAN}提示: 完成配置后即可使用所有功能"
     echo ""
     
-    echo -e "${CYAN}请选择:${NC}"
+    echo -e "${CYAN}请选择:"
     echo "  y - 现在立即开始配置向导"
     echo "  n - 退出脚本"
     echo ""
-    read -p "请输入 (y/n, 默认 y): " start_config
+    read -r -p "请输入 (y/n, 默认 y): " start_config
     start_config=${start_config:-y}
     
     if [ "$start_config" != "y" ] && [ "$start_config" != "Y" ]; then
         echo ""
-        echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
-        echo -e "${YELLOW}[WARN] 提示${NC}:"
+        echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+        echo -e "${YELLOW}[WARN] 提示:"
         echo "   - 没有有效的配置文件,无法使用运行功能"
         echo "   - 您可以重新运行此脚本进行配置"
-        echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+        echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
         echo ""
         exit 0
     fi
@@ -3506,7 +3289,7 @@ else
     # 主循环
     while true; do
         show_menu
-        read -p "请选择操作 (0-6): " choice
+        read -r -p "请选择操作 (0-6): " choice
     
     case "$choice" in
         1)
@@ -3518,29 +3301,28 @@ else
             # 根据配置文件自动判断模式
             clear
             if [ -f "$CONFIG_FILE" ]; then
-                source "$CONFIG_FILE"
-                run_mode="${MODE:-single}"
+                run_mode=$(json_get ".dns.mode" "single")
                 quick_run "$run_mode"
             else
-                echo -e "${RED}错误${NC}: 配置文件不存在"
+                echo -e "${RED}错误: 配置文件不存在"
                 echo "请先运行完整配置向导"
             fi
             echo ""
-            read -p "按回车键返回主菜单..."
+            read -r -p "按回车键返回主菜单..."
             clear
             ;;
         3)
             clear
             view_config
             echo ""
-            read -p "按回车键返回主菜单..."
+            read -r -p "按回车键返回主菜单..."
             clear
             ;;
         4)
             clear
             modify_ip_limit
             echo ""
-            read -p "按回车键返回主菜单..."
+            read -r -p "按回车键返回主菜单..."
             clear
             ;;
         5)
@@ -3554,6 +3336,8 @@ else
                     break
                 elif [ $result -eq 2 ]; then
                     # 用户选择全部重新配置,跳出主循环
+                    # shellcheck disable=SC2034
+                    # shellcheck disable=SC2034
                     RECONFIGURE_ALL=true
                     break 2
                 elif [ $result -eq 1 ]; then
@@ -3567,7 +3351,7 @@ else
             ;;
         0)
             echo ""
-            echo -e "${GREEN}[OK] 再见!${NC}"
+            echo -e "${GREEN}[OK] 再见!"
             exit 0
             ;;
         6)
@@ -3578,9 +3362,9 @@ else
             ;;
         *)
             echo ""
-            echo -e "${RED}[ERROR] 无效的选择,请重新输入${NC}"
+            echo -e "${RED}[ERROR] 无效的选择,请重新输入"
             echo ""
-            read -p "按回车键继续..."
+            read -r -p "按回车键继续..."
             clear
             ;;
     esac
@@ -3589,35 +3373,35 @@ fi
 
 # 以下是完整的配置向导 (原 setup.sh 内容)
 echo ""
-echo -e "${CYAN}${MENU_BORDER}${NC}"
-echo -e " ${YELLOW}DNSPod DNS 更新器 - 完整配置向导${NC}"
-echo -e "${CYAN}${MENU_BORDER_BOTTOM}${NC}"
+echo -e "${CYAN}${MENU_BORDER}"
+echo -e " ${YELLOW}DNSPod DNS 更新器 - 完整配置向导"
+echo -e "${CYAN}${MENU_BORDER_BOTTOM}"
 echo ""
-echo -e "${CYAN}━━ 步骤 1/7: 域名配置 ━━${NC}"
+echo -e "${CYAN}━━ 步骤 1/7: 域名配置 ━━"
 echo ""
-echo -e "${CYAN}提示${NC}: DNSPod 不同套餐支持不同的负载均衡记录数量:"
+echo -e "${CYAN}提示: DNSPod 不同套餐支持不同的负载均衡记录数量:"
 echo "  - 免费版: 2 条 (默认)"
 echo "  - 专业版: 10 条"
 echo "  - 企业版: 100 条"
 echo "  - 尊享版: 不限制"
-echo -e "  ${YELLOW}警告${NC}免费版超出限制会导致 API 报错,脚本会自动限制 IP 数量"
-echo -e "  ${CYAN}文档${NC} 套餐详情: https://cloud.tencent.com/document/product/302/104713"
+echo -e "  ${YELLOW}警告: 免费版超出限制会导致 API 报错,脚本会自动限制 IP 数量"
+echo -e "  ${CYAN}文档: 套餐详情: https://cloud.tencent.com/document/product/302/104713"
 echo ""
 
-read -p "请输入你的域名 (例如: example.com): " DOMAIN
+read -r -p "请输入你的域名 (例如: example.com): " DOMAIN
 
 if [ -z "$DOMAIN" ]; then
-    echo -e "${RED}错误${NC}: 域名不能为空"
+    echo -e "${RED}错误: 域名不能为空"
     exit 1
 fi
 
 echo ""
-echo -e "${GREEN}[OK] 域名: ${DOMAIN}${NC}"
+echo -e "${GREEN}[OK] 域名: ${DOMAIN}"
 echo ""
 
 # 清屏后进入下一步
 clear
-echo -e "${CYAN}━━ 步骤 2/7: 工作模式选择 ━━${NC}"
+echo -e "${CYAN}━━ 步骤 2/7: 工作模式选择 ━━"
 echo ""
 echo "请选择工作模式:"
 echo ""
@@ -3630,7 +3414,7 @@ echo "     适合: 根据运营商优化访问速度(联通/移动/电信等)"
 echo "     支持: 默认、联通、移动、电信等线路"
 echo "     例如: unicom.${DOMAIN} → 联通优选IP, mobile.${DOMAIN} → 移动优选IP"
 echo ""
-read -p "请选择模式 (1/2, 默认 1): " mode_choice
+read -r -p "请选择模式 (1/2, 默认 1): " mode_choice
 
 if [ -z "$mode_choice" ]; then
     mode_choice="1"
@@ -3638,12 +3422,12 @@ fi
 
 if [ "$mode_choice" = "1" ]; then
     MODE="single"
-    echo -e "\n${GREEN}[OK] 已选择: 单线路模式${NC}"
+    echo -e "\n${GREEN}[OK] 已选择: 单线路模式"
 elif [ "$mode_choice" = "2" ]; then
     MODE="multi"
-    echo -e "\n${GREEN}[OK] 已选择: 多线路模式${NC}"
+    echo -e "\n${GREEN}[OK] 已选择: 多线路模式"
 else
-    echo -e "${RED}[ERROR] 无效的选择${NC}"
+    echo -e "${RED}[ERROR] 无效的选择"
     exit 1
 fi
 
@@ -3651,36 +3435,36 @@ echo ""
 
 # 清屏后进入下一步
 clear
-echo -e "${CYAN}━━ 步骤 3/7: 腾讯云 API 密钥配置 ━━${NC}"
+echo -e "${CYAN}━━ 步骤 3/7: 腾讯云 API 密钥配置 ━━"
 echo ""
-echo -e "${CYAN}提示${NC}: 如果还没有密钥,请访问:"
+echo -e "${CYAN}提示: 如果还没有密钥,请访问:"
 echo "   https://console.cloud.tencent.com/cam/capi"
 echo ""
 
-read -p "请输入 SecretId: " SECRETID
+read -r -p "请输入 SecretId: " SECRETID
 
 if [ -z "$SECRETID" ]; then
-    echo -e "${RED}错误${NC}: SecretId 不能为空"
+    echo -e "${RED}错误: SecretId 不能为空"
     exit 1
 fi
 
-read -p "请输入 SecretKey: " SECRETKEY
+read -r -p "请输入 SecretKey: " SECRETKEY
 
 if [ -z "$SECRETKEY" ]; then
-    echo -e "${RED}错误${NC}: SecretKey 不能为空"
+    echo -e "${RED}错误: SecretKey 不能为空"
     exit 1
 fi
 
 echo ""
-echo -e "${GREEN}[OK] 密钥配置完成${NC}"
+echo -e "${GREEN}[OK] 密钥配置完成"
 echo ""
 
 # 清屏后进入下一步
 clear
 if [ "$MODE" = "multi" ]; then
-    echo -e "${CYAN}━━ 步骤 4/7: 运营商线路配置 ━━${NC}"
+    echo -e "${CYAN}━━ 步骤 4/7: 运营商线路配置 ━━"
 else
-    echo -e "${CYAN}━━ 步骤 4/7: 跳过运营商线路配置 (单线路模式) ━━${NC}"
+    echo -e "${CYAN}━━ 步骤 4/7: 跳过运营商线路配置 (单线路模式) ━━"
 fi
 echo ""
 
@@ -3695,10 +3479,10 @@ if [ "$MODE" = "multi" ]; then
     echo ""
     echo "示例输入: 1 2 3 4  (选择默认、联通、移动、电信)"
     echo ""
-    read -p "请输入选择的号码: " line_choices
+    read -r -p "请输入选择的号码: " line_choices
     
     if [ -z "$line_choices" ]; then
-        echo -e "${RED}[ERROR] 至少选择一个线路${NC}"
+        echo -e "${RED}[ERROR] 至少选择一个线路"
         exit 1
     fi
     
@@ -3719,20 +3503,20 @@ if [ "$MODE" = "multi" ]; then
                 ISP_LINES="$ISP_LINES ${line_map[$choice]}"
             fi
         else
-            echo -e "${YELLOW}[WARN] 无效的选择 '$choice',已跳过${NC}"
+            echo -e "${YELLOW}[WARN] 无效的选择 '$choice',已跳过"
         fi
     done
     
     if [ -z "$ISP_LINES" ]; then
-        echo -e "${RED}[ERROR] 没有有效的线路选择${NC}"
+        echo -e "${RED}[ERROR] 没有有效的线路选择"
         exit 1
     fi
     
-    echo -e "\n${GREEN}[OK] 线路配置: ${ISP_LINES}${NC}"
+    echo -e "\n${GREEN}[OK] 线路配置: ${ISP_LINES}"
 else
-    # 单线路模式,默认只使用"默认"线路
+    # 单线路模式,默认只使用“默认”线路
     ISP_LINES="默认"
-    echo -e "${YELLOW}[INFO] 单线路模式,将只更新"默认"线路${NC}"
+    echo -e "${YELLOW}[INFO] 单线路模式,将只更新'默认'线路"
 fi
 
 echo ""
@@ -3740,30 +3524,30 @@ echo ""
 # 清屏后进入下一步
 clear
 if [ "$MODE" = "multi" ]; then
-    echo -e "${CYAN}━━ 步骤 5/7: 子域名策略选择 ━━${NC}"
+    echo -e "${CYAN}━━ 步骤 5/7: 子域名策略选择 ━━"
 else
-    echo -e "${CYAN}━━ 步骤 5/7: 子域名配置 ━━${NC}"
+    echo -e "${CYAN}━━ 步骤 5/7: 子域名配置 ━━"
 fi
 echo ""
 
 if [ "$MODE" = "single" ]; then
-    echo -e "${CYAN}提示${NC}: 子域名是解析记录的前缀,例如:"
+    echo -e "${CYAN}提示: 子域名是解析记录的前缀,例如:"
     echo "  - 输入 www → 最终域名为 www.${DOMAIN}"
     echo "  - 输入 @ → 最终域名为 ${DOMAIN} (根域名)"
     echo "  - 输入 api → 最终域名为 api.${DOMAIN}"
     echo ""
-    echo -e "${CYAN}推荐${NC}: 使用有意义的名称,如 dns, www, api 等"
+    echo -e "${CYAN}推荐: 使用有意义的名称,如 dns, www, api 等"
     echo ""
-    read -p "请输入子域名 [dns]: " SUB_DOMAIN
+    read -r -p "请输入子域名 [dns]: " SUB_DOMAIN
     SUB_DOMAIN=${SUB_DOMAIN:-dns}
     
     if [ -z "$SUB_DOMAIN" ]; then
-        echo -e "${RED}错误${NC}: 子域名不能为空"
+        echo -e "${RED}错误: 子域名不能为空"
         exit 1
     fi
     
     echo ""
-    echo -e "${GREEN}[OK] 子域名配置: ${SUB_DOMAIN}.${DOMAIN}${NC}"
+    echo -e "${GREEN}[OK] 子域名配置: ${SUB_DOMAIN}.${DOMAIN}"
     
     # 设置多线路相关变量(虽然不使用)
     SUBDOMAIN_STRATEGY="single"
@@ -3788,7 +3572,7 @@ if [ "$MODE" = "multi" ]; then
     echo "     优点: 配置简单,只需一个子域名"
     echo "     缺点: 依赖 DNSPod 线路功能"
     echo ""
-    read -p "请选择策略 (1/2, 默认 1): " strategy_choice
+    read -r -p "请选择策略 (1/2, 默认 1): " strategy_choice
     
     if [ -z "$strategy_choice" ]; then
         strategy_choice="1"
@@ -3796,17 +3580,17 @@ if [ "$MODE" = "multi" ]; then
     
     if [ "$strategy_choice" = "1" ]; then
         SUBDOMAIN_STRATEGY="separate"
-        echo -e "\n${GREEN}[OK] 已选择: 分离模式${NC}"
+        echo -e "\n${GREEN}[OK] 已选择: 分离模式"
         echo ""
         echo "请为每条线路设置子域名前缀 (留空使用默认值):"
         echo ""
         
-        read -p "默认线路子域名前缀 [default]: " SUB_DOMAIN_DEFAULT
+        read -r -p "默认线路子域名前缀 [default]: " SUB_DOMAIN_DEFAULT
         SUB_DOMAIN_DEFAULT=${SUB_DOMAIN_DEFAULT:-default}
         
         # 检查用户是否选择了联通线路
         if [[ "$ISP_LINES" == *"联通"* ]]; then
-            read -p "联通线路子域名前缀 [unicom]: " SUB_DOMAIN_UNICOM
+            read -r -p "联通线路子域名前缀 [unicom]: " SUB_DOMAIN_UNICOM
             SUB_DOMAIN_UNICOM=${SUB_DOMAIN_UNICOM:-unicom}
         else
             SUB_DOMAIN_UNICOM="unicom"
@@ -3814,7 +3598,7 @@ if [ "$MODE" = "multi" ]; then
         
         # 检查用户是否选择了移动线路
         if [[ "$ISP_LINES" == *"移动"* ]]; then
-            read -p "移动线路子域名前缀 [mobile]: " SUB_DOMAIN_MOBILE
+            read -r -p "移动线路子域名前缀 [mobile]: " SUB_DOMAIN_MOBILE
             SUB_DOMAIN_MOBILE=${SUB_DOMAIN_MOBILE:-mobile}
         else
             SUB_DOMAIN_MOBILE="mobile"
@@ -3822,14 +3606,14 @@ if [ "$MODE" = "multi" ]; then
         
         # 检查用户是否选择了电信线路
         if [[ "$ISP_LINES" == *"电信"* ]]; then
-            read -p "电信线路子域名前缀 [telecom]: " SUB_DOMAIN_TELECOM
+            read -r -p "电信线路子域名前缀 [telecom]: " SUB_DOMAIN_TELECOM
             SUB_DOMAIN_TELECOM=${SUB_DOMAIN_TELECOM:-telecom}
         else
             SUB_DOMAIN_TELECOM="telecom"
         fi
         
         echo ""
-        echo -e "${CYAN}提示${NC}: 各线路的完整域名为:"
+        echo -e "${CYAN}提示: 各线路的完整域名为:"
         if [[ "$ISP_LINES" == *"默认"* ]]; then
             echo "  - ${SUB_DOMAIN_DEFAULT}.${DOMAIN} (默认线路)"
         fi
@@ -3844,24 +3628,24 @@ if [ "$MODE" = "multi" ]; then
         fi
     elif [ "$strategy_choice" = "2" ]; then
         SUBDOMAIN_STRATEGY="unified"
-        echo -e "\n${GREEN}[OK] 已选择: 统一模式${NC}"
+        echo -e "\n${GREEN}[OK] 已选择: 统一模式"
         echo ""
         
         # 统一模式下,自动配置所有运营商线路
-        echo -e "${CYAN}提示${NC}: 统一模式需要为所有运营商线路创建记录"
+        echo -e "${CYAN}提示: 统一模式需要为所有运营商线路创建记录"
         echo "  将自动配置: 默认 联通 移动 电信"
         ISP_LINES="默认 联通 移动 电信"
-        echo -e "${GREEN}[OK] 运营商线路已自动配置: ${ISP_LINES}${NC}"
+        echo -e "${GREEN}[OK] 运营商线路已自动配置: ${ISP_LINES}"
         echo ""
         
-        echo -e "${CYAN}提示${NC}: 所有线路将共用同一个子域名"
+        echo -e "${CYAN}提示: 所有线路将共用同一个子域名"
         echo "  例如: dns.drxian.cn (通过 DNSPod 线路区分)"
         echo ""
-        read -p "请输入统一子域名 [dns]: " SUB_DOMAIN_UNIFIED
+        read -r -p "请输入统一子域名 [dns]: " SUB_DOMAIN_UNIFIED
         SUB_DOMAIN_UNIFIED=${SUB_DOMAIN_UNIFIED:-dns}
         
         echo ""
-        echo -e "${CYAN}提示${NC}: 所有线路将使用相同子域名:"
+        echo -e "${CYAN}提示: 所有线路将使用相同子域名:"
         echo "  - ${SUB_DOMAIN_UNIFIED}.${DOMAIN}"
         echo "  DNSPod 将通过 RecordLine 参数区分不同线路"
         
@@ -3871,7 +3655,7 @@ if [ "$MODE" = "multi" ]; then
         SUB_DOMAIN_MOBILE="mobile"
         SUB_DOMAIN_TELECOM="telecom"
     else
-        echo -e "${RED}[ERROR] 无效的选择${NC}"
+        echo -e "${RED}[ERROR] 无效的选择"
         exit 1
     fi
 else
@@ -3881,7 +3665,7 @@ else
     SUB_DOMAIN_UNICOM="unicom"
     SUB_DOMAIN_MOBILE="mobile"
     SUB_DOMAIN_TELECOM="telecom"
-    echo -e "${YELLOW}[INFO] 单线路模式,跳过子域名策略选择${NC}"
+    echo -e "${YELLOW}[INFO] 单线路模式,跳过子域名策略选择"
 fi
 fi
 
@@ -3890,12 +3674,12 @@ echo ""
 # 清屏后进入下一步
 clear
 if [ "$MODE" = "multi" ]; then
-    echo -e "${CYAN}━━ 步骤 6/7: IP 文件配置 ━━${NC}"
+    echo -e "${CYAN}━━ 步骤 6/7: IP 文件配置 ━━"
 else
-    echo -e "${CYAN}━━ 步骤 6/7: IP 文件配置 ━━${NC}"
+    echo -e "${CYAN}━━ 步骤 6/7: IP 文件配置 ━━"
 fi
 echo ""
-echo -e "${CYAN}提示${NC}: 优选 IP 将从文本文件读取"
+echo -e "${CYAN}提示: 优选 IP 将从文本文件读取"
 echo "   测速软件会自动生成 IP 列表到默认路径"
 echo "   文件格式: 每行一个 IP 或用逗号分隔"
 echo ""
@@ -3910,10 +3694,10 @@ if [ "$MODE" = "multi" ]; then
     echo "IP 文件将自动生成到 $ROOT_DIR/assets/data/dnspod-dns/ 目录"
     
     # 询问是否更改默认路径
-    read -p "是否需要更改 IP 文件基础路径? (y/n, 默认 n): " change_path
+    read -r -p "是否需要更改 IP 文件基础路径? (y/n, 默认 n): " change_path
     
     if [ "$change_path" = "y" ] || [ "$change_path" = "Y" ]; then
-        read -p "请输入新的基础路径 (例如: ./my-ips): " base_path
+        read -r -p "请输入新的基础路径 (例如: ./my-ips): " base_path
         
         if [ -z "$base_path" ]; then
             base_path="$ROOT_DIR/assets/data/dnspod-dns"
@@ -3924,30 +3708,34 @@ if [ "$MODE" = "multi" ]; then
         IP_FILE_MOBILE="${base_path}/mobile.txt"
         IP_FILE_TELECOM="${base_path}/telecom.txt"
         
-        echo -e "\n${GREEN}[OK] IP 文件基础路径: ${base_path}${NC}"
+        echo -e "\n${GREEN}[OK] IP 文件基础路径: ${base_path}"
     else
+        # shellcheck disable=SC2034
         IP_FILE_DEFAULT="$ROOT_DIR/assets/data/dnspod-dns/default.txt"
+        # shellcheck disable=SC2034
         IP_FILE_UNICOM="$ROOT_DIR/assets/data/dnspod-dns/unicom.txt"
+        # shellcheck disable=SC2034
         IP_FILE_MOBILE="$ROOT_DIR/assets/data/dnspod-dns/mobile.txt"
+        # shellcheck disable=SC2034
         IP_FILE_TELECOM="$ROOT_DIR/assets/data/dnspod-dns/telecom.txt"
-        echo -e "\n${GREEN}[OK] 使用默认路径: $ROOT_DIR/assets/data/dnspod-dns${NC}"
+        echo -e "\n${GREEN}[OK] 使用默认路径: $ROOT_DIR/assets/data/dnspod-dns"
     fi
 else
-    echo -e "${CYAN}默认路径${NC}: $ROOT_DIR/assets/data/dnspod-dns/default.txt"
+    echo -e "${CYAN}默认路径: $ROOT_DIR/assets/data/dnspod-dns/default.txt"
     echo ""
-    read -p "是否需要更改 IP 文件路径? (y/n, 默认 n): " change_path
+    read -r -p "是否需要更改 IP 文件路径? (y/n, 默认 n): " change_path
     
     if [ "$change_path" = "y" ] || [ "$change_path" = "Y" ]; then
-        read -p "请输入新的 IP 文件路径: " IP_FILE_SINGLE
+        read -r -p "请输入新的 IP 文件路径: " IP_FILE_SINGLE
         
         if [ -z "$IP_FILE_SINGLE" ]; then
             IP_FILE_SINGLE="$ROOT_DIR/assets/data/dnspod-dns/default.txt"
         fi
         
-        echo -e "\n${GREEN}[OK] IP 文件路径: ${IP_FILE_SINGLE}${NC}"
+        echo -e "\n${GREEN}[OK] IP 文件路径: ${IP_FILE_SINGLE}"
     else
         IP_FILE_SINGLE="$ROOT_DIR/assets/data/dnspod-dns/default.txt"
-        echo -e "\n${GREEN}[OK] 使用默认路径: ${IP_FILE_SINGLE}${NC}"
+        echo -e "\n${GREEN}[OK] 使用默认路径: ${IP_FILE_SINGLE}"
     fi
 fi
 
@@ -3956,40 +3744,40 @@ echo ""
 # 清屏后进入下一步
 clear
 if [ "$MODE" = "multi" ]; then
-    echo -e "${CYAN}━━ 步骤 7/7: IP 数量限制配置 ━━${NC}"
+    echo -e "${CYAN}━━ 步骤 7/7: IP 数量限制配置 ━━"
 else
-    echo -e "${CYAN}━━ 步骤 6/6: IP 数量限制配置 ━━${NC}"
+    echo -e "${CYAN}━━ 步骤 6/6: IP 数量限制配置 ━━"
 fi
 echo ""
-echo -e "${CYAN}提示${NC} DNSPod 套餐负载均衡记录数限制:"
+echo -e "${CYAN}提示: DNSPod 套餐负载均衡记录数限制:"
 echo "  - 免费版: 2 条 (默认)"
 echo "  - 专业版: 10 条"
 echo "  - 企业版: 100 条"
 echo "  - 尊享版: 不限制"
-echo -e "  ${CYAN}文档${NC} 官方文档: https://cloud.tencent.com/document/product/302/104713"
+echo -e "  ${CYAN}文档: 官方文档: https://cloud.tencent.com/document/product/302/104713"
 echo ""
 
-echo -e "${YELLOW}说明:${NC}"
+echo -e "${YELLOW}说明:"
 echo "  - 设置每条 DNS 记录最多包含几个 IP 地址"
 echo "  - 例如: 设置为 2，则每个域名最多解析到 2 个 IP"
 echo "  - 设置为 0 表示不限制（需要套餐支持）"
 echo ""
 
-read -p "请输入限制数量 (默认 2, 直接回车使用默认): " MAX_IPS_PER_RECORD_INPUT
+read -r -p "请输入限制数量 (默认 2, 直接回车使用默认): " MAX_IPS_PER_RECORD_INPUT
 
 if [ -z "$MAX_IPS_PER_RECORD_INPUT" ]; then
     MAX_IPS_PER_RECORD=2
 elif [[ "$MAX_IPS_PER_RECORD_INPUT" =~ ^[0-9]+$ ]]; then
     MAX_IPS_PER_RECORD=$MAX_IPS_PER_RECORD_INPUT
 else
-    echo -e "${YELLOW}无效${NC}输入,使用默认值 2"
+    echo -e "${YELLOW}无效输入,使用默认值 2"
     MAX_IPS_PER_RECORD=2
 fi
 
 if [ "$MAX_IPS_PER_RECORD" -eq 0 ]; then
-    echo -e "${GREEN}[OK] IP 数量限制已取消 (不限制)${NC}"
+    echo -e "${GREEN}[OK] IP 数量限制已取消 (不限制)"
 else
-    echo -e "${GREEN}[OK] IP 数量限制已设置: 每条记录最多 ${MAX_IPS_PER_RECORD} 个 IP${NC}"
+    echo -e "${GREEN}[OK] IP 数量限制已设置: 每条记录最多 ${MAX_IPS_PER_RECORD} 个 IP"
 fi
 
 echo ""
@@ -3997,7 +3785,7 @@ echo ""
 # 清屏后显示确认信息
 clear
 echo ""
-echo -e "${CYAN}━━ 确认配置 ━━${NC}"
+echo -e "${CYAN}━━ 确认配置 ━━"
 echo ""
 echo "请确认以下配置是否正确:"
 echo ""
@@ -4035,10 +3823,10 @@ else
 fi
 echo ""
 
-read -p "确认保存配置? (y/n): " confirm
+read -r -p "确认保存配置? (y/n): " confirm
 
 if [ "$confirm" != "y" ] && [ "$confirm" != "Y" ]; then
-    echo -e "\n${RED}[ERROR] 配置已取消${NC}"
+    echo -e "\n${RED}[ERROR] 配置已取消"
     exit 0
 fi
 
@@ -4127,7 +3915,7 @@ REQUEST_TIMEOUT=10
 MAX_IPS_PER_RECORD=${MAX_IPS_PER_RECORD}
 EOF
 
-echo -e "\n${GREEN}[OK] 配置文件已生成: ${CONFIG_FILE}${NC}"
+echo -e "\n${GREEN}[OK] 配置文件已生成: ${CONFIG_FILE}"
 
 # 如果是多线路模式,创建 IP 文件模板
 if [ "$MODE" = "multi" ]; then
@@ -4146,7 +3934,7 @@ if [ "$MODE" = "multi" ]; then
 # 请替换为实际的优选 IP
 104.16.0.1,104.16.0.2
 EOF
-            echo -e "  ${GREEN}[OK] 创建: ip-data/cf_ips.txt${NC}"
+            echo -e "  ${GREEN}[OK] 创建: ip-data/cf_ips.txt"
         fi
     fi
     
@@ -4159,7 +3947,7 @@ EOF
 # 请替换为实际的优选 IP
 104.16.1.1,104.16.1.2
 EOF
-            echo -e "  ${GREEN}[OK] 创建: ip-data/cf_ips_unicom.txt${NC}"
+            echo -e "  ${GREEN}[OK] 创建: ip-data/cf_ips_unicom.txt"
         fi
     fi
     
@@ -4172,7 +3960,7 @@ EOF
 # 请替换为实际的优选 IP
 104.16.2.1,104.16.2.2
 EOF
-            echo -e "  ${GREEN}[OK] 创建: ip-data/cf_ips_mobile.txt${NC}"
+            echo -e "  ${GREEN}[OK] 创建: ip-data/cf_ips_mobile.txt"
         fi
     fi
     
@@ -4185,27 +3973,27 @@ EOF
 # 请替换为实际的优选 IP
 104.16.3.1,104.16.3.2
 EOF
-            echo -e "  ${GREEN}[OK] 创建: ip-data/cf_ips_telecom.txt${NC}"
+            echo -e "  ${GREEN}[OK] 创建: ip-data/cf_ips_telecom.txt"
         fi
     fi
     
     echo ""
 fi
 
-echo -e "\n${CYAN}${MENU_BORDER}${NC}"
-echo -e " ${GREEN}[OK] 配置完成!${NC}"
-echo -e "${CYAN}${MENU_BORDER_BOTTOM}${NC}"
+echo -e "\n${CYAN}${MENU_BORDER}"
+echo -e " ${GREEN}[OK] 配置完成!"
+echo -e "${CYAN}${MENU_BORDER_BOTTOM}"
 echo ""
 
 # 返回主菜单
 echo ""
-read -p "按回车键返回主菜单..."
+read -r -p "按回车键返回主菜单..."
 clear
 
 # 重新进入主菜单循环
 while true; do
     show_menu
-    read -p "请选择操作 (0-8): " choice
+    read -r -p "请选择操作 (0-8): " choice
     
     case "$choice" in
         1)
@@ -4217,44 +4005,43 @@ while true; do
             # 快速运行
             clear
             if [ -f "$CONFIG_FILE" ]; then
-                source "$CONFIG_FILE"
-                run_mode="${MODE:-single}"
+                run_mode=$(json_get ".dns.mode" "single")
                 quick_run "$run_mode"
             else
-                echo -e "${RED}错误${NC}: 配置文件不存在"
+                echo -e "${RED}错误: 配置文件不存在"
                 echo "请先运行完整配置向导"
             fi
             echo ""
-            read -p "按回车键返回主菜单..."
+            read -r -p "按回车键返回主菜单..."
             clear
             ;;
         3)
             clear
             view_config
             echo ""
-            read -p "按回车键返回主菜单..."
+            read -r -p "按回车键返回主菜单..."
             clear
             ;;
         4)
             clear
             toggle_module_status
             echo ""
-            read -p "按回车键返回主菜单..."
+            read -r -p "按回车键返回主菜单..."
             clear
             ;;
         5)
             clear
-            echo -e "${GREEN}正在调用 IP 同步组件...${NC}"
+            echo -e "${GREEN}正在调用 IP 同步组件..."
             bash "$ROOT_DIR/modules/ip-sync/sync.sh"
             echo ""
-            read -p "按回车键返回主菜单..."
+            read -r -p "按回车键返回主菜单..."
             clear
             ;;
         6)
             clear
             modify_ip_limit
             echo ""
-            read -p "按回车键返回主菜单..."
+            read -r -p "按回车键返回主菜单..."
             clear
             ;;
         7)
@@ -4266,6 +4053,7 @@ while true; do
                 if [ $result -eq 0 ]; then
                     break
                 elif [ $result -eq 2 ]; then
+                    # shellcheck disable=SC2034
                     RECONFIGURE_ALL=true
                     break 2
                 elif [ $result -eq 1 ]; then
@@ -4282,14 +4070,14 @@ while true; do
             ;;
         0)
             echo ""
-            echo -e "${GREEN}[OK] 再见!${NC}"
+            echo -e "${GREEN}[OK] 再见!"
             exit 0
             ;;
         *)
             echo ""
-            echo -e "${RED}[ERROR] 无效的选择,请重新输入${NC}"
+            echo -e "${RED}[ERROR] 无效的选择,请重新输入"
             echo ""
-            read -p "按回车键继续..."
+            read -r -p "按回车键继续..."
             clear
             ;;
     esac

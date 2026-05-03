@@ -1,0 +1,41 @@
+{
+  "_comment": "Cloudflare DNS 更新模块配置 (JSON 格式)",
+  "_version": "1.0",
+  "_directory_structure": {
+    "conf": "配置文件目录",
+    "assets_data": "IP 数据文件目录",
+    "logs": "日志文件目录"
+  },
+  
+  "enabled": true,
+  
+  "api": {
+    "_token_comment": "Cloudflare API Token - https://dash.cloudflare.com/profile/api-tokens",
+    "token": "your_api_token_here",
+    
+    "_zone_id_comment": "Zone ID - Cloudflare Dashboard -> 域名 -> 右侧栏",
+    "zone_id": "your_zone_id_here",
+    
+    "timeout": 10,
+    "max_retries": 5
+  },
+  
+  "dns": {
+    "_record_name_comment": "子域名: dns/cf/@(根域名)",
+    "record_name": "your_dns_name_here",
+    "domain": "",
+    "max_ips_per_record": 2
+  },
+  
+  "ip_source": {
+    "file_path": "./assets/data/cf-dns/ip_list.txt",
+    "auto_refresh": true,
+    "refresh_interval_hours": 6
+  },
+  
+  "logging": {
+    "log_dir": "./logs/cf-dns",
+    "log_rotation_days": 7,
+    "verbose": false
+  }
+}

@@ -14,9 +14,9 @@ ROOT_DIR="$(cd "$SCRIPT_DIR/../.." && pwd)"
 
 # ==================== 权限与入口校验 ====================
 # 确保脚本具有执行权限，并在非 Root 环境下尝试自动修复
-if [ ! -x "$SCRIPT_DIR/run.sh" ] && [ "$(id -u)" -ne 0 ]; then
+if [[ ! -x "${SCRIPT_DIR}/run.sh" ]] && [[ "$(id -u)" -ne 0 ]]; then
     echo -e "${YELLOW}[WARN] 脚本可能缺少执行权限，正在尝试修复...${NC}"
-    chmod +x "$SCRIPT_DIR/run.sh" 2>/dev/null || true
+    chmod +x "${SCRIPT_DIR}/run.sh" 2>/dev/null || true
 fi
 
 # ==================== 终端显示配置 ====================
@@ -45,16 +45,16 @@ run_task() {
     echo -e "\n${CYAN}[TASK] 正在执行: ${task_name}${NC}"
     
     # 检查目标脚本是否存在
-    if [ ! -f "$script_path" ]; then
-        echo -e "${RED}[ERROR] 脚本不存在: $script_path${NC}"
+    if [[ ! -f "${script_path}" ]]; then
+        echo -e "${RED}[ERROR] 脚本不存在: ${script_path}${NC}"
         return 1
     fi
     
     # 执行脚本并捕获退出码
-    bash "$script_path"
+    bash "${script_path}"
     local exit_code=$?
     
-    if [ $exit_code -ne 0 ]; then
+    if [[ "${exit_code}" -ne 0 ]]; then
         echo -e "${RED}[FAIL] ${task_name} 执行失败 (Exit Code: ${exit_code})，终止后续任务。${NC}"
         return 1
     else
@@ -69,12 +69,16 @@ run_task() {
 echo -e "\n${CYAN}[TASK] 正在执行: IP 优选测速${NC}"
 
 # 加载 CF-IP 模块配置以获取分流策略
-if [ -f "$ROOT_DIR/modules/cf-ip/config.conf" ]; then
-    source "$ROOT_DIR/modules/cf-ip/config.conf"
+if [[ -f "${ROOT_DIR}/conf/cf-ip.json" ]]; then
+    # 从 JSON 读取多线路配置
+    ENABLE_MULTI_LINE=$(jq -r '.multi_line.enabled // false' "${ROOT_DIR}/conf/cf-ip.json")
+    COLO_MOBILE=$(jq -r '.multi_line.colo_mobile // "HKG,SIN,TYO,LON"' "${ROOT_DIR}/conf/cf-ip.json")
+    COLO_UNICOM=$(jq -r '.multi_line.colo_unicom // "SJC,LAX,SIN,TYO"' "${ROOT_DIR}/conf/cf-ip.json")
+    COLO_TELECOM=$(jq -r '.multi_line.colo_telecom // "SJC,LAX,TYO,SIN"' "${ROOT_DIR}/conf/cf-ip.json")
 fi
 
 # 检查是否开启多线路测速
-if [ "${ENABLE_MULTI_LINE:-false}" = "true" ]; then
+if [[ "${ENABLE_MULTI_LINE:-false}" = "true" ]]; then
     echo -e "${YELLOW}[INFO] 检测到已开启多线路分流测速...${NC}"
     
     # 定义各运营商的 Colo 列表 (优先使用 menu.sh 中配置的参数)
@@ -85,12 +89,12 @@ if [ "${ENABLE_MULTI_LINE:-false}" = "true" ]; then
     ISP_COLOS["telecom"]="${COLO_TELECOM:-SJC,LAX,TYO,SIN}"
 
     for isp in "${!ISP_COLOS[@]}"; do
-        local colo_list=${ISP_COLOS[$isp]}
-        local output_file="$ROOT_DIR/assets/data/cf-ip/result_${isp}.csv"
+        colo_list="${ISP_COLOS[$isp]}"
+        output_file="${ROOT_DIR}/assets/data/cf-ip/result_${isp}.csv"
         echo -e "${CYAN}  -> 正在后台启动 ${isp} 线路测速 (Colo: ${colo_list})...${NC}"
         # 传入第三个参数作为线路标识，用于进程锁隔离
         # 使用 & 符号让其在后台运行，实现多线程并发测速
-        bash "$ROOT_DIR/modules/cf-ip/core.sh" "$colo_list" "$output_file" "$isp" &
+        bash "${ROOT_DIR}/modules/cf-ip/core.sh" "${colo_list}" "${output_file}" "${isp}" &
     done
     
     # 等待所有后台测速任务完成
@@ -98,30 +102,30 @@ if [ "${ENABLE_MULTI_LINE:-false}" = "true" ]; then
     wait
 else
     # 单线路模式：仅执行一次通用测速
-    bash "$ROOT_DIR/modules/cf-ip/core.sh" || exit 1
+    bash "${ROOT_DIR}/modules/cf-ip/core.sh" || exit 1
 fi
 echo -e "${GREEN}[OK] IP 优选测速执行成功。${NC}"
 
 # 第二阶段：执行 IP 数据同步（将不同线路的结果分发至对应目录）
-run_task "IP 数据同步" "$ROOT_DIR/modules/ip-sync/sync.sh" || exit 1
+run_task "IP 数据同步" "${ROOT_DIR}/modules/ip-sync/sync.sh" || exit 1
 
 # 第三阶段：Cloudflare DNS 记录更新（解决矛盾：CF 仅使用 default 线路结果）
-if [ -f "$ROOT_DIR/conf/cfdns.conf" ]; then
-    source "$ROOT_DIR/conf/cfdns.conf"
-    if [ "${ENABLED:-false}" = "true" ]; then
+if [[ -f "${ROOT_DIR}/conf/cf-dns.json" ]]; then
+    cf_dns_enabled=$(jq -r '.enabled // false' "${ROOT_DIR}/conf/cf-dns.json")
+    if [[ "${cf_dns_enabled}" = "true" ]]; then
         echo -e "${YELLOW}[INFO] 正在更新 Cloudflare DNS (使用默认线路 IP)...${NC}"
-        run_task "Cloudflare DNS 更新" "$ROOT_DIR/modules/cf-dns/core.sh" || exit 1
+        run_task "Cloudflare DNS 更新" "${ROOT_DIR}/modules/cf-dns/core.sh" || exit 1
     else
         echo -e "${YELLOW}[SKIP] CF-DNS 模块已禁用，跳过更新。${NC}"
     fi
 fi
 
 # 第四阶段：DNSPod DNS 记录更新（支持多线路分发）
-if [ -f "$ROOT_DIR/conf/dnspod.conf" ]; then
-    source "$ROOT_DIR/conf/dnspod.conf"
-    if [ "${ENABLED:-false}" = "true" ]; then
+if [[ -f "${ROOT_DIR}/conf/dnspod.json" ]]; then
+    dnspod_enabled=$(jq -r '.enabled // false' "${ROOT_DIR}/conf/dnspod.json")
+    if [[ "${dnspod_enabled}" = "true" ]]; then
         echo -e "${YELLOW}[INFO] 正在更新 DNSPod DNS (根据运营商分发)...${NC}"
-        run_task "DNSPod DNS 更新" "$ROOT_DIR/modules/dnspod-dns/core.sh" || exit 1
+        run_task "DNSPod DNS 更新" "${ROOT_DIR}/modules/dnspod-dns/core.sh" || exit 1
     else
         echo -e "${YELLOW}[SKIP] DNSPod 模块已禁用，跳过更新。${NC}"
     fi
