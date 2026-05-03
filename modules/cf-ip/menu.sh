@@ -160,16 +160,8 @@ download_with_retry() {
 
 # ====================== 【函数：下载 cfst 测速程序】 ======================
 download_cfst() {
-    # 检查网络连接
-    if ! ping -c 1 -W 3 github.com >/dev/null 2>&1; then
-        echo -e "${RED}[ERROR] 无法连接到 GitHub，请检查网络连接${NC}"
-        return 1
-    fi
-    
     local arch
     arch="$(uname -m)"
-    local os_type
-    os_type="$(uname -s | tr '[:upper:]' '[:lower:]')"
     
     # 映射架构名称（使用 cfst 官方命名）
     case "${arch}" in
@@ -183,90 +175,51 @@ download_cfst() {
             ;;
     esac
     
-    # 构建下载 URL（使用 cfst 官方命名规范）
-    local repo_url="https://github.com/XIU2/CloudflareSpeedTest/releases/latest/download"
+    # 构建文件名
     local filename="cfst_linux_${arch}.tar.gz"
-    local download_url="${repo_url}/${filename}"
     
     # 国内镜像加速列表（按优先级排序）
     local mirrors=(
         "https://gh-proxy.org/https://github.com/XIU2/CloudflareSpeedTest/releases/latest/download/${filename}"
-        "https://ghfast.top/https://github.com/XIU2/CloudflareSpeedTest/releases/latest/download/${filename}"
         "https://cdn.gh-proxy.org/https://github.com/XIU2/CloudflareSpeedTest/releases/latest/download/${filename}"
+        "https://ghfast.top/https://github.com/XIU2/CloudflareSpeedTest/releases/latest/download/${filename}"
+        "https://wget.la/https://github.com/XIU2/CloudflareSpeedTest/releases/latest/download/${filename}"
     )
     
-    echo -e "${CYAN}[INFO] 系统检测: ${os_type} ${arch}${NC}"
-    echo -e "${CYAN}[INFO] 正在尝试下载 cfst...${NC}"
+    echo -e "${CYAN}[INFO] 系统架构: ${arch}${NC}"
+    echo -e "${CYAN}[INFO] 正在下载 cfst...${NC}"
     
-    # 创建临时目录
-    local temp_dir
-    temp_dir="$(mktemp -d)"
-    local temp_file="${temp_dir}/${filename}"
+    # 创建目标目录
+    mkdir -p "${CFST_DIR}"
+    cd "${CFST_DIR}" || return 1
     
-    # 尝试从镜像源下载（优先使用国内镜像）
+    # 尝试从镜像源下载
     local download_success=false
-    
-    # 首先尝试镜像加速（提高国内用户成功率）
-    echo -e "${CYAN}[INFO] 尝试从镜像源下载...${NC}"
     for mirror_url in "${mirrors[@]}"; do
         echo -e "${CYAN}[INFO] 尝试镜像: ${mirror_url%%/https*}...${NC}"
-        if download_with_retry "${mirror_url}" "${temp_file}"; then
+        if wget -N "${mirror_url}" 2>/dev/null; then
             download_success=true
             break
         fi
     done
     
-    # 如果镜像都失败，尝试 GitHub 直连
-    if [[ "${download_success}" != "true" ]]; then
-        echo -e "${YELLOW}[WARN] 镜像下载失败，尝试 GitHub 直连...${NC}"
-        if download_with_retry "${download_url}" "${temp_file}"; then
-            download_success=true
-        fi
-    fi
-    
     if [[ "${download_success}" != "true" ]]; then
         echo -e "${RED}[ERROR] 所有下载源均失败，请检查网络连接${NC}"
-        rm -rf "${temp_dir}"
         return 1
     fi
     
-    # 解压文件
+    # 解压（直接覆盖，无需删除旧文件）
     echo -e "${CYAN}[INFO] 正在解压...${NC}"
-    if ! tar -xzf "${temp_file}" -C "${temp_dir}" 2>/dev/null; then
+    if ! tar -zxf "${filename}" 2>/dev/null; then
         echo -e "${RED}[ERROR] 解压失败${NC}"
-        rm -rf "${temp_dir}"
         return 1
     fi
     
-    # 查找可执行文件（cfst 官方包解压后直接是 cfst 文件）
-    local exe_file=""
-    if [[ -f "${temp_dir}/cfst" ]]; then
-        exe_file="${temp_dir}/cfst"
-    else
-        # 尝试在子目录中查找
-        exe_file="$(find "${temp_dir}" -type f -name "cfst" -print -quit 2>/dev/null)"
-    fi
+    # 赋予执行权限
+    chmod +x cfst
     
-    if [[ -z "${exe_file}" ]] || [[ ! -f "${exe_file}" ]]; then
-        echo -e "${RED}[ERROR] 找不到可执行文件 cfst${NC}"
-        echo -e "${YELLOW}[DEBUG] 解压后的文件列表:${NC}"
-        ls -laR "${temp_dir}" 2>/dev/null
-        rm -rf "${temp_dir}"
-        return 1
-    fi
-    
-    # 创建目标目录并移动文件
-    mkdir -p "${CFST_DIR}"
-    if mv "${exe_file}" "${CFST_BIN}"; then
-        chmod +x "${CFST_BIN}"
-        echo -e "${GREEN}[OK] cfst 已安装到: ${CFST_BIN}${NC}"
-        rm -rf "${temp_dir}"
-        return 0
-    else
-        echo -e "${RED}[ERROR] 文件移动失败${NC}"
-        rm -rf "${temp_dir}"
-        return 1
-    fi
+    echo -e "${GREEN}[OK] cfst 已安装到: ${CFST_BIN}${NC}"
+    return 0
 }
 
 # ====================== 【函数：检查配置文件】 ======================
