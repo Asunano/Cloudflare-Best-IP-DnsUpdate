@@ -228,7 +228,10 @@ download_with_retry() {
             if [[ "${output}" == *.sh ]]; then
                 local first_line
                 first_line="$(head -1 "${output}" 2>/dev/null)"
-                if ! echo "${first_line}" | grep -q "^#!/" 2>/dev/null; then
+                # 移除 BOM (UTF-8 Byte Order Mark) 后检查 shebang
+                local clean_line
+                clean_line="$(echo "${first_line}" | sed 's/^\xEF\xBB\xBF//')"
+                if ! echo "${clean_line}" | grep -q "^#!/" 2>/dev/null; then
                     echo -e "${YELLOW}[WARN] 文件不是有效的 Shell 脚本（第一行: ${first_line}），正在重试...${NC}"
                     continue
                 fi
