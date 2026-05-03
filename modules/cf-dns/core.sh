@@ -1,10 +1,12 @@
 #!/bin/bash
+# shellcheck shell=bash
 # ==============================================================================
 # cfopt - Cloudflare DNS 更新核心 (Core)
 # Version: 0.1
 # Description: 负责将优选 IP 同步至 Cloudflare DNS 记录，支持有效性校验与日志记录
 # Usage: bash modules/cf-dns/core.sh
 # ==============================================================================
+# shellcheck disable=SC2034
 SCRIPT_VERSION="0.1"
 
 # ==================== 终端显示配置 ====================
@@ -23,7 +25,8 @@ ROOT_DIR="$(cd "$SCRIPT_DIR/../.." && pwd)"
 LOCK_FILE="$ROOT_DIR/modules/cf-dns/.core.lock"
 acquire_lock() {
     if [ -f "$LOCK_FILE" ]; then
-        local pid=$(cat "$LOCK_FILE")
+        local pid
+        pid=$(cat "$LOCK_FILE")
         if kill -0 "$pid" 2>/dev/null; then
             echo "[ERROR] 检测到另一个 CF-DNS 更新进程正在运行 (PID: $pid)"
             exit 1
@@ -37,13 +40,13 @@ acquire_lock() {
 
 acquire_lock
 
-CONFIG_FILE="$ROOT_DIR/conf/cfdns.conf"
+CONFIG_FILE="$ROOT_DIR/conf/cf-dns.json"
 
 # DNS 记录名称说明:
-#   CF_DNS_NAME 配置说明:
-#   - 如果最终域名是 dns.example.com，CF_DNS_NAME 填 dns
-#   - 如果最终域名是 cf.example.com，CF_DNS_NAME 填 cf
-#   - 如果最终域名是 example.com（根域名），CF_DNS_NAME 填 @
+#   record_name 配置说明:
+#   - 如果最终域名是 dns.example.com，填 dns
+#   - 如果最终域名是 cf.example.com，填 cf
+#   - 如果最终域名是 example.com（根域名），填 @
 
 # 设置日志目录
 LOG_DIR_DEFAULT="$ROOT_DIR/logs/cf-dns"
@@ -54,29 +57,63 @@ LOG_FILE="${LOG_DIR}/cfdns_$(date +%Y%m%d_%H%M%S).log"
 # 日志函数
 log() {
     local message="$1"
-    local timestamp=$(date +"%Y-%m-%d %H:%M:%S")
+    local timestamp
+    timestamp=$(date +"%Y-%m-%d %H:%M:%S")
     echo -e "[${timestamp}] ${message}" | tee -a "$LOG_FILE"
 }
 
+# ==================== 加载 JSON 配置 ====================
 if [ ! -f "$CONFIG_FILE" ]; then
     echo -e "${RED}错误${NC}: 找不到配置文件 ${CONFIG_FILE}"
     echo ""
-    echo "请先创建配置文件,参考示例: cfdns.conf.example"
-    exit 1
-fi
-
-# 检查配置文件权限（应该只有所有者可读写）
-if [ -f "$CONFIG_FILE" ]; then
-    local_perms=$(stat -c %a "$CONFIG_FILE" 2>/dev/null || stat -f %Lp "$CONFIG_FILE" 2>/dev/null)
-    if [ "$local_perms" != "600" ] && [ "$local_perms" != "400" ]; then
-        echo -e "${YELLOW}警告${NC}: 配置文件权限不安全 (当前: $local_perms, 建议: 600)"
-        echo "   运行以下命令修复: chmod 600 $CONFIG_FILE"
+    
+    # 检测是否为交互式环境（有终端输入）
+    if [ -t 0 ]; then
+        echo -e "${CYAN}+------------------------------------------------------------+"
+        echo -e " ${YELLOW}CF-DNS 模块首次配置向导"
+        echo -e "${CYAN}+------------------------------------------------------------+"
         echo ""
+        echo -e "${YELLOW}[INFO] 检测到您尚未配置 CF-DNS 模块${NC}"
+        echo ""
+        echo -e "${GREEN}我们将帮助您完成以下配置：${NC}"
+        echo "  ✓ Cloudflare API Token（用于管理 DNS 记录）"
+        echo "  ✓ Zone ID（您的域名区域 ID）"
+        echo "  ✓ DNS 记录名称和域名"
+        echo "  ✓ IP 数据源路径"
+        echo ""
+        read -r -p "是否立即启动配置向导？[Y/n] (默认: Y): " choice
+        choice=${choice:-Y}
+        
+        if [[ "$choice" =~ ^[Yy]$ ]] || [[ -z "$choice" ]]; then
+            echo ""
+            echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+            echo -e "${GREEN}正在启动快速配置向导...${NC}"
+            echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+            echo ""
+            exec bash "$ROOT_DIR/modules/cf-dns/setup.sh"
+        else
+            echo -e "${YELLOW}已取消操作${NC}"
+            exit 1
+        fi
+    else
+        # 非交互式环境（定时任务等），直接退出
+        echo -e "${YELLOW}[WARN] 请先运行配置向导创建配置文件${NC}"
+        echo -e "${YELLOW}[WARN] 命令: bash $ROOT_DIR/modules/cf-dns/setup.sh${NC}"
+        exit 1
     fi
 fi
 
-# 加载配置
-source "$CONFIG_FILE"
+# 从 JSON 读取配置并导出为环境变量
+export ENABLED=$(jq -r '.enabled // false' "$CONFIG_FILE")
+export CF_API_TOKEN=$(jq -r '.api.token // empty' "$CONFIG_FILE")
+export CF_ZONE_ID=$(jq -r '.api.zone_id // empty' "$CONFIG_FILE")
+export CF_DNS_NAME=$(jq -r '.dns.record_name // empty' "$CONFIG_FILE")
+export CF_DOMAIN=$(jq -r '.dns.domain // empty' "$CONFIG_FILE")
+export IP_FILE=$(jq -r '.ip_source.file_path // empty' "$CONFIG_FILE")
+export MAX_IPS_PER_RECORD=$(jq -r '.dns.max_ips_per_record // 2' "$CONFIG_FILE")
+export REQUEST_TIMEOUT=$(jq -r '.api.timeout // 10' "$CONFIG_FILE")
+export MAX_RETRIES=$(jq -r '.api.max_retries // 5' "$CONFIG_FILE")
+export LOG_DIR=$(jq -r '.logging.log_dir // empty' "$CONFIG_FILE")
 
 # 检查启用状态
 if [ "${ENABLED:-false}" != "true" ]; then
@@ -181,24 +218,28 @@ rotate_logs() {
 # HTTP GET 请求（带重试、校验与详细提示）
 http_get() {
     local url="$1"
+    # shellcheck disable=SC2034
     local expected_hash="$2" # 可选参数
     local max_retries=${MAX_RETRIES:-3}
     local retry=0
     
-    while [ $retry -lt $max_retries ]; do
+    while [ "$retry" -lt "$max_retries" ]; do
         if [ $retry -gt 0 ]; then
             log_msg "WARN" "正在重试第 $retry/$max_retries 次..."
             sleep 2
         fi
         
-        local response=$(curl -s --connect-timeout 10 -X GET "$url" \
+        local response
+        response=$(curl -s --connect-timeout 10 -X GET "$url" \
             -H "Authorization: Bearer ${CF_API_TOKEN}" \
             -H "Content-Type: application/json" \
             --max-time "$REQUEST_TIMEOUT" \
             -w "\n%{http_code}")
         
-        local http_code=$(echo "$response" | tail -n1)
-        local body=$(echo "$response" | sed '$d')
+        local http_code
+        http_code=$(echo "$response" | tail -n1)
+        local body
+        body=$(echo "$response" | sed '$d')
         
         if [ "$http_code" = "200" ]; then
             echo "$body"
@@ -217,7 +258,7 @@ http_get() {
             return 1
         else
             retry=$((retry + 1))
-            if [ $retry -lt $max_retries ]; then
+            if [ "$retry" -lt "$max_retries" ]; then
                 local wait_time=$((retry * 2))
                 if [ "${CF_DEBUG}" = "true" ]; then
                     log "  [WARN] API 请求失败 (HTTP $http_code), ${wait_time}秒后重试 $retry/$max_retries"
@@ -241,16 +282,19 @@ http_put() {
     local max_retries=${MAX_RETRIES:-3}
     local retry=0
     
-    while [ $retry -lt $max_retries ]; do
-        local response=$(curl -s -X PUT "$url" \
+    while [ "$retry" -lt "$max_retries" ]; do
+        local response
+        response=$(curl -s -X PUT "$url" \
             -H "Authorization: Bearer ${CF_API_TOKEN}" \
             -H "Content-Type: application/json" \
             -d "$data" \
             --max-time "$REQUEST_TIMEOUT" \
             -w "\n%{http_code}")
         
-        local http_code=$(echo "$response" | tail -n1)
-        local body=$(echo "$response" | sed '$d')
+        local http_code
+        http_code=$(echo "$response" | tail -n1)
+        local body
+        body=$(echo "$response" | sed '$d')
         
         if [ "$http_code" = "200" ]; then
             echo "$body"
@@ -267,7 +311,7 @@ http_put() {
             return 1
         else
             retry=$((retry + 1))
-            if [ $retry -lt $max_retries ]; then
+            if [ "$retry" -lt "$max_retries" ]; then
                 local wait_time=$((retry * 2))
                 if [ "${CF_DEBUG}" = "true" ]; then
                     log "  [WARN] API 请求失败 (HTTP $http_code), ${wait_time}秒后重试 $retry/$max_retries"
@@ -291,16 +335,19 @@ http_post() {
     local max_retries=${MAX_RETRIES:-3}
     local retry=0
     
-    while [ $retry -lt $max_retries ]; do
-        local response=$(curl -s -X POST "$url" \
+    while [ "$retry" -lt "$max_retries" ]; do
+        local response
+        response=$(curl -s -X POST "$url" \
             -H "Authorization: Bearer ${CF_API_TOKEN}" \
             -H "Content-Type: application/json" \
             -d "$data" \
             --max-time "$REQUEST_TIMEOUT" \
             -w "\n%{http_code}")
         
-        local http_code=$(echo "$response" | tail -n1)
-        local body=$(echo "$response" | sed '$d')
+        local http_code
+        http_code=$(echo "$response" | tail -n1)
+        local body
+        body=$(echo "$response" | sed '$d')
         
         if [ "$http_code" = "200" ]; then
             echo "$body"
@@ -317,7 +364,7 @@ http_post() {
             return 1
         else
             retry=$((retry + 1))
-            if [ $retry -lt $max_retries ]; then
+            if [ "$retry" -lt "$max_retries" ]; then
                 local wait_time=$((retry * 2))
                 if [ "${CF_DEBUG}" = "true" ]; then
                     log "  [WARN] API 请求失败 (HTTP $http_code), ${wait_time}秒后重试 $retry/$max_retries"
@@ -340,7 +387,7 @@ http_post() {
 get_cf_ip_from_file() {
     if [ ! -f "$IP_FILE" ]; then
         log "${RED}错误${NC}: IP 文件不存在: ${IP_FILE}"
-        log "   请创建文件或修改 cfdns.conf 中的配置"
+        log "   请创建文件或修改 cf-dns.json 中的配置"
         return 1
     fi
     
@@ -350,7 +397,8 @@ get_cf_ip_from_file() {
     local cache_file="${IP_FILE}.mtime"
     
     if [ -f "$cache_file" ]; then
-        local cached_mtime=$(cat "$cache_file")
+        local cached_mtime
+        cached_mtime=$(cat "$cache_file")
         if [ "$current_mtime" = "$cached_mtime" ]; then
             # 文件未变化，但我们需要读取内容让主函数处理
             # 这里不返回空，而是继续执行，由主函数判断是否需要更新
@@ -363,7 +411,8 @@ get_cf_ip_from_file() {
     # 2. 逗号分隔的 IP
     # 3. 空格分隔的 IP
     # 4. 混合分隔符
-    local content=$(grep -v '^#' "$IP_FILE" | sed 's/#.*//g' | tr '\n,' '  ' | tr -s ' ' | sed 's/^ //;s/ $//')
+    local content
+    content=$(grep -v '^#' "$IP_FILE" | sed 's/#.*//g' | tr '\n,' '  ' | tr -s ' ' | sed 's/^ //;s/ $//')
     
     if [ -z "$content" ]; then
         log "${RED}错误${NC}: IP 文件为空: ${IP_FILE}"
@@ -428,21 +477,32 @@ get_dns_records() {
     # 使用 name 参数过滤，只获取指定名称的记录
     local url="https://api.cloudflare.com/client/v4/zones/${CF_ZONE_ID}/dns_records?type=A&name=${full_name}"
     
-    local response=$(http_get "$url")
+    local response
+    response=$(http_get "$url")
     
     # 解析 JSON 获取 A 类型记录
     # 使用 grep -o 提取所有匹配项，处理单行 JSON
     local -a record_ids=()
+    # shellcheck disable=SC2034
     local -a record_contents=()
     
     # 检查是否成功
     if ! echo "$response" | jq -r '.success' 2>/dev/null | grep -q 'true'; then
+        # API 请求失败，输出详细错误信息到 stderr
+        local error_msg
+        error_msg=$(echo "$response" | jq -r '.errors[0].message' 2>/dev/null)
+        if [ -n "$error_msg" ] && [ "$error_msg" != "null" ]; then
+            echo "  [ERROR] API 请求失败: ${error_msg}" >&2
+        else
+            echo "  [ERROR] API 请求失败，响应: ${response:0:200}" >&2
+        fi
         echo "0"
         return
     fi
     
     # 使用 jq 提取记录数量
-    local count=$(echo "$response" | jq '.result | length' 2>/dev/null)
+    local count
+    count=$(echo "$response" | jq '.result | length' 2>/dev/null)
     
     if [ -z "$count" ] || [ "$count" = "null" ] || [ "$count" -eq 0 ]; then
         echo "0"
@@ -454,9 +514,12 @@ get_dns_records() {
     
     # 使用 jq 提取每个记录的 id、type、content
     for ((i=0; i<count; i++)); do
-        local obj_id=$(echo "$response" | jq -r ".result[$i].id" 2>/dev/null)
-        local obj_type=$(echo "$response" | jq -r ".result[$i].type" 2>/dev/null)
-        local obj_content=$(echo "$response" | jq -r ".result[$i].content" 2>/dev/null)
+        local obj_id
+        obj_id=$(echo "$response" | jq -r ".result[$i].id" 2>/dev/null)
+        local obj_type
+        obj_type=$(echo "$response" | jq -r ".result[$i].type" 2>/dev/null)
+        local obj_content
+        obj_content=$(echo "$response" | jq -r ".result[$i].content" 2>/dev/null)
         
         # 只添加 A 类型的记录
         if [ "$obj_type" = "A" ] && [ -n "$obj_id" ] && [ "$obj_id" != "null" ] && [ -n "$obj_content" ] && [ "$obj_content" != "null" ]; then
@@ -474,7 +537,8 @@ update_dns_record() {
     local url="https://api.cloudflare.com/client/v4/zones/${CF_ZONE_ID}/dns_records/${record_id}"
     local data="{\"type\":\"A\",\"name\":\"${name}\",\"content\":\"${cf_ip}\"}"
     
-    local response=$(http_put "$url" "$data")
+    local response
+    response=$(http_put "$url" "$data")
     
     if echo "$response" | jq -r '.success' 2>/dev/null | grep -q 'true'; then
         echo "success"
@@ -491,7 +555,8 @@ create_dns_record() {
     local url="https://api.cloudflare.com/client/v4/zones/${CF_ZONE_ID}/dns_records"
     local data="{\"type\":\"A\",\"name\":\"${name}\",\"content\":\"${cf_ip}\",\"ttl\":1,\"proxied\":false}"
     
-    local response=$(http_post "$url" "$data")
+    local response
+    response=$(http_post "$url" "$data")
     
     if echo "$response" | jq -r '.success' 2>/dev/null | grep -q 'true'; then
         echo "success"
@@ -506,7 +571,8 @@ delete_dns_record() {
     
     local url="https://api.cloudflare.com/client/v4/zones/${CF_ZONE_ID}/dns_records/${record_id}"
     
-    local response=$(curl -s -X DELETE "$url" \
+    local response
+    response=$(curl -s -X DELETE "$url" \
         -H "Authorization: Bearer ${CF_API_TOKEN}" \
         -H "Content-Type: application/json" \
         --max-time "$REQUEST_TIMEOUT")
@@ -521,13 +587,15 @@ delete_dns_record() {
 # ==================== 主逻辑 ====================
 
 main() {
-    local current_time=$(date +"%Y-%m-%d %H:%M:%S")
+    local current_time
+    current_time=$(date +"%Y-%m-%d %H:%M:%S")
     
     # 清屏
     clear
     
     # 构建完整域名用于显示
-    local full_domain=$(build_full_domain "$CF_DNS_NAME" "$CF_DOMAIN")
+    local full_domain
+    full_domain=$(build_full_domain "$CF_DNS_NAME" "$CF_DOMAIN")
     
     # 显示配置摘要
     echo -e "${CYAN}+--------------------------------------------------+"
@@ -548,9 +616,10 @@ main() {
     # 从文件读取优选 IP
     log "${BLUE}[1/3]${NC} 读取 IP 文件: ${IP_FILE}"
     
-    local cf_ip=$(get_cf_ip_from_file)
+    local cf_ip
+    cf_ip=$(get_cf_ip_from_file)
     
-    if [ $? -ne 0 ] || [ -z "$cf_ip" ]; then
+    if [ -z "$cf_ip" ]; then
         log "错误: 无法从文件读取IP,请检查IP文件是否存在且格式正确"
         exit 1
     fi
@@ -599,7 +668,7 @@ main() {
     
     # 检测并去重 IP 文件中的重复 IP
     local original_count=${#ip_addresses[@]}
-    if [ $original_count -gt 0 ]; then
+    if [ "$original_count" -gt 0 ]; then
         local -a unique_ips=()
         local -a duplicate_ips=()
         
@@ -647,7 +716,8 @@ main() {
     # 检测 IP 数量变化（与上次执行对比）
     local count_file="${IP_FILE}.count"
     if [ -f "$count_file" ]; then
-        local last_count=$(cat "$count_file")
+        local last_count
+        last_count=$(cat "$count_file")
         local count_diff=$((${#ip_addresses[@]} - last_count))
         
         if [ $count_diff -ne 0 ]; then
@@ -658,7 +728,7 @@ main() {
             fi
             
             # 如果变化超过 50%，发出严重警告
-            if [ $last_count -gt 0 ]; then
+            if [ "$last_count" -gt 0 ]; then
                 local change_percent=$(( (count_diff < 0 ? -count_diff : count_diff) * 100 / last_count ))
                 if [ $change_percent -gt 50 ]; then
                     log "  ${RED}[WARN] 严重警告${NC}: IP 数量变化超过 50%，请检查测速软件"
@@ -673,8 +743,19 @@ main() {
     # 获取 DNS 记录
     log "${BLUE}[2/3]${NC} 查询 DNS 记录: $(build_full_domain "$CF_DNS_NAME" "$CF_DOMAIN")"
     
-    local records_output=$(get_dns_records "$CF_DNS_NAME")
-    local record_count=$(echo "$records_output" | head -n 1)
+    local records_output
+    records_output=$(get_dns_records "$CF_DNS_NAME" 2>&1)
+    local record_count
+    record_count=$(echo "$records_output" | head -n 1)
+    
+    # 检查是否有错误信息（从 stderr 捕获）
+    if echo "$records_output" | grep -q '\[ERROR\]'; then
+        log "  ${RED}[ERROR]${NC} DNS 记录查询失败"
+        echo "$records_output" | grep '\[ERROR\]' | while IFS= read -r line; do
+            log "  ${RED}[详情]${NC} $line"
+        done
+        exit 1
+    fi
     
     # 验证 record_count 是有效数字
     if ! [[ "$record_count" =~ ^[0-9]+$ ]]; then
@@ -689,8 +770,10 @@ main() {
         local idx=0
         while IFS= read -r line; do
             if [ $idx -gt 0 ]; then
-                local rid=$(echo "$line" | cut -d'|' -f1)
-                local rval=$(echo "$line" | cut -d'|' -f2)
+                local rid
+                rid=$(echo "$line" | cut -d'|' -f1)
+                local rval
+                rval=$(echo "$line" | cut -d'|' -f2)
                 record_ids+=("$rid")
                 current_values+=("$rval")
             fi
@@ -711,16 +794,18 @@ main() {
     local deleted_count=0
     
     # 显示 IP 变化对比（基于集合对比，不关心顺序）
-    if [ $record_count -gt 0 ]; then
+    if [ "$record_count" -gt 0 ]; then
         local same_count=0
         local to_add=0
         local to_remove=0
         
         # 计算相同 IP 的数量（集合交集）
         for new_ip in "${ip_addresses[@]}"; do
-            local clean_new=$(echo "$new_ip" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
+            local clean_new
+            clean_new=$(echo "$new_ip" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
             for existing_ip in "${current_values[@]}"; do
-                local clean_existing=$(echo "$existing_ip" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
+                local clean_existing
+                clean_existing=$(echo "$existing_ip" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
                 if [ "$clean_new" = "$clean_existing" ]; then
                     same_count=$((same_count + 1))
                     break
@@ -743,15 +828,17 @@ main() {
     local -a records_to_delete_ids=()
     local -a records_to_delete_values=()
     
-    if [ $record_count -gt 0 ]; then
+    if [ "$record_count" -gt 0 ]; then
         for ((i=0; i<record_count; i++)); do
             local existing_ip="${current_values[$i]}"
-            local clean_existing=$(echo "$existing_ip" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
+            local clean_existing
+            clean_existing=$(echo "$existing_ip" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
             
             # 检查这个 IP 是否在目标列表中
             local found=false
             for target_ip in "${ip_addresses[@]}"; do
-                local clean_target=$(echo "$target_ip" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
+                local clean_target
+                clean_target=$(echo "$target_ip" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
                 if [ "$clean_existing" = "$clean_target" ]; then
                     found=true
                     break
@@ -774,7 +861,8 @@ main() {
             local record_id="${records_to_delete_ids[$i]}"
             local current_value="${records_to_delete_values[$i]}"
             
-            local delete_result=$(delete_dns_record "$record_id")
+            local delete_result
+            delete_result=$(delete_dns_record "$record_id")
             
             if [[ "$delete_result" == success* ]]; then
                 deleted_count=$((deleted_count + 1))
@@ -785,8 +873,10 @@ main() {
         log "  [OK] 已删除 ${deleted_count} 条记录"
         
         # 重新获取记录列表（删除后）
-        local new_records_output=$(get_dns_records "$CF_DNS_NAME")
-        local new_record_count=$(echo "$new_records_output" | head -n 1)
+        local new_records_output
+        new_records_output=$(get_dns_records "$CF_DNS_NAME")
+        local new_record_count
+        new_record_count=$(echo "$new_records_output" | head -n 1)
         
         record_ids=()
         current_values=()
@@ -795,8 +885,10 @@ main() {
             local idx=0
             while IFS= read -r line; do
                 if [ $idx -gt 0 ]; then
-                    local rid=$(echo "$line" | cut -d'|' -f1)
-                    local rval=$(echo "$line" | cut -d'|' -f2)
+                    local rid
+                    rid=$(echo "$line" | cut -d'|' -f1)
+                    local rval
+                    rval=$(echo "$line" | cut -d'|' -f2)
                     record_ids+=("$rid")
                     current_values+=("$rval")
                 fi
@@ -812,14 +904,16 @@ main() {
     local -a update_record_ids=()
     
     # 只有当记录数和 IP 数相同，且有 IP 不在目标列表中时，才进行更新
-    if [ $record_count -eq ${#ip_addresses[@]} ] && [ ${#records_to_delete_ids[@]} -eq 0 ]; then
+    if [ "$record_count" -eq ${#ip_addresses[@]} ] && [ ${#records_to_delete_ids[@]} -eq 0 ]; then
         # 检查是否有位置不同的 IP
         local has_position_diff=false
         for ((i=0; i<record_count; i++)); do
             local existing_ip="${current_values[$i]}"
             local target_ip="${ip_addresses[$i]}"
-            local clean_existing=$(echo "$existing_ip" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
-            local clean_target=$(echo "$target_ip" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
+            local clean_existing
+            clean_existing=$(echo "$existing_ip" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
+            local clean_target
+            clean_target=$(echo "$target_ip" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
             
             if [ "$clean_existing" != "$clean_target" ]; then
                 has_position_diff=true
@@ -835,7 +929,7 @@ main() {
             # 完全相同，跳过
             skipped_count=${#ip_addresses[@]}
         fi
-    elif [ $record_count -gt 0 ] && [ ${#ip_addresses[@]} -gt 0 ]; then
+    elif [ "$record_count" -gt 0 ] && [ ${#ip_addresses[@]} -gt 0 ]; then
         # 记录数和 IP 数不同，或者有需要删除的记录，进行智能匹配更新
         # 找出可以直接保留的记录（IP 和位置都相同）
         local -a matched_indices=()
@@ -843,11 +937,13 @@ main() {
         for ((i=0; i<record_count && i<${#ip_addresses[@]}; i++)); do
             local existing_ip="${current_values[$i]}"
             local target_ip="${ip_addresses[$i]}"
-            local clean_existing=$(echo "$existing_ip" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
-            local clean_target=$(echo "$target_ip" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
+            local clean_existing
+            clean_existing=$(echo "$existing_ip" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
+            local clean_target
+            clean_target=$(echo "$target_ip" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
             
             if [ "$clean_existing" = "$clean_target" ]; then
-                matched_indices+=($i)
+                matched_indices+=("$i")
                 skipped_count=$((skipped_count + 1))
             fi
         done
@@ -857,7 +953,7 @@ main() {
             # 跳过已匹配的
             local is_matched=false
             for mi in "${matched_indices[@]}"; do
-                if [ $mi -eq $i ]; then
+                if [ "$mi" -eq "$i" ]; then
                     is_matched=true
                     break
                 fi
@@ -866,11 +962,13 @@ main() {
             
             # 检查这个位置的 IP 是否在目标列表中
             local existing_ip="${current_values[$i]}"
-            local clean_existing=$(echo "$existing_ip" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
+            local clean_existing
+            clean_existing=$(echo "$existing_ip" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
             
             local found_in_target=false
             for target_ip in "${ip_addresses[@]}"; do
-                local clean_target=$(echo "$target_ip" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
+                local clean_target
+                clean_target=$(echo "$target_ip" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
                 if [ "$clean_existing" = "$clean_target" ]; then
                     found_in_target=true
                     break
@@ -891,13 +989,15 @@ main() {
         log "  ${CYAN}⟳${NC} 更新 ${#ips_to_update[@]} 条记录..."
         
         # 构建完整域名用于 API 调用
-        local full_dns_name=$(build_full_domain "$CF_DNS_NAME" "$CF_DOMAIN")
+        local full_dns_name
+        full_dns_name=$(build_full_domain "$CF_DNS_NAME" "$CF_DOMAIN")
         
         for ((i=0; i<${#ips_to_update[@]}; i++)); do
             local target_ip="${ips_to_update[$i]}"
             local record_id="${update_record_ids[$i]}"
             
-            local update_result=$(update_dns_record "$record_id" "$full_dns_name" "$target_ip")
+            local update_result
+            update_result=$(update_dns_record "$record_id" "$full_dns_name" "$target_ip")
             
             if [[ "$update_result" == success* ]]; then
                 updated_count=$((updated_count + 1))
@@ -910,30 +1010,50 @@ main() {
     
     # 4. 如果还有剩余的 IP，创建新记录
     local remaining_ips=$((${#ip_addresses[@]} - record_count))
-    if [ $remaining_ips -gt 0 ]; then
+    if [ "$remaining_ips" -gt 0 ]; then
         log "  ${GREEN}⟳${NC} 创建 ${remaining_ips} 条新记录..."
         
         # 构建完整域名用于 API 调用
-        local full_dns_name=$(build_full_domain "$CF_DNS_NAME" "$CF_DOMAIN")
+        local full_dns_name
+        full_dns_name=$(build_full_domain "$CF_DNS_NAME" "$CF_DOMAIN")
         
         for ((i=record_count; i<${#ip_addresses[@]}; i++)); do
             local target_ip="${ip_addresses[$i]}"
             
-            local create_result=$(create_dns_record "$full_dns_name" "$target_ip")
+            local create_result
+            create_result=$(create_dns_record "$full_dns_name" "$target_ip")
             
             if [[ "$create_result" == success* ]]; then
                 created_count=$((created_count + 1))
             else
                 log "    ${RED}[ERROR]${NC} 创建失败: ${target_ip}"
+                # 提取错误信息
+                local error_msg
+                error_msg=$(echo "$create_result" | sed 's/^failed://' | jq -r '.errors[0].message' 2>/dev/null)
+                if [ -n "$error_msg" ] && [ "$error_msg" != "null" ]; then
+                    log "    ${RED}[详情]${NC} ${error_msg}"
+                fi
             fi
         done
-        log "  [OK] 已创建 ${created_count} 条记录"
+        
+        if [ "$created_count" -gt 0 ]; then
+            log "  [OK] 已创建 ${created_count} 条记录"
+        else
+            log "  ${RED}[ERROR]${NC} 所有记录创建失败，请检查 API 配置和网络连接"
+            exit 1
+        fi
     fi
     
     # 5. 如果没有需要操作的，说明所有 IP 都已存在
-    if [ $deleted_count -eq 0 ] && [ $updated_count -eq 0 ] && [ $created_count -eq 0 ]; then
-        log "  ${GREEN}[OK]${NC} 所有 IP 已存在，无需更新"
-        skipped_count=${#ip_addresses[@]}
+    if [ "$deleted_count" -eq 0 ] && [ "$updated_count" -eq 0 ] && [ "$created_count" -eq 0 ]; then
+        # 只有当查询到的记录数与目标 IP 数一致时，才能判断为"已存在"
+        if [ "$record_count" -eq "${#ip_addresses[@]}" ]; then
+            log "  ${GREEN}[OK]${NC} 所有 IP 已存在，无需更新"
+            skipped_count=${#ip_addresses[@]}
+        else
+            log "  ${YELLOW}[WARN]${NC} 未执行任何操作，但记录数 (${record_count}) 与目标 IP 数 (${#ip_addresses[@]}) 不一致"
+            log "  ${YELLOW}[WARN]${NC} 这可能是 API 查询失败导致，请检查配置和网络连接"
+        fi
     fi
     
     # 输出总结（简化）

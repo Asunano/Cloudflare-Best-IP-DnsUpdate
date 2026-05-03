@@ -69,32 +69,22 @@ install_system_cmd() {
     INSTALL_CMD="${INSTALL_CMD:-y}"
 
     if [[ "${INSTALL_CMD}" =~ ^[Yy]$ ]]; then
-        local cp_cmd="cp"
-        local chmod_cmd="chmod +x"
+        local exec_result=0
         
         # 非 Root 用户尝试提权处理
         if [[ "${EUID}" -ne 0 ]]; then
             if command -v sudo >/dev/null 2>&1; then
-                cp_cmd="sudo cp"
-                chmod_cmd="sudo chmod +x"
+                sudo cp "$0" "${SYSTEM_CMD_PATH}" && sudo chmod +x "${SYSTEM_CMD_PATH}" || exec_result=1
             else
                 echo -e "${RED}[ERROR] 需要 root 权限或 sudo 支持。${NC}"
                 return 1
             fi
-        fi
-
-        # 执行复制和赋权
-        local exec_result=0
-        if [[ "${EUID}" -ne 0 ]]; then
-            sudo cp "$0" "${SYSTEM_CMD_PATH}" && sudo chmod +x "${SYSTEM_CMD_PATH}" || exec_result=1
         else
             cp "$0" "${SYSTEM_CMD_PATH}" && chmod +x "${SYSTEM_CMD_PATH}" || exec_result=1
         fi
 
         if [[ "${exec_result}" -eq 0 ]]; then
             echo -e "${GREEN}[OK] 安装成功！路径: ${SYSTEM_CMD_PATH}${NC}"
-            # 设置标记，跳过后续的安装确认环节
-            SKIP_INSTALL_CONFIRM=true
             return 0
         else
             echo -e "${RED}[ERROR] 安装失败，请检查权限。${NC}"
@@ -190,7 +180,7 @@ check_environment() {
         fi
 
         if [[ -n "${install_cmd}" ]]; then
-            sudo ${install_cmd} "${missing_tools[@]}" 2>/dev/null || true
+            sudo bash -c "${install_cmd} ${missing_tools[*]}" 2>/dev/null || true
         fi
         
         # 安装后二次检查，若仍缺失则报错退出
@@ -206,15 +196,25 @@ check_environment() {
 
 # --- 辅助函数：获取模块状态图标 ---
 get_module_status() {
-    local module_name="$1"
-    local conf_file="$2"
-    local data_file="$3"
+    local conf_file="$1"
+    local data_file="$2"
     
     # 1. 检查配置文件是否存在且已启用
     if [[ -f "${conf_file}" ]]; then
-        # shellcheck disable=SC1090
-        source "${conf_file}"
-        if [[ "${ENABLED:-false}" = "true" ]]; then
+        # 支持 JSON 和旧格式
+        local enabled="false"
+        if [[ "${conf_file}" == *.json ]]; then
+            # JSON 格式：使用 jq 读取
+            if command -v jq &>/dev/null; then
+                enabled=$(jq -r '.enabled // false' "${conf_file}")
+            fi
+        else
+            # 旧格式：source 加载
+            # shellcheck disable=SC1090
+            source "${conf_file}"
+        fi
+        
+        if [[ "${enabled}" = "true" ]]; then
             # 2. 检查数据文件是否新鲜 (24小时内)
             if [[ -n "${data_file}" ]] && [[ -f "${data_file}" ]]; then
                 local now
@@ -253,11 +253,11 @@ show_main_menu() {
     
     # 获取各模块状态
     local cf_ip_status
-    cf_ip_status="$(get_module_status "CF-IP" "${INSTALL_DIR}/modules/cf-ip/config.conf" "${INSTALL_DIR}/assets/data/cf-ip/result.csv")"
+    cf_ip_status="$(get_module_status "${INSTALL_DIR}/conf/cf-ip.json" "${INSTALL_DIR}/assets/data/cf-ip/result.csv")"
     local cf_dns_status
-    cf_dns_status="$(get_module_status "CF-DNS" "${INSTALL_DIR}/conf/cfdns.conf" "${INSTALL_DIR}/assets/data/cf-dns/ip_list.txt")"
+    cf_dns_status="$(get_module_status "${INSTALL_DIR}/conf/cf-dns.json" "${INSTALL_DIR}/assets/data/cf-dns/ip_list.txt")"
     local dnspod_status
-    dnspod_status="$(get_module_status "DNSPod" "${INSTALL_DIR}/conf/dnspod.conf" "${INSTALL_DIR}/assets/data/dnspod-dns/ip_list.txt")"
+    dnspod_status="$(get_module_status "${INSTALL_DIR}/conf/dnspod.json" "${INSTALL_DIR}/assets/data/dnspod-dns/ip_list.txt")"
     local scheduler_status="${SCHEDULER_ENABLED:-false}"
     if [[ "${scheduler_status}" = "true" ]]; then
         scheduler_status="$(echo -e "${GREEN}[RUN]${NC}")"
@@ -571,6 +571,8 @@ check_and_update_components() {
         ["CF_DNS_SETUP"]="${INSTALL_DIR}/modules/cf-dns/setup.sh:modules/cf-dns/setup.sh"
         ["DNSPOD_CORE"]="${INSTALL_DIR}/modules/dnspod-dns/core.sh:modules/dnspod-dns/core.sh"
         ["DNSPOD_SETUP"]="${INSTALL_DIR}/modules/dnspod-dns/setup.sh:modules/dnspod-dns/setup.sh"
+        ["SCHEDULER_RUN"]="${INSTALL_DIR}/modules/scheduler/run.sh:modules/scheduler/run.sh"
+        ["IP_SYNC"]="${INSTALL_DIR}/modules/ip-sync/sync.sh:modules/ip-sync/sync.sh"
         ["CFOPT_ENTRY"]="$0:cfopt.sh"
     )
 
@@ -689,11 +691,11 @@ init_cfopt() {
              "${INSTALL_DIR}/modules/dnspod-dns" \
              "${INSTALL_DIR}/modules/scheduler" \
              "${INSTALL_DIR}/modules/ip-sync" \
-             "${INSTALL_DIR}/assets/bin/cfst" \
+             "${INSTALL_DIR}/assets/cfst" \
              "${INSTALL_DIR}/assets/data/cf-ip" \
              "${INSTALL_DIR}/assets/data/cf-dns" \
              "${INSTALL_DIR}/assets/data/dnspod-dns" \
-             "${INSTALL_DIR}/conf" \
+             "${INSTALL_DIR}/conf/templates" \
              "${INSTALL_DIR}/logs"
 
     # 初始化状态配置文件 (如果不存在)
@@ -807,6 +809,41 @@ EOF
             fi
         done
     fi
+    
+    # 6. 下载配置文件模板（仅在首次安装时执行）
+    if [[ "${HAS_UPDATE}" = true ]] && [[ ! -f "${INSTALL_DIR}/conf/.templates_downloaded" ]]; then
+        echo -e "${CYAN}[INFO] 正在初始化配置文件...${NC}"
+        declare -A CONF_TEMPLATES
+        CONF_TEMPLATES=(
+            ["cf-ip.json"]="conf/templates/cf-ip.json.example"
+            ["cf-dns.json"]="conf/templates/cf-dns.json.example"
+            ["dnspod.json"]="conf/templates/dnspod.json.example"
+            ["global.json"]="conf/templates/global.json.example"
+        )
+        
+        for CONF_NAME in "${!CONF_TEMPLATES[@]}"; do
+            LOCAL_CONF="${INSTALL_DIR}/conf/${CONF_NAME}"
+            REMOTE_TEMPLATE="${CONF_TEMPLATES[$CONF_NAME]}"
+            
+            # 仅在配置文件不存在时下载模板
+            if [[ ! -f "${LOCAL_CONF}" ]]; then
+                mkdir -p "${INSTALL_DIR}/conf" 2>/dev/null
+                
+                # 下载模板文件
+                TEMP_TEMPLATE="$(mktemp)"
+                if download_with_retry "${REMOTE_URL}/${REMOTE_TEMPLATE}" "${TEMP_TEMPLATE}" ""; then
+                    # 重命名为 .json（去掉 .example 后缀）
+                    mv "${TEMP_TEMPLATE}" "${LOCAL_CONF}"
+                    chmod 600 "${LOCAL_CONF}"
+                else
+                    rm -f "${TEMP_TEMPLATE}" 2>/dev/null
+                fi
+            fi
+        done
+        
+        # 标记已下载模板（防止重复下载）
+        touch "${INSTALL_DIR}/conf/.templates_downloaded"
+    fi
 
     if [[ "${HAS_UPDATE}" = true ]]; then
         echo -e "${GREEN}[OK] 组件安装完成！${NC}"
@@ -816,7 +853,7 @@ EOF
         echo -e "${YELLOW}[WARN] 没有可更新的组件。${NC}"
     fi
 
-    # 6. 进入主菜单
+    # 7. 进入主菜单
     show_main_menu
 }
 

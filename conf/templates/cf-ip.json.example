@@ -1,0 +1,45 @@
+{
+  "_comment": "Cloudflare IP 优选模块配置",
+  "_version": "0.1",
+  
+  "enabled": true,
+  
+  "cfst": {
+    "directory": "./assets/cfst",
+    "binary": "cfst",
+    "threads": 200,
+    "colo": "HKG,NRT",
+    "ping_times": 4,
+    "download_count": 10,
+    "download_time": 10,
+    "port": 443,
+    "url": "https://cf-ns.com/cdn-cgi/trace",
+    "httping": false,
+    "latency_max": 9999,
+    "packet_loss_max": 100,
+    "speed_min": 0,
+    "show_count": 20,
+    "ip_file": "",
+    "disable_download": false,
+    "all_ip": false
+  },
+  
+  "speed_test": {
+    "take_ip_num": 5,
+    "max_retry": 3,
+    "output_html": true,
+    "enable_log": true
+  },
+  
+  "multi_line": {
+    "enabled": false,
+    "colo_mobile": "HKG,SIN,TYO,LON",
+    "colo_unicom": "SJC,LAX,SIN,TYO",
+    "colo_telecom": "SJC,LAX,TYO,SIN"
+  },
+  
+  "paths": {
+    "output_dir": "./assets/data/cf-ip",
+    "log_dir": "./logs/cf-ip"
+  }
+}

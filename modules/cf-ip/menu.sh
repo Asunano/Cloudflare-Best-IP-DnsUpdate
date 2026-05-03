@@ -1,4 +1,5 @@
 #!/bin/bash
+# shellcheck shell=bash
 # ==============================================================================
 # cfopt - CF-IP 优选配置向导 (Menu)
 # Version: 0.1
@@ -7,21 +8,23 @@
 # ==============================================================================
 set -uo pipefail
 IFS=$'\n\t'
+# shellcheck disable=SC2034
 SCRIPT_VERSION="0.1"
 
 # ==================== 信号捕获与资源清理 ====================
+# shellcheck disable=SC2329
 cleanup() {
     local exit_code=$?
-    if [ $exit_code -ne 0 ]; then
-        echo "[ERROR] 安装脚本异常退出 (Code: $exit_code)"
+    if [[ "${exit_code}" -ne 0 ]]; then
+        echo "[ERROR] 安装脚本异常退出 (Code: ${exit_code})"
     fi
-    exit $exit_code
+    exit "${exit_code}"
 }
 trap cleanup EXIT INT TERM HUP
 
 # ==================== 路径初始化 ====================
 SOURCE="${BASH_SOURCE[0]}"
-while [ -L "$SOURCE" ]; do
+while [[ -L "$SOURCE" ]]; do
     DIR="$( cd -P "$( dirname "$SOURCE" )" >/dev/null 2>&1 && pwd )"
     SOURCE="$(readlink "$SOURCE")"
     [[ $SOURCE != /* ]] && SOURCE="$DIR/$SOURCE"
@@ -30,37 +33,38 @@ SCRIPT_DIR="$( cd -P "$( dirname "$SOURCE" )" >/dev/null 2>&1 && pwd )"
 ROOT_DIR="$(cd "$SCRIPT_DIR/../.." && pwd)"
 
 # ====================== 【进程锁管理】 ======================
-LOCK_FILE="$ROOT_DIR/modules/cf-ip/.menu.lock"
+LOCK_FILE="${ROOT_DIR}/modules/cf-ip/.menu.lock"
 acquire_lock() {
-    if [ -f "$LOCK_FILE" ]; then
-        local pid=$(cat "$LOCK_FILE" 2>/dev/null)
+    if [[ -f "${LOCK_FILE}" ]]; then
+        local pid
+        pid="$(cat "${LOCK_FILE}" 2>/dev/null)"
         # 校验 PID 是否有效且进程正在运行
-        if [ -n "$pid" ] && kill -0 "$pid" 2>/dev/null; then
-            echo -e "${RED}[ERROR] 检测到另一个 CF-IP 管理进程正在运行 (PID: $pid)。${NC}"
-            echo -e "${CYAN}提示:${NC} 如果确认没有进程在运行，请手动删除: $LOCK_FILE"
+        if [[ -n "${pid}" ]] && kill -0 "${pid}" 2>/dev/null; then
+            echo -e "${RED}[ERROR] 检测到另一个 CF-IP 管理进程正在运行 (PID: ${pid})。${NC}"
+            echo -e "${CYAN}提示:${NC} 如果确认没有进程在运行，请手动删除: ${LOCK_FILE}"
             exit 1
         else
             echo -e "${YELLOW}[WARN] 发现残留锁文件，正在清理...${NC}"
-            rm -f "$LOCK_FILE"
+            rm -f "${LOCK_FILE}"
         fi
     fi
     # 写入当前 PID 并设置退出时自动清理
-    echo $$ > "$LOCK_FILE"
-    trap 'rm -f "$LOCK_FILE"' EXIT INT TERM HUP
+    echo $$ > "${LOCK_FILE}"
+    trap 'rm -f "${LOCK_FILE}"' EXIT INT TERM HUP
 }
 
 # ====================== 【入口权限校验】 ======================
-if [ "${CF_OPT_ENTRY:-}" != "main_menu" ] && [ "${CF_OPT_ENTRY:-}" != "run_sh" ]; then
+if [[ "${CF_OPT_ENTRY:-}" != "main_menu" ]] && [[ "${CF_OPT_ENTRY:-}" != "run_sh" ]]; then
     echo -e "${RED}[ERROR] 请使用 'cfopt' 命令进入主菜单运行此模块。${NC}"
     exit 1
 fi
 
 acquire_lock
 
-CONFIG_FILE="$ROOT_DIR/conf/config.conf"
-IP_AUTO_SCRIPT="$ROOT_DIR/modules/cf-ip/core.sh"
-CFST_DIR="$ROOT_DIR/assets/bin/cfst"
-CFST_BIN="$CFST_DIR/cfst"
+CONFIG_FILE="${ROOT_DIR}/conf/cf-ip.json"
+IP_AUTO_SCRIPT="${ROOT_DIR}/modules/cf-ip/core.sh"
+CFST_DIR="${ROOT_DIR}/assets/cfst"
+CFST_BIN="${CFST_DIR}/cfst"
 
 # 颜色定义
 RED='\033[0;31m'
@@ -68,11 +72,10 @@ GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
 CYAN='\033[0;36m'
-MAGENTA='\033[0;35m'
-WHITE='\033[1;37m'
 NC='\033[0m' # No Color
 
 # ====================== 【函数：显示欢迎信息】 ======================
+# shellcheck disable=SC2329
 show_welcome() {
     clear 2>/dev/null || true
     echo ""
@@ -83,26 +86,31 @@ show_welcome() {
 }
 
 # ====================== 【函数：显示分隔线】 ======================
+# shellcheck disable=SC2329
 show_separator() {
     echo "------------------------------------------------------------------------"
 }
 
 # ====================== 【函数：显示成功提示】 ======================
+# shellcheck disable=SC2329
 show_success() {
     echo "[OK] $1"
 }
 
 # ====================== 【函数：显示错误提示】 ======================
+# shellcheck disable=SC2329
 show_error() {
     echo "[ERROR] $1"
 }
 
 # ====================== 【函数：显示警告提示】 ======================
+# shellcheck disable=SC2329
 show_warning() {
     echo "[WARN] $1"
 }
 
 # ====================== 【函数：显示信息提示】 ======================
+# shellcheck disable=SC2329
 show_info() {
     echo "[INFO] $1"
 }
@@ -111,14 +119,16 @@ show_info() {
 pause_and_continue() {
     local msg="${1:-按回车键继续...}"
     echo ""
-    read -r -p "$msg" || true
+    read -r -p "${msg}" || true
 }
 
 # ====================== 【函数：安全读取输入】 ======================
+# shellcheck disable=SC2329
 safe_read() {
     local var_name="$1"
     shift
-    read -r "$var_name" "$@" || true
+    # shellcheck disable=SC2229
+    read -r "${var_name}" "$@" || true
 }
 
 # ====================== 【函数：带重试的下载与校验】 ======================
@@ -129,33 +139,142 @@ download_with_retry() {
     local max_retries=3
     local retry_count=0
     
-    while [ $retry_count -lt $max_retries ]; do
-        if curl -sL --connect-timeout 15 -o "$output" "$url" 2>/dev/null; then
-            if [ -s "$output" ]; then
-                if [ -n "$expected_hash" ]; then
-                    local actual_hash=$(sha256sum "$output" | awk '{print $1}')
-                    if [ "$actual_hash" = "$expected_hash" ]; then return 0; fi
+    while [[ "${retry_count}" -lt "${max_retries}" ]]; do
+        if curl -sL --connect-timeout 15 -o "${output}" "${url}" 2>/dev/null; then
+            if [[ -s "${output}" ]]; then
+                if [[ -n "${expected_hash}" ]]; then
+                    local actual_hash
+                    actual_hash="$(sha256sum "${output}" | awk '{print $1}')"
+                    if [[ "${actual_hash}" = "${expected_hash}" ]]; then return 0; fi
                 else
                     return 0
                 fi
             fi
         fi
         retry_count=$((retry_count + 1))
-        echo -e "${YELLOW}[WARN] 下载失败 (尝试 $retry_count/$max_retries)，正在重试...${NC}"
+        echo -e "${YELLOW}[WARN] 下载失败 (尝试 ${retry_count}/${max_retries})，正在重试...${NC}"
         sleep 2
     done
     return 1
 }
 
-# ====================== 【函数：检查配置文件】 ======================
-check_config() {
-    if [ ! -f "$CONFIG_FILE" ]; then
+# ====================== 【函数：下载 cfst 测速程序】 ======================
+download_cfst() {
+    # 检查网络连接
+    if ! ping -c 1 -W 3 github.com >/dev/null 2>&1; then
+        echo -e "${RED}[ERROR] 无法连接到 GitHub，请检查网络连接${NC}"
         return 1
     fi
     
-    # 检查是否包含必要的配置项
-    if ! grep -q "OUTPUT_HTML" "$CONFIG_FILE" || \
-       ! grep -q "TAKE_IP_NUM" "$CONFIG_FILE"; then
+    local arch
+    arch="$(uname -m)"
+    local os_type
+    os_type="$(uname -s | tr '[:upper:]' '[:lower:]')"
+    
+    # 映射架构名称（使用 cfst 官方命名）
+    case "${arch}" in
+        x86_64|amd64) arch="amd64" ;;
+        aarch64|arm64) arch="arm64" ;;
+        armv7l|armv7) arch="arm" ;;
+        i386|i686) arch="386" ;;
+        *) 
+            echo -e "${RED}[ERROR] 不支持的系统架构: ${arch}${NC}"
+            return 1
+            ;;
+    esac
+    
+    # 构建下载 URL（使用 cfst 官方命名规范）
+    local repo_url="https://github.com/XIU2/CloudflareSpeedTest/releases/latest/download"
+    local filename="cfst_linux_${arch}.tar.gz"
+    local download_url="${repo_url}/${filename}"
+    
+    # 国内镜像加速列表（按优先级排序）
+    local mirrors=(
+        "https://ghfast.top/https://github.com/XIU2/CloudflareSpeedTest/releases/latest/download/${filename}"
+        "https://ghproxy.org/https://github.com/XIU2/CloudflareSpeedTest/releases/latest/download/${filename}"
+        "https://cdn.gh-proxy.org/https://github.com/XIU2/CloudflareSpeedTest/releases/latest/download/${filename}"
+    )
+    
+    echo -e "${CYAN}[INFO] 系统检测: ${os_type} ${arch}${NC}"
+    echo -e "${CYAN}[INFO] 正在尝试下载 cfst...${NC}"
+    
+    # 创建临时目录
+    local temp_dir
+    temp_dir="$(mktemp -d)"
+    local temp_file="${temp_dir}/${filename}"
+    
+    # 尝试从主源下载，失败则尝试镜像
+    local download_success=false
+    
+    # 首先尝试直接下载
+    echo -e "${CYAN}[INFO] 尝试从 GitHub 下载...${NC}"
+    if download_with_retry "${download_url}" "${temp_file}"; then
+        download_success=true
+    else
+        # 尝试镜像加速
+        echo -e "${YELLOW}[WARN] GitHub 下载失败，尝试镜像加速...${NC}"
+        for mirror_url in "${mirrors[@]}"; do
+            echo -e "${CYAN}[INFO] 尝试镜像: ${mirror_url%%/*}...${NC}"
+            if download_with_retry "${mirror_url}" "${temp_file}"; then
+                download_success=true
+                break
+            fi
+        done
+    fi
+    
+    if [[ "${download_success}" != "true" ]]; then
+        echo -e "${RED}[ERROR] 所有下载源均失败，请检查网络连接${NC}"
+        rm -rf "${temp_dir}"
+        return 1
+    fi
+    
+    # 解压文件
+    echo -e "${CYAN}[INFO] 正在解压...${NC}"
+    if ! tar -xzf "${temp_file}" -C "${temp_dir}" 2>/dev/null; then
+        echo -e "${RED}[ERROR] 解压失败${NC}"
+        rm -rf "${temp_dir}"
+        return 1
+    fi
+    
+    # 查找可执行文件（cfst 官方包解压后直接是 cfst 文件）
+    local exe_file=""
+    if [[ -f "${temp_dir}/cfst" ]]; then
+        exe_file="${temp_dir}/cfst"
+    else
+        # 尝试在子目录中查找
+        exe_file="$(find "${temp_dir}" -type f -name "cfst" -print -quit 2>/dev/null)"
+    fi
+    
+    if [[ -z "${exe_file}" ]] || [[ ! -f "${exe_file}" ]]; then
+        echo -e "${RED}[ERROR] 找不到可执行文件 cfst${NC}"
+        echo -e "${YELLOW}[DEBUG] 解压后的文件列表:${NC}"
+        ls -laR "${temp_dir}" 2>/dev/null
+        rm -rf "${temp_dir}"
+        return 1
+    fi
+    
+    # 创建目标目录并移动文件
+    mkdir -p "${CFST_DIR}"
+    if mv "${exe_file}" "${CFST_BIN}"; then
+        chmod +x "${CFST_BIN}"
+        echo -e "${GREEN}[OK] cfst 已安装到: ${CFST_BIN}${NC}"
+        rm -rf "${temp_dir}"
+        return 0
+    else
+        echo -e "${RED}[ERROR] 文件移动失败${NC}"
+        rm -rf "${temp_dir}"
+        return 1
+    fi
+}
+
+# ====================== 【函数：检查配置文件】 ======================
+check_config() {
+    if [[ ! -f "${CONFIG_FILE}" ]]; then
+        return 1
+    fi
+    
+    # 检查是否为有效的 JSON 格式
+    if ! jq empty "${CONFIG_FILE}" 2>/dev/null; then
         return 2
     fi
     
@@ -163,6 +282,7 @@ check_config() {
 }
 
 # ====================== 【函数：显示帮助信息】 ======================
+# shellcheck disable=SC2329
 show_help() {
     clear 2>/dev/null || true
     show_welcome
@@ -180,13 +300,12 @@ show_help() {
     echo "  - 可视化界面: 友好的菜单操作，无需记忆命令"
     echo ""
     echo "【快速开始】"
-    echo "  1. 首次使用 -> 选择 '1) 首次安装向导'"
-    echo "  2. 日常维护 -> 通过主菜单管理配置和定时任务"
-    echo "  3. 手动测试 -> 选择 '5) 手动执行测速' 立即运行"
+    echo "  1. 日常维护 -> 通过主菜单管理配置和定时任务"
+    echo "  2. 手动测试 -> 选择 '3) 立即执行测速' 立即运行"
     echo ""
     echo "【配置文件说明】"
-    echo "  config.conf - 存储所有配置参数"
-    echo "     位置：$CONFIG_FILE"
+    echo "  cf-ip.json - 存储所有配置参数 (JSON 格式)"
+    echo "     位置：${CONFIG_FILE}"
     echo "     说明：修改后下次执行自动生效，无需重启"
     echo ""
     echo "【常见问题】"
@@ -206,240 +325,71 @@ show_help() {
 # ====================== 【函数：显示主菜单】 ======================
 show_main_menu() {
     clear 2>/dev/null || true
-    show_welcome
+    echo -e "${CYAN}+------------------------------------------------------------+"
+    echo -e " ${YELLOW}CF-IP 优选管理模块 v${SCRIPT_VERSION}"
+    echo -e "${CYAN}+------------------------------------------------------------+"
     
     # 检查配置状态
     local config_status=0
     check_config || config_status=$?
     
-    echo "=== 系统状态 ==="
-    show_separator
-    
-    if [ $config_status -eq 0 ]; then
-        show_success "配置文件：已配置且有效"
-    elif [ $config_status -eq 1 ]; then
-        show_error "配置文件：未找到（需要首次安装）"
+    if [[ "${config_status}" -eq 0 ]]; then
+        echo -e " ${GREEN}[OK] 配置文件: 已就绪"
     else
-        show_warning "配置文件：存在但不完整（建议重新配置）"
+        echo -e " ${RED}[NONE] 配置文件: 未找到 (请先运行 cfopt 安装)"
     fi
     
-    # 检查定时任务
-    if command -v crontab >/dev/null 2>&1; then
-        if crontab -l 2>/dev/null | grep -q "ip_auto.sh" || true; then
-            CRON_INFO=$(crontab -l 2>/dev/null | grep "ip_auto.sh" || true)
-            if [ -n "$CRON_INFO" ]; then
-                show_success "定时任务：已配置"
-                echo "   $CRON_INFO"
-            else
-                show_warning "定时任务：未配置（建议设置以自动更新）"
-            fi
-        else
-            show_warning "定时任务：未配置（建议设置以自动更新）"
-        fi
+    # 检查测速程序
+    if [[ -f "${CFST_BIN}" ]]; then
+        echo -e " ${GREEN}[OK] 测速程序: cfst 已就绪"
     else
-        show_error "定时任务：crontab 未安装"
-        show_info "请先安装：yum install -y cronie 或 apt-get install -y cron"
+        echo -e " ${RED}[NONE] 测速程序: cfst 缺失"
     fi
     
-    # 检查核心文件
+    echo -e "${CYAN}+------------------------------------------------------------+"
+    echo -e " ${GREEN}[OK] 1. 修改测速配置     ${CYAN}- 调整地区、线程及筛选策略"
+    echo -e " ${GREEN}[OK] 2. 查看当前配置     ${CYAN}- 浏览 cf-ip.json 内容"
+    echo -e " ${GREEN}[OK] 3. 立即执行测速     ${CYAN}- 手动触发一次 IP 优选"
+    echo -e " ${GREEN}[OK] 4. 管理定时任务     ${CYAN}- 设置自动测速 Cron 计划"
+    echo -e " ${GREEN}[OK] 5. 查看运行日志     ${CYAN}- 追踪测速结果与错误信息"
     echo ""
-    if [ -f "$CFST_BIN" ]; then
-        show_success "测速程序：cfst 已就绪"
-    else
-        show_warning "测速程序：cfst 未找到（需要安装）"
-    fi
-    
-    if [ -f "$IP_AUTO_SCRIPT" ]; then
-        show_success "核心脚本：ip_auto.sh 已就绪"
-    else
-        show_error "核心脚本：ip_auto.sh 未找到（需要安装）"
-    fi
-    
+    echo -e " ${RED}[BACK] 0. 返回主菜单"
+    echo -e "${CYAN}+------------------------------------------------------------+"
     echo ""
-    show_separator
-    echo "=== 主菜单 ==="
-    show_separator
-    echo ""
-    echo "  1) 首次安装向导    - 下载程序 + 引导配置（新手推荐）"
-    echo "  2) 修改配置        - 重新配置测速参数"
-    echo "  3) 查看当前配置    - 浏览 config.conf 内容"
-    echo "  4) 管理定时任务    - 添加/删除/查看定时任务"
-    echo "  5) 手动执行测速    - 立即运行一次测速"
-    echo "  6) 查看日志        - 查看运行日志和错误信息"
-    echo "  7) 使用帮助        - 查看详细使用说明"
-    echo "  0) 退出系统        - 返回主菜单"
-    echo ""
-    show_separator
 }
 
-# ====================== 【函数：首次安装向导】 ======================
-install_wizard() {
-    clear
-    show_welcome
-    echo "=== 首次安装向导 ==="
-    show_separator
-    echo ""
-    echo "本向导将帮助您完成以下操作："
-    echo "  1. 确认工作目录"
-    echo "  2. 下载 CloudflareSpeedTest 测速程序"
-    echo "  3. 检查/下载 ip_auto.sh 核心脚本"
-    echo "  4. 配置测速参数"
-    echo ""
-    show_info "整个过程大约需要 2-5 分钟，请保持网络连接"
-    pause_and_continue "按回车键开始安装..."
-    
-    # 第1步：确认安装目录
-    echo ""
-    echo "【步骤 1/4】 确认工作目录"
-    show_separator
-    echo ""
-    echo "工作目录说明："
-    echo "  所有程序文件、配置文件、日志文件都将存放在此目录中。"
-    
-    # 动态推荐路径：如果是 root 则推荐 /root/cfopt，否则推荐 ~/cfopt
-    if [ "$EUID" -eq 0 ]; then
-        DEFAULT_INSTALL_DIR="/root/cfopt"
-    else
-        DEFAULT_INSTALL_DIR="$HOME/cfopt"
-    fi
-    
-    echo "  推荐路径：$DEFAULT_INSTALL_DIR"
-    echo ""
-    echo "当前脚本所在目录：$SCRIPT_DIR"
-    read -p "是否使用当前脚本所在目录？(y/n，默认y): " USE_CURRENT
-    USE_CURRENT=${USE_CURRENT:-y}
-    
-    if [ "$USE_CURRENT" != "y" ] && [ "$USE_CURRENT" != "Y" ]; then
+# ====================== 【函数：配置管理入口】 ======================
+manage_config() {
+    # 智能检测并下载 cfst（如果不存在）
+    if [[ ! -f "${CFST_BIN}" ]]; then
+        echo -e "\n${YELLOW}[INFO] 检测到测速程序 cfst 未安装，即将自动下载...${NC}"
+        if ! download_cfst; then
+            echo -e "${RED}[ERROR] cfst 下载失败，请检查网络连接后重试。${NC}"
+            pause_and_continue
+            return
+        fi
+        echo -e "${GREEN}[OK] cfst 下载成功！${NC}"
         echo ""
-        echo "请输入新的安装目录："
-        read -p "目录路径: " INSTALL_DIR
-        
-        # 创建目录
-        if [ ! -d "$INSTALL_DIR" ]; then
-            mkdir -p "$INSTALL_DIR"
-            if [ $? -eq 0 ]; then
-                show_success "目录创建成功：$INSTALL_DIR"
-            else
-                show_error "无法创建目录：$INSTALL_DIR"
-                pause_and_continue "按回车键返回主菜单..."
-                return 1
-            fi
-        else
-            show_warning "目录已存在：$INSTALL_DIR"
-        fi
-        
-        cd "$INSTALL_DIR" || {
-            show_error "无法进入目录：$INSTALL_DIR"
-            pause_and_continue "按回车键返回主菜单..."
-            return 1
-        }
-        SCRIPT_DIR="$INSTALL_DIR"
-        CONFIG_FILE="$SCRIPT_DIR/config.conf"
-        IP_AUTO_SCRIPT="$SCRIPT_DIR/ip_auto.sh"
-        CFST_DIR="$SCRIPT_DIR/cfst"
-        CFST_BIN="$CFST_DIR/cfst"
     fi
     
-    show_success "工作目录确认：$SCRIPT_DIR"
-    pause_and_continue "按回车键继续..."
-    
-    echo ""
-    
-    # 第2步：下载测速程序
-    echo -e "${BLUE}【步骤 2/4】${NC} 下载 CloudflareSpeedTest 测速程序"
-    echo "--------------------------------------------------------"
-    
-    CFST_URL="https://github.com/XIU2/CloudflareSpeedTest/releases/download/v2.3.4/cfst_linux_amd64.tar.gz"
-    CFST_FILE="cfst_linux_amd64.tar.gz"
-    
-    # 确保 cfst 目录存在
-    mkdir -p "$CFST_DIR"
-    
-    if [ ! -f "$CFST_BIN" ]; then
-        echo -e "${YELLOW}[WARN] 检测到已存在的 cfst 文件${NC}"
-        read -p "是否重新下载？(y/n，默认n): " REDOWNLOAD_CFST
-        REDOWNLOAD_CFST=${REDOWNLOAD_CFST:-n}
-        if [ "$REDOWNLOAD_CFST" = "y" ] || [ "$REDOWNLOAD_CFST" = "Y" ]; then
-            echo "正在下载..."
-            if download_with_retry "$CFST_URL" "$CFST_FILE"; then
-                tar -zxf "$CFST_FILE" -C "$CFST_DIR"
-                chmod +x "$CFST_BIN"
-                echo -e "${GREEN}[OK] 测速程序更新成功${NC}"
-            else
-                echo -e "${RED}[ERROR] 下载失败，请检查网络或稍后重试${NC}"
-                return 1
-            fi
-        else
-            echo -e "${GREEN}[OK] 跳过下载，使用现有文件${NC}"
-        fi
-    else
-        echo "正在下载测速程序..."
-        if download_with_retry "$CFST_URL" "$CFST_FILE"; then
-            tar -zxf "$CFST_FILE" -C "$CFST_DIR"
-            chmod +x "$CFST_BIN"
-            echo -e "${GREEN}[OK] 测速程序下载并安装成功${NC}"
-        else
-            echo -e "${RED}[ERROR] 下载失败，请检查网络连接${NC}"
-            return 1
-        fi
+    if [[ ! -f "${CONFIG_FILE}" ]]; then
+        echo -e "${CYAN}[INFO] 首次配置向导启动...${NC}"
+        echo ""
     fi
     
+    echo -e "\n${CYAN}━━ 请选择配置模式 ━━"
+    echo "  1) 简单模式 - 快速调整关键参数（地区、线程数）"
+    echo "  2) 高级模式 - 精细控制所有测速选项"
     echo ""
-    
-    # 第3步：下载 ip_auto.sh
-    echo -e "${BLUE}【步骤 3/4】${NC} 检查核心脚本"
-    echo "--------------------------------------------------------"
-    
-    if [ ! -f "$IP_AUTO_SCRIPT" ]; then
-        echo -e "${YELLOW}[WARN] 未找到 ip_auto.sh${NC}"
-        read -p "是否手动输入下载地址？(y/n，默认n): " DOWNLOAD_SCRIPT
-        DOWNLOAD_SCRIPT=${DOWNLOAD_SCRIPT:-n}
-        
-        if [ "$DOWNLOAD_SCRIPT" = "y" ] || [ "$DOWNLOAD_SCRIPT" = "Y" ]; then
-            read -p "请输入 ip_auto.sh 的下载地址: " SCRIPT_URL
-            curl -sL -o "$IP_AUTO_SCRIPT" "$SCRIPT_URL"
-            if [ $? -eq 0 ] && [ -s "$IP_AUTO_SCRIPT" ]; then
-                chmod +x "$IP_AUTO_SCRIPT"
-                echo -e "${GREEN}[OK] 脚本下载成功${NC}"
-            else
-                echo -e "${RED}[ERROR] 下载失败${NC}"
-                return 1
-            fi
-        else
-            echo -e "${RED}[ERROR] 缺少 ip_auto.sh，无法继续${NC}"
-            return 1
-        fi
-    else
-        echo -e "${GREEN}[OK] ip_auto.sh 已存在${NC}"
-    fi
-    
-    echo ""
-    
-    # 第4步：配置向导
-    echo -e "${BLUE}【步骤 4/4】${NC} 配置向导"
-    echo "--------------------------------------------------------"
-    configure_interactive
-    
-    echo ""
-    echo -e "${GREEN}[OK] 安装完成！${NC}"
-    read -p "按回车键返回主菜单..."
-}
-
-# ====================== 【函数：交互式配置】 ======================
-configure_interactive() {
-    echo ""
-    echo "请选择配置模式："
-    echo "  1) 简单模式 - 只需配置几个关键参数（推荐新手）"
-    echo "  2) 高级模式 - 配置所有参数（适合有经验的用户）"
-    echo ""
-    read -p "请选择（1/2，默认1）: " CONFIG_MODE
+    read -r -p "请选择 [1-2, 默认 1]: " CONFIG_MODE
     CONFIG_MODE=${CONFIG_MODE:-1}
     
-    if [ "$CONFIG_MODE" = "1" ]; then
+    if [[ "${CONFIG_MODE}" = "1" ]]; then
         configure_simple
     else
         configure_advanced
     fi
+    pause_and_continue
 }
 
 # ====================== 【函数：简单配置】 ======================
@@ -448,20 +398,20 @@ configure_simple() {
     echo -e "${GREEN}━━━ 简单配置模式 ━━━${NC}"
     echo ""
     
-    read -p "1. HTML输出文件路径（默认: /opt/1panel/www/sites/sw/index/index.html）: " OUTPUT_HTML
+    read -r -p "1. HTML输出文件路径（默认: /opt/1panel/www/sites/sw/index/index.html）: " OUTPUT_HTML
     OUTPUT_HTML=${OUTPUT_HTML:-"/opt/1panel/www/sites/sw/index/index.html"}
     
-    read -p "2. 需要提取的优质IP数量（默认: 5）: " TAKE_IP_NUM
+    read -r -p "2. 需要提取的优质IP数量（默认: 5）: " TAKE_IP_NUM
     TAKE_IP_NUM=${TAKE_IP_NUM:-5}
     
     echo ""
     echo "常用地区代码："
     echo "  HKG=香港  NRT=东京  LAX=洛杉矶  SJC=旧金山"
     echo "  SEA=西雅图  SIN=新加坡  ICN=首尔  TPE=台北"
-    read -p "3. 测速地区（多个用逗号分隔，默认: HKG,NRT）: " CFST_COLO
+    read -r -p "3. 测速地区（多个用逗号分隔，默认: HKG,NRT）: " CFST_COLO
     CFST_COLO=${CFST_COLO:-"HKG,NRT"}
     
-    read -p "4. 测速线程数（建议100-200，默认: 200）: " CFST_THREADS
+    read -r -p "4. 测速线程数（建议100-200，默认: 200）: " CFST_THREADS
     CFST_THREADS=${CFST_THREADS:-200}
     
     # 增加测速策略选择
@@ -475,10 +425,10 @@ configure_simple() {
     echo "  6) 手动指定地区代码 - 查看代码表并自由组合"
     echo "  7) 自定义 Colo 列表 - 直接输入已知的代码"
     echo ""
-    read -p "请输入选项编号 (1-7，默认 1): " STRATEGY_CHOICE
+    read -r -p "请输入选项编号 (1-7，默认 1): " STRATEGY_CHOICE
     STRATEGY_CHOICE=${STRATEGY_CHOICE:-1}
     
-    case $STRATEGY_CHOICE in
+    case ${STRATEGY_CHOICE} in
         2) CFST_COLO="HKG,SIN,TYO,LON" ;;
         3) CFST_COLO="SJC,LAX,SIN,TYO" ;;
         4) CFST_COLO="SJC,LAX,TYO,SIN" ;;
@@ -491,8 +441,8 @@ configure_simple() {
             echo "  3) 欧洲地区 (EU)     - LHR, FRA, AMS, MAD, WAW, ARN"
             echo "  4) 南美/大洋洲 (SA/OC)- GRU, EZE, SYD, MEL"
             echo ""
-            read -p "请输入区域编号 (1-4，默认 1): " REGION_CHOICE
-            case $REGION_CHOICE in
+            read -r -p "请输入区域编号 (1-4，默认 1): " REGION_CHOICE
+            case ${REGION_CHOICE} in
                 2) CFST_COLO="LAX,SJC,SEA,LAS,MIA,YVR,ORD" ;;
                 3) CFST_COLO="LHR,FRA,AMS,MAD,WAW,ARN" ;;
                 4) CFST_COLO="GRU,EZE,SYD,MEL" ;;
@@ -514,16 +464,16 @@ configure_simple() {
             echo "  [其他] GRU(圣保罗) EZE(布宜诺斯艾利斯) SYD(悉尼) MEL(墨尔本)"
             echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
             echo -e "${YELLOW}提示:${NC} 请输入代码并用逗号分隔 (例如: HKG,SJC,LHR)"
-            read -p "请输入您想测试的地区代码: " CFST_COLO
+            read -r -p "请输入您想测试的地区代码: " CFST_COLO
             ;;
         7) 
-            read -p "请直接输入 Colo 代码 (用逗号分隔): " CFST_COLO
+            read -r -p "请直接输入 Colo 代码 (用逗号分隔): " CFST_COLO
             ;;
         *) CFST_COLO="HKG,NRT" ;; # 默认通用
     esac
     
-    read -p "5. 是否启用日志记录？(y/n，默认n): " ENABLE_LOG_INPUT
-    if [ "$ENABLE_LOG_INPUT" = "y" ] || [ "$ENABLE_LOG_INPUT" = "Y" ]; then
+    read -r -p "5. 是否启用日志记录？(y/n，默认n): " ENABLE_LOG_INPUT
+    if [[ "${ENABLE_LOG_INPUT}" = "y" ]] || [[ "${ENABLE_LOG_INPUT}" = "Y" ]]; then
         ENABLE_LOG="true"
     else
         ENABLE_LOG="false"
@@ -533,8 +483,8 @@ configure_simple() {
     echo ""
     echo -e "${YELLOW}[INFO] 是否配置运营商分流测速？${NC}"
     echo "  如果您使用 DNSPod 等多线路解析服务，建议开启此功能。"
-    read -p "是否开启？(y/n，默认n): " MULTI_LINE_INPUT
-    if [ "$MULTI_LINE_INPUT" = "y" ] || [ "$MULTI_LINE_INPUT" = "Y" ]; then
+    read -r -p "是否开启？(y/n，默认n): " MULTI_LINE_INPUT
+    if [[ "${MULTI_LINE_INPUT}" = "y" ]] || [[ "${MULTI_LINE_INPUT}" = "Y" ]]; then
         configure_multi_line_params
     fi
     
@@ -550,46 +500,46 @@ configure_advanced() {
     echo ""
     
     echo -e "${YELLOW}【基础配置】${NC}"
-    read -p "HTML输出文件路径（默认: /opt/1panel/www/sites/sw/index/index.html）: " OUTPUT_HTML
+    read -r -p "HTML输出文件路径（默认: /opt/1panel/www/sites/sw/index/index.html）: " OUTPUT_HTML
     OUTPUT_HTML=${OUTPUT_HTML:-"/opt/1panel/www/sites/sw/index/index.html"}
     
-    read -p "需要提取的优质IP数量（默认: 5）: " TAKE_IP_NUM
+    read -r -p "需要提取的优质IP数量（默认: 5）: " TAKE_IP_NUM
     TAKE_IP_NUM=${TAKE_IP_NUM:-5}
     
-    read -p "测速失败最大重试次数（默认: 5）: " MAX_RETRY
+    read -r -p "测速失败最大重试次数（默认: 5）: " MAX_RETRY
     MAX_RETRY=${MAX_RETRY:-5}
     
-    read -p "是否启用日志记录？(true/false，默认: false): " ENABLE_LOG
+    read -r -p "是否启用日志记录？(true/false，默认: false): " ENABLE_LOG
     ENABLE_LOG=${ENABLE_LOG:-"false"}
     
     # 询问是否配置多线路分流
     echo ""
     echo -e "${YELLOW}[INFO] 是否配置运营商分流测速？${NC}"
     echo "  如果您使用 DNSPod 等多线路解析服务，建议开启此功能。"
-    read -p "是否开启？(y/n，默认n): " MULTI_LINE_INPUT
-    if [ "$MULTI_LINE_INPUT" = "y" ] || [ "$MULTI_LINE_INPUT" = "Y" ]; then
+    read -r -p "是否开启？(y/n，默认n): " MULTI_LINE_INPUT
+    if [[ "${MULTI_LINE_INPUT}" = "y" ]] || [[ "${MULTI_LINE_INPUT}" = "Y" ]]; then
         configure_multi_line_params
     fi
     
     echo ""
     echo -e "${YELLOW}【CFST 测速参数】${NC}"
-    read -p "延迟测速线程数（默认: 200）: " CFST_THREADS
+    read -r -p "延迟测速线程数（默认: 200）: " CFST_THREADS
     CFST_THREADS=${CFST_THREADS:-200}
     
-    read -p "延迟测速次数（默认: 8）: " CFST_PING_TIMES
+    read -r -p "延迟测速次数（默认: 8）: " CFST_PING_TIMES
     CFST_PING_TIMES=${CFST_PING_TIMES:-8}
     
-    read -p "下载测速数量（默认: 10）: " CFST_DOWNLOAD_COUNT
+    read -r -p "下载测速数量（默认: 10）: " CFST_DOWNLOAD_COUNT
     CFST_DOWNLOAD_COUNT=${CFST_DOWNLOAD_COUNT:-10}
     
-    read -p "下载测速时间/秒（默认: 10）: " CFST_DOWNLOAD_TIME
+    read -r -p "下载测速时间/秒（默认: 10）: " CFST_DOWNLOAD_TIME
     CFST_DOWNLOAD_TIME=${CFST_DOWNLOAD_TIME:-10}
     
-    read -p "测速端口（留空=默认443）: " CFST_PORT
+    read -r -p "测速端口（留空=默认443）: " CFST_PORT
     
-    read -p "测速地址URL（留空=使用默认）: " CFST_URL
+    read -r -p "测速地址URL（留空=使用默认）: " CFST_URL
     
-    read -p "使用HTTPing模式？(true/false，默认: true): " CFST_HTTPING
+    read -r -p "使用HTTPing模式？(true/false，默认: true): " CFST_HTTPING
     CFST_HTTPING=${CFST_HTTPING:-"true"}
     
     echo ""
@@ -598,56 +548,91 @@ configure_advanced() {
     echo "  - 移动优化: HKG,SIN,TYO,LON"
     echo "  - 亚太专属: HKG,NRT,ICN,SIN,TPE,KUL,BKK"
     echo "  - 美洲专属: LAX,SJC,SEA,LAS,MIA,YVR"
-    read -p "匹配指定地区 (直接回车使用默认 HKG,NRT): " CFST_COLO
+    read -r -p "匹配指定地区 (直接回车使用默认 HKG,NRT): " CFST_COLO
     CFST_COLO=${CFST_COLO:-"HKG,NRT"}
     
-    read -p "平均延迟上限/ms（默认: 400）: " CFST_LATENCY_MAX
+    read -r -p "平均延迟上限/ms（默认: 400）: " CFST_LATENCY_MAX
     CFST_LATENCY_MAX=${CFST_LATENCY_MAX:-400}
     
-    read -p "丢包几率上限（默认: 0.3）: " CFST_PACKET_LOSS_MAX
+    read -r -p "丢包几率上限（默认: 0.3）: " CFST_PACKET_LOSS_MAX
     CFST_PACKET_LOSS_MAX=${CFST_PACKET_LOSS_MAX:-0.3}
     
-    read -p "下载速度下限/MB/s（默认: 0.2）: " CFST_SPEED_MIN
+    read -r -p "下载速度下限/MB/s（默认: 0.2）: " CFST_SPEED_MIN
     CFST_SPEED_MIN=${CFST_SPEED_MIN:-0.2}
     
-    read -p "显示结果数量（0=不显示，默认: 0）: " CFST_SHOW_COUNT
+    read -r -p "显示结果数量（0=不显示，默认: 0）: " CFST_SHOW_COUNT
     CFST_SHOW_COUNT=${CFST_SHOW_COUNT:-0}
     
-    read -p "IP段数据文件名（留空=使用默认ip.txt）: " CFST_IP_FILE
+    read -r -p "IP段数据文件名（留空=使用默认ip.txt）: " CFST_IP_FILE
     
-    read -p "禁用下载测速？(true/false，默认留空): " CFST_DISABLE_DOWNLOAD
+    read -r -p "禁用下载测速？(true/false，默认留空): " CFST_DISABLE_DOWNLOAD
     
-    read -p "测速全部IP？(true/false，默认留空): " CFST_ALL_IP
+    read -r -p "测速全部IP？(true/false，默认留空): " CFST_ALL_IP
     
     generate_config_advanced
 }
 
 # ====================== 【函数：生成简单配置】 ======================
 generate_config_simple() {
-    cat > "$CONFIG_FILE" << 'EOF'
-# ============================================================
-# 自动生成的配置文件 - 由 install_setup.sh 创建
-# 此文件的配置会优先于 ip_auto.sh 中的默认配置
-# ============================================================
-EOF
+    # 使用 jq 创建 JSON 配置文件
+    local temp_file
+    temp_file=$(mktemp)
     
-    cat >> "$CONFIG_FILE" << EOF
-# --- 基础配置 ---
-CFST_DIR="$CFST_DIR"
-OUTPUT_HTML="$OUTPUT_HTML"
-TAKE_IP_NUM=$TAKE_IP_NUM
-
-# --- CFST 测速参数 ---
-CFST_THREADS="$CFST_THREADS"
-CFST_COLO="$CFST_COLO"
-ENABLE_LOG="$ENABLE_LOG"
-EOF
+    jq -n \
+        --arg cfst_dir "${CFST_DIR}" \
+        --arg output_html "${OUTPUT_HTML}" \
+        --argjson take_ip_num "${TAKE_IP_NUM}" \
+        --argjson threads "${CFST_THREADS}" \
+        --arg colo "${CFST_COLO}" \
+        --argjson enable_log "${ENABLE_LOG}" \
+        --arg output_dir "./assets/data/cf-ip" \
+        --arg log_dir "./logs/cf-ip" \
+        '{
+            "_comment": "Cloudflare IP 优选模块配置",
+            "_version": "0.1",
+            "enabled": true,
+            "cfst": {
+                "directory": $cfst_dir,
+                "binary": "cfst",
+                "threads": $threads,
+                "colo": $colo,
+                "ping_times": 4,
+                "download_count": 10,
+                "download_time": 10,
+                "port": 443,
+                "url": "https://cf-ns.com/cdn-cgi/trace",
+                "httping": false,
+                "latency_max": 9999,
+                "packet_loss_max": 100,
+                "speed_min": 0,
+                "show_count": 20,
+                "ip_file": "",
+                "disable_download": false,
+                "all_ip": false
+            },
+            "speed_test": {
+                "take_ip_num": $take_ip_num,
+                "max_retry": 3,
+                "output_html": ($output_html == "true"),
+                "enable_log": $enable_log
+            },
+            "multi_line": {
+                "enabled": false,
+                "colo_mobile": "HKG,SIN,TYO,LON",
+                "colo_unicom": "SJC,LAX,SIN,TYO",
+                "colo_telecom": "SJC,LAX,TYO,SIN"
+            },
+            "paths": {
+                "output_dir": $output_dir,
+                "log_dir": $log_dir
+            }
+        }' > "$temp_file" && mv "$temp_file" "$CONFIG_FILE"
     
-    chmod +x "$CONFIG_FILE"
+    chmod 600 "$CONFIG_FILE"
     
     echo ""
     echo -e "${GREEN}[OK] 简单配置完成！${NC}"
-    echo "配置文件已保存到：$CONFIG_FILE"
+    echo "配置文件已保存到：${CONFIG_FILE}"
 }
 
 # ====================== 【函数：多线路参数配置】 ======================
@@ -670,20 +655,21 @@ configure_multi_line_params() {
             echo "  $((i+1))) ${options[$i]}"
         done
         echo -e "  ${GREEN}0) 手动输入自定义节点代码 (如: HKG,SJC)${NC}"
-        read -p "请输入编号或直接回车使用默认 ($default_val): " selection
+        read -r -p "请输入编号或直接回车使用默认 (${default_val}): " selection
         
-        if [ -z "$selection" ]; then
-            echo "$default_val"
-        elif [ "$selection" = "0" ]; then
-            read -p "请输入 Colo 代码 (用逗号分隔): " custom_input
-            echo "${custom_input:-$default_val}"
+        if [[ -z "${selection}" ]]; then
+            echo "${default_val}"
+        elif [[ "${selection}" = "0" ]]; then
+            read -r -p "请输入 Colo 代码 (用逗号分隔): " custom_input
+            echo "${custom_input:-${default_val}}"
         else
             local result=""
-            for num in $selection; do
+            for num in ${selection}; do
                 local idx=$((num-1))
-                if [ -n "${options[$idx]+x}" ]; then
-                    local code=$(echo "${options[$idx]}" | cut -d'(' -f1)
-                    result="$result$code,"
+                if [[ -n "${options[$idx]+x}" ]]; then
+                    local code
+                    code="$(echo "${options[$idx]}" | cut -d'(' -f1)"
+                    result="${result}${code},"
                 fi
             done
             echo "${result%,}" # 去掉末尾逗号
@@ -694,97 +680,136 @@ configure_multi_line_params() {
     COLO_UNICOM=$(select_colo "联通线路" "SJC,LAX,SIN,TYO")
     COLO_TELECOM=$(select_colo "电信线路" "SJC,LAX,TYO,SIN")
     
-    # 将配置直接写入 cf-ip 的主配置文件 config.conf
-    # 这样 scheduler 只需要 source 一个文件即可
-    cat >> "$CONFIG_FILE" << EOF
-
-# --- 多线路测速配置 ---
-ENABLE_MULTI_LINE="true"
-COLO_MOBILE="$COLO_MOBILE"
-COLO_UNICOM="$COLO_UNICOM"
-COLO_TELECOM="$COLO_TELECOM"
-EOF
+    # 将多线路配置写入 cf-ip.json
+    local temp_file
+    temp_file=$(mktemp)
+    jq --argjson enabled true \
+       --arg mobile "$COLO_MOBILE" \
+       --arg unicom "$COLO_UNICOM" \
+       --arg telecom "$COLO_TELECOM" \
+       '.multi_line.enabled = $enabled |
+        .multi_line.colo_mobile = $mobile |
+        .multi_line.colo_unicom = $unicom |
+        .multi_line.colo_telecom = $telecom' \
+       "$CONFIG_FILE" > "$temp_file" && mv "$temp_file" "$CONFIG_FILE"
+    chmod 600 "$CONFIG_FILE"
     
     echo -e "\n${GREEN}[OK] 多线路配置已保存至主配置文件。${NC}"
 }
 
 # ====================== 【函数：生成高级配置】 ======================
 generate_config_advanced() {
-    cat > "$CONFIG_FILE" << 'EOF'
-# ============================================================
-# 自动生成的配置文件 - 由 install_setup.sh 创建
-# 此文件的配置会优先于 ip_auto.sh 中的默认配置
-# ============================================================
-EOF
+    # 使用 jq 创建完整的 JSON 配置文件
+    local temp_file
+    temp_file=$(mktemp)
     
-    cat >> "$CONFIG_FILE" << EOF
-# --- 基础配置 ---
-CFST_DIR="$CFST_DIR"
-OUTPUT_HTML="$OUTPUT_HTML"
-TAKE_IP_NUM=$TAKE_IP_NUM
-MAX_RETRY=$MAX_RETRY
-ENABLE_LOG="$ENABLE_LOG"
-
-# --- CFST 测速参数 ---
-CFST_THREADS="$CFST_THREADS"
-CFST_PING_TIMES="$CFST_PING_TIMES"
-CFST_DOWNLOAD_COUNT="$CFST_DOWNLOAD_COUNT"
-CFST_DOWNLOAD_TIME="$CFST_DOWNLOAD_TIME"
-CFST_PORT="$CFST_PORT"
-CFST_URL="$CFST_URL"
-CFST_HTTPING="$CFST_HTTPING"
-CFST_COLO="$CFST_COLO"
-CFST_LATENCY_MAX="$CFST_LATENCY_MAX"
-CFST_PACKET_LOSS_MAX="$CFST_PACKET_LOSS_MAX"
-CFST_SPEED_MIN="$CFST_SPEED_MIN"
-CFST_SHOW_COUNT="$CFST_SHOW_COUNT"
-CFST_IP_FILE="$CFST_IP_FILE"
-CFST_DISABLE_DOWNLOAD="$CFST_DISABLE_DOWNLOAD"
-CFST_ALL_IP="$CFST_ALL_IP"
-EOF
+    jq -n \
+        --arg cfst_dir "${CFST_DIR}" \
+        --arg output_html "${OUTPUT_HTML}" \
+        --argjson take_ip_num "${TAKE_IP_NUM}" \
+        --argjson max_retry "${MAX_RETRY}" \
+        --argjson enable_log "${ENABLE_LOG}" \
+        --argjson threads "${CFST_THREADS}" \
+        --argjson ping_times "${CFST_PING_TIMES}" \
+        --argjson download_count "${CFST_DOWNLOAD_COUNT}" \
+        --argjson download_time "${CFST_DOWNLOAD_TIME}" \
+        --arg port "${CFST_PORT:-443}" \
+        --arg url "${CFST_URL:-https://cf-ns.com/cdn-cgi/trace}" \
+        --argjson httping "${CFST_HTTPING}" \
+        --arg colo "${CFST_COLO}" \
+        --argjson latency_max "${CFST_LATENCY_MAX}" \
+        --arg packet_loss_max "${CFST_PACKET_LOSS_MAX}" \
+        --arg speed_min "${CFST_SPEED_MIN}" \
+        --argjson show_count "${CFST_SHOW_COUNT}" \
+        --arg ip_file "${CFST_IP_FILE}" \
+        --arg disable_download "${CFST_DISABLE_DOWNLOAD:-false}" \
+        --arg all_ip "${CFST_ALL_IP:-false}" \
+        --arg output_dir "./assets/data/cf-ip" \
+        --arg log_dir "./logs/cf-ip" \
+        '{
+            "_comment": "Cloudflare IP 优选模块配置",
+            "_version": "0.1",
+            "enabled": true,
+            "cfst": {
+                "directory": $cfst_dir,
+                "binary": "cfst",
+                "threads": $threads,
+                "colo": $colo,
+                "ping_times": $ping_times,
+                "download_count": $download_count,
+                "download_time": $download_time,
+                "port": ($port | tonumber),
+                "url": $url,
+                "httping": $httping,
+                "latency_max": ($latency_max | tonumber),
+                "packet_loss_max": ($packet_loss_max | tonumber),
+                "speed_min": ($speed_min | tonumber),
+                "show_count": $show_count,
+                "ip_file": $ip_file,
+                "disable_download": ($disable_download == "true"),
+                "all_ip": ($all_ip == "true")
+            },
+            "speed_test": {
+                "take_ip_num": $take_ip_num,
+                "max_retry": $max_retry,
+                "output_html": ($output_html == "true"),
+                "enable_log": $enable_log
+            },
+            "multi_line": {
+                "enabled": false,
+                "colo_mobile": "HKG,SIN,TYO,LON",
+                "colo_unicom": "SJC,LAX,SIN,TYO",
+                "colo_telecom": "SJC,LAX,TYO,SIN"
+            },
+            "paths": {
+                "output_dir": $output_dir,
+                "log_dir": $log_dir
+            }
+        }' > "$temp_file" && mv "$temp_file" "$CONFIG_FILE"
     
-    chmod +x "$CONFIG_FILE"
+    chmod 600 "$CONFIG_FILE"
     
     echo ""
     echo -e "${GREEN}[OK] 高级配置完成！${NC}"
-    echo "配置文件已保存到：$CONFIG_FILE"
+    echo "配置文件已保存到：${CONFIG_FILE}"
 }
 
 # ====================== 【函数：修改配置】 ======================
+# shellcheck disable=SC2329
 modify_config() {
-    if [ ! -f "$CONFIG_FILE" ]; then
+    if [[ ! -f "${CONFIG_FILE}" ]]; then
         echo -e "${RED}[ERROR] 配置文件不存在，请先运行安装向导${NC}"
-        read -p "按回车键返回..."
+        read -r -p "按回车键返回..."
         return
     fi
     
     echo ""
     echo -e "${YELLOW}当前配置：${NC}"
-    cat "$CONFIG_FILE"
+    jq '.' "${CONFIG_FILE}"
     echo ""
     
-    read -p "是否重新配置？(y/n，默认n): " RECONFIG
+    read -r -p "是否重新配置？(y/n，默认n): " RECONFIG
     RECONFIG=${RECONFIG:-n}
     
-    if [ "$RECONFIG" = "y" ] || [ "$RECONFIG" = "Y" ]; then
-        configure_interactive
+    if [[ "${RECONFIG}" = "y" ]] || [[ "${RECONFIG}" = "Y" ]]; then
+        manage_config
     fi
     
-    read -p "按回车键返回..."
+    read -r -p "按回车键返回..."
 }
 
 # ====================== 【函数：查看配置】 ======================
 view_config() {
-    if [ ! -f "$CONFIG_FILE" ]; then
+    if [[ ! -f "${CONFIG_FILE}" ]]; then
         echo -e "${RED}[ERROR] 配置文件不存在${NC}"
     else
         echo ""
-        echo -e "${YELLOW}=== 当前配置 ===${NC}"
-        cat "$CONFIG_FILE"
-        echo -e "${YELLOW}==================${NC}"
+        echo -e "${YELLOW}=== 当前配置 (cf-ip.json) ===${NC}"
+        jq '.' "${CONFIG_FILE}"
+        echo -e "${YELLOW}==============================${NC}"
     fi
     
-    read -p "按回车键返回..."
+    read -r -p "按回车键返回..."
 }
 
 # ====================== 【函数：管理定时任务】 ======================
@@ -796,7 +821,7 @@ manage_cron() {
     if ! command -v crontab >/dev/null 2>&1; then
         echo -e "${RED}[ERROR] 系统未安装 crontab${NC}"
         echo "请先安装：yum install -y cronie 或 apt-get install -y cron"
-        read -p "按回车键返回..."
+        read -r -p "按回车键返回..."
         return
     fi
     
@@ -804,8 +829,8 @@ manage_cron() {
     echo ""
     echo "当前定时任务："
     CRON_LIST=$(crontab -l 2>/dev/null | grep "ip_auto.sh")
-    if [ -n "$CRON_LIST" ]; then
-        echo -e "${GREEN}$CRON_LIST${NC}"
+    if [[ -n "${CRON_LIST}" ]]; then
+        echo -e "${GREEN}${CRON_LIST}${NC}"
     else
         echo -e "${YELLOW}未配置定时任务${NC}"
     fi
@@ -816,9 +841,9 @@ manage_cron() {
     echo "  2) 删除定时任务"
     echo "  3) 返回"
     echo ""
-    read -p "请选择（1-3）: " CRON_ACTION
+    read -r -p "请选择（1-3）: " CRON_ACTION
     
-    case $CRON_ACTION in
+    case ${CRON_ACTION} in
         1)
             setup_cron
             ;;
@@ -830,7 +855,7 @@ manage_cron() {
             ;;
     esac
     
-    read -p "按回车键返回..."
+    read -r -p "按回车键返回..."
 }
 
 # ====================== 【函数：设置定时任务】 ======================
@@ -843,10 +868,10 @@ setup_cron() {
     echo "  4) 每周执行一次"
     echo "  5) 自定义cron表达式"
     echo ""
-    read -p "请选择（1-5，默认3）: " CRON_OPTION
+    read -r -p "请选择（1-5，默认3）: " CRON_OPTION
     CRON_OPTION=${CRON_OPTION:-3}
     
-    case $CRON_OPTION in
+    case ${CRON_OPTION} in
         1)
             CRON_EXPR="0 * * * *"
             CRON_DESC="每小时"
@@ -856,27 +881,27 @@ setup_cron() {
             CRON_DESC="每6小时"
             ;;
         3)
-            read -p "请输入执行时间（格式：小时 分钟，默认 3 0 表示凌晨3点）: " CRON_TIME
+            read -r -p "请输入执行时间（格式：小时 分钟，默认 3 0 表示凌晨3点）: " CRON_TIME
             CRON_TIME=${CRON_TIME:-"3 0"}
-            CRON_HOUR=$(echo $CRON_TIME | awk '{print $1}')
-            CRON_MIN=$(echo $CRON_TIME | awk '{print $2}')
-            CRON_EXPR="$CRON_MIN $CRON_HOUR * * *"
+            CRON_HOUR=$(echo "${CRON_TIME}" | awk '{print $1}')
+            CRON_MIN=$(echo "${CRON_TIME}" | awk '{print $2}')
+            CRON_EXPR="${CRON_MIN} ${CRON_HOUR} * * *"
             CRON_DESC="每天${CRON_HOUR}点${CRON_MIN}分"
             ;;
         4)
-            read -p "请输入星期几（0-7，0和7都表示周日，默认0）: " CRON_WEEKDAY
+            read -r -p "请输入星期几（0-7，0和7都表示周日，默认0）: " CRON_WEEKDAY
             CRON_WEEKDAY=${CRON_WEEKDAY:-0}
-            read -p "请输入执行时间（格式：小时 分钟，默认 3 0）: " CRON_TIME
+            read -r -p "请输入执行时间（格式：小时 分钟，默认 3 0）: " CRON_TIME
             CRON_TIME=${CRON_TIME:-"3 0"}
-            CRON_HOUR=$(echo $CRON_TIME | awk '{print $1}')
-            CRON_MIN=$(echo $CRON_TIME | awk '{print $2}')
-            CRON_EXPR="$CRON_MIN $CRON_HOUR * * $CRON_WEEKDAY"
+            CRON_HOUR=$(echo "${CRON_TIME}" | awk '{print $1}')
+            CRON_MIN=$(echo "${CRON_TIME}" | awk '{print $2}')
+            CRON_EXPR="${CRON_MIN} ${CRON_HOUR} * * ${CRON_WEEKDAY}"
             CRON_DESC="每周日${CRON_HOUR}点${CRON_MIN}分"
             ;;
         5)
             echo "请输入cron表达式（格式：分 时 日 月 周）"
             echo "例如：0 3 * * * 表示每天凌晨3点"
-            read -p "cron表达式: " CRON_EXPR
+            read -r -p "cron表达式: " CRON_EXPR
             CRON_DESC="自定义"
             ;;
         *)
@@ -885,27 +910,26 @@ setup_cron() {
             ;;
     esac
     
-    SCRIPT_PATH="$IP_AUTO_SCRIPT"
-    LOG_DIR="$ROOT_DIR/logs/cf-ip"
-    mkdir -p "$LOG_DIR"
-    LOG_PATH="$LOG_DIR/cron.log"
-    CRON_CMD="$CRON_EXPR /bin/bash $SCRIPT_PATH >> $LOG_PATH 2>&1"
+    SCRIPT_PATH="${IP_AUTO_SCRIPT}"
+    LOG_DIR="${ROOT_DIR}/logs/cf-ip"
+    mkdir -p "${LOG_DIR}"
+    LOG_PATH="${LOG_DIR}/cron.log"
+    # 设置 CF_OPT_ENTRY=scheduler 以允许定时任务调用
+    CRON_CMD="${CRON_EXPR} CF_OPT_ENTRY=scheduler /bin/bash ${SCRIPT_PATH} >> ${LOG_PATH} 2>&1"
     
     echo ""
     echo -e "${YELLOW}即将添加以下定时任务：${NC}"
-    echo "  执行频率：$CRON_DESC"
-    echo "  Cron表达式：$CRON_EXPR"
-    echo "  执行脚本：$SCRIPT_PATH"
-    echo "  日志文件：$LOG_PATH"
+    echo "  执行频率：${CRON_DESC}"
+    echo "  Cron表达式：${CRON_EXPR}"
+    echo "  执行脚本：${SCRIPT_PATH}"
+    echo "  日志文件：${LOG_PATH}"
     echo ""
-    read -p "确认添加？(y/n，默认y): " CONFIRM_CRON
+    read -r -p "确认添加？(y/n，默认y): " CONFIRM_CRON
     CONFIRM_CRON=${CONFIRM_CRON:-y}
     
-    if [ "$CONFIRM_CRON" = "y" ] || [ "$CONFIRM_CRON" = "Y" ]; then
+    if [[ "${CONFIRM_CRON}" = "y" ]] || [[ "${CONFIRM_CRON}" = "Y" ]]; then
         # 先删除旧的，再添加新的
-        (crontab -l 2>/dev/null | grep -v "ip_auto.sh"; echo "$CRON_CMD") | crontab -
-        
-        if [ $? -eq 0 ]; then
+        if (crontab -l 2>/dev/null | grep -v "ip_auto.sh"; echo "${CRON_CMD}") | crontab -; then
             echo -e "${GREEN}[OK] 定时任务添加成功！${NC}"
         else
             echo -e "${RED}[ERROR] 定时任务添加失败${NC}"
@@ -916,9 +940,9 @@ setup_cron() {
 # ====================== 【函数：删除定时任务】 ======================
 remove_cron() {
     echo ""
-    read -p "确认删除所有 ip_auto.sh 相关的定时任务？(y/n): " CONFIRM_REMOVE
+    read -r -p "确认删除所有 ip_auto.sh 相关的定时任务？(y/n): " CONFIRM_REMOVE
     
-    if [ "$CONFIRM_REMOVE" = "y" ] || [ "$CONFIRM_REMOVE" = "Y" ]; then
+    if [[ "${CONFIRM_REMOVE}" = "y" ]] || [[ "${CONFIRM_REMOVE}" = "Y" ]]; then
         crontab -l 2>/dev/null | grep -v "ip_auto.sh" | crontab -
         echo -e "${GREEN}[OK] 定时任务已删除${NC}"
     fi
@@ -926,18 +950,30 @@ remove_cron() {
 
 # ====================== 【函数：手动执行测速】 ======================
 run_test() {
-    if [ ! -f "$IP_AUTO_SCRIPT" ]; then
-        echo -e "${RED}[ERROR] ip_auto.sh 不存在${NC}"
-        read -p "按回车键返回..."
+    # 智能检测并下载 cfst（如果不存在）
+    if [[ ! -f "${CFST_BIN}" ]]; then
+        echo -e "\n${YELLOW}[INFO] 检测到测速程序 cfst 未安装，即将自动下载...${NC}"
+        if ! download_cfst; then
+            echo -e "${RED}[ERROR] cfst 下载失败，请检查网络连接后重试。${NC}"
+            pause_and_continue
+            return
+        fi
+        echo -e "${GREEN}[OK] cfst 下载成功！${NC}"
+        echo ""
+    fi
+    
+    if [[ ! -f "${IP_AUTO_SCRIPT}" ]]; then
+        echo -e "${RED}[ERROR] 核心脚本 core.sh 不存在${NC}"
+        read -r -p "按回车键返回..."
         return
     fi
     
     echo ""
     echo -e "${YELLOW}开始执行测速...${NC}"
     echo "--------------------------------------------------------"
-    CF_OPT_ENTRY=1 bash "$IP_AUTO_SCRIPT"
+    CF_OPT_ENTRY=1 bash "${IP_AUTO_SCRIPT}"
     echo ""
-    read -p "按回车键返回..."
+    read -r -p "按回车键返回..."
 }
 
 # ====================== 【函数：查看日志】 ======================
@@ -946,31 +982,31 @@ view_logs() {
     echo -e "${BLUE}【日志查看】${NC}"
     echo "--------------------------------------------------------"
     
-    LOG_DIR="$ROOT_DIR/logs/cf-ip"
-    mkdir -p "$LOG_DIR"
-    LOG_FILE="$LOG_DIR/cfst_auto.log"
-    CRON_LOG="$LOG_DIR/cron.log"
+    LOG_DIR="${ROOT_DIR}/logs/cf-ip"
+    mkdir -p "${LOG_DIR}"
+    LOG_FILE="${LOG_DIR}/cfst_auto.log"
+    CRON_LOG="${LOG_DIR}/cron.log"
     
     echo "请选择要查看的日志："
     echo "  1) 运行日志 (cfst_auto.log)"
     echo "  2) 定时任务日志 (cron.log)"
     echo "  3) 返回"
     echo ""
-    read -p "请选择（1-3）: " LOG_CHOICE
+    read -r -p "请选择（1-3）: " LOG_CHOICE
     
-    case $LOG_CHOICE in
+    case ${LOG_CHOICE} in
         1)
-            if [ -f "$LOG_FILE" ]; then
+            if [[ -f "${LOG_FILE}" ]]; then
                 echo ""
-                tail -50 "$LOG_FILE"
+                tail -50 "${LOG_FILE}"
             else
                 echo -e "${YELLOW}[WARN] 日志文件不存在${NC}"
             fi
             ;;
         2)
-            if [ -f "$CRON_LOG" ]; then
+            if [[ -f "${CRON_LOG}" ]]; then
                 echo ""
-                tail -50 "$CRON_LOG"
+                tail -50 "${CRON_LOG}"
             else
                 echo -e "${YELLOW}[WARN] 日志文件不存在${NC}"
             fi
@@ -980,66 +1016,42 @@ view_logs() {
             ;;
     esac
     
-    read -p "按回车键返回..."
+    read -r -p "按回车键返回..."
 }
 
-# ====================== 【主程序】 ======================
-# 检查入口权限
-if [ "${CF_OPT_ENTRY:-}" != "main_menu" ] && [ "${CF_OPT_ENTRY:-}" != "run_sh" ]; then
-    echo -e "${RED}[ERROR] 请使用 'cfopt' 命令进入主菜单运行此模块。${NC}"
-    exit 1
-fi
-
-# 如果配置文件不存在，引导用户进行首次配置
+# ====================== 【主程序入口】 ======================
+# 检查配置文件状态
 check_config
 config_status=$?
 
-if [ $config_status -ne 0 ]; then
-    echo -e "${YELLOW}[INFO] 检测到您尚未配置 CF 优选参数，即将进入安装向导...${NC}"
-    sleep 2
-    install_wizard
+if [[ "${config_status}" -ne 0 ]]; then
+    echo -e "${YELLOW}[INFO] 检测到尚未配置 CF 优选参数。${NC}"
+    echo -e "${CYAN}提示: 请选择菜单项 1 开始配置，系统将自动下载所需组件。${NC}"
+    echo ""
+    read -r -p "按回车键继续..." || true
 fi
 
 # 主循环
 while true; do
     show_main_menu
-    read -p "请选择功能 [0-8]: " CHOICE
+    read -r -p "请选择功能 [0-5]: " CHOICE
     
-    case $CHOICE in
-        1)
-            install_wizard
-            ;;
-        2)
-            modify_config
-            ;;
-        3)
-            view_config
-            ;;
-        4)
-            manage_cron
-            ;;
-        5)
-            run_test
-            ;;
-        6)
-            view_logs
-            ;;
-        7)
-            show_help
-            ;;
-        0)
-            clear
-            show_welcome
-            echo "感谢使用 Cloudflare IP 优选工具！"
-            echo ""
-            echo "祝您使用愉快，再见！"
-            echo ""
+    case ${CHOICE} in
+        1) manage_config ;;
+        2) view_config ;;
+        3) run_test ;;
+        4) manage_cron ;;
+        5) view_logs ;;
+        0) 
+            echo -e "\n${GREEN}[OK] 感谢使用 CF-IP 优选管理模块，再见！${NC}"
             exit 0
             ;;
         *)
-            echo ""
-            show_error "无效选择，请输入 0-7 之间的数字"
-            sleep 2
+            echo -e "${RED}[ERROR] 无效的选择，请输入 0-5 之间的数字${NC}"
+            read -r -p "按回车键继续..." || true
             ;;
     esac
 done
+
+exit 0
+
