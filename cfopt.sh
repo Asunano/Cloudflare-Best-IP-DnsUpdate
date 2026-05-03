@@ -19,7 +19,7 @@ NC='\033[0m'
 
 # --- 全局配置区 ---
 SCRIPT_VERSION="0.1"
-REMOTE_URL="https://blog.drxian.cn/scripts/Cloudflare-Best-IP-DnsUpdate"
+REMOTE_URL="https://raw.githubusercontent.com/Asunano/Cloudflare-Best-IP-DnsUpdate/main"
 VERSION_FILE_REMOTE="${REMOTE_URL}/version.txt"
 
 # 根据用户权限动态确定安装目录
