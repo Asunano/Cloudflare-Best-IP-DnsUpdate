@@ -1512,8 +1512,8 @@ main() {
                 log_management
                 ;;
             0)
-                echo -e "${GREEN}再见!${NC}"
-                exit 0
+                # 退出子菜单，返回 cfopt 主菜单
+                break
                 ;;
             *)
                 echo -e "${RED}无效选择${NC}"
