@@ -159,10 +159,21 @@ if [[ ! -f "${CFST_BIN}" ]]; then
 fi
 
 # 检查 IP 数据源 (ip.txt)
-IP_DATA_FILE="${CFST_IP_FILE:-${ROOT_DIR}/assets/data/cf-ip/ip.txt}"
-if [[ ! -f "${IP_DATA_FILE}" ]]; then
-    echo -e "${YELLOW}[WARN] 未找到自定义 IP 列表，将使用 cfst 内置列表。${NC}"
+IP_DATA_FILE=""
+if [[ -n "${CFST_IP_FILE}" ]] && [[ "${CFST_IP_FILE}" != "null" ]]; then
+    # 使用配置文件中指定的 IP 文件路径
+    IP_DATA_FILE="${CFST_IP_FILE}"
+elif [[ -f "${ROOT_DIR}/assets/data/cf-ip/ip.txt" ]]; then
+    # 使用默认 IP 文件路径
+    IP_DATA_FILE="${ROOT_DIR}/assets/data/cf-ip/ip.txt"
+fi
+
+if [[ -n "${IP_DATA_FILE}" ]] && [[ ! -f "${IP_DATA_FILE}" ]]; then
+    echo -e "${YELLOW}[WARN] 指定的 IP 列表文件不存在: ${IP_DATA_FILE}${NC}"
+    echo -e "${YELLOW}[WARN] 将使用 cfst 内置列表。${NC}"
     IP_DATA_FILE=""  # 清空，不传递给 cfst
+elif [[ -z "${IP_DATA_FILE}" ]]; then
+    echo -e "${YELLOW}[WARN] 未找到自定义 IP 列表，将使用 cfst 内置列表。${NC}"
 fi
 
 # ==================== 执行测速 ====================
@@ -175,7 +186,7 @@ echo -e "  输出文件: ${OUTPUT_CSV}"
 # 构建 cfst 命令
 CMD=("${CFST_BIN}" "-n" "${CFST_THREADS}" "-t" "${CFST_PING_TIMES}")
 if [[ -n "${TARGET_COLO}" ]]; then CMD+=("-cfcolo" "${TARGET_COLO}"); fi
-if [[ -f "${IP_DATA_FILE}" ]]; then CMD+=("-f" "${IP_DATA_FILE}"); fi
+if [[ -n "${IP_DATA_FILE}" ]]; then CMD+=("-f" "${IP_DATA_FILE}"); fi
 CMD+=("-dn" "${CFST_DOWNLOAD_COUNT}" "-dt" "${CFST_DOWNLOAD_TIME}")
 CMD+=("-tp" "${CFST_PORT}" "-url" "${CFST_URL}")
 if [[ "${CFST_HTTPING}" = "true" ]]; then CMD+=("-httping"); fi
