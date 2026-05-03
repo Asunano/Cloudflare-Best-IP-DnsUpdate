@@ -435,7 +435,7 @@ show_main_menu() {
         *)
             echo -e "${RED}无效选择，请重试。${NC}"
             sleep 1
-            show_main_menu
+            # 不递归，由外层 while 循环继续
             ;;
     esac
 }
@@ -1019,8 +1019,12 @@ EOF
         echo -e "${YELLOW}[WARN] 没有可更新的组件。${NC}"
     fi
 
-    # 7. 进入主菜单
-    show_main_menu
+    # 7. 进入主菜单循环
+    while true; do
+        show_main_menu
+        # show_main_menu 是递归函数，选择 0 时会 exit
+        # 其他选项执行完毕后会自动继续循环
+    done
 }
 
 # 启动执行
