@@ -745,12 +745,17 @@ check_and_update_components() {
             # 确保目标目录存在
             mkdir -p "$(dirname "${LOCAL_PATH}")" 2>/dev/null
             
-            # 直接在目标位置下载
-            if download_with_retry "${REMOTE_URL}/${REMOTE_FILE}" "${LOCAL_PATH}" "${REMOTE_HASH}"; then
+            # 下载到临时目录进行验证
+            local temp_file="${TEMP_DIR}/${REMOTE_FILE}"
+            mkdir -p "$(dirname "${temp_file}")" 2>/dev/null
+            
+            if download_with_retry "${REMOTE_URL}/${REMOTE_FILE}" "${temp_file}" "${REMOTE_HASH}"; then
                 HAS_UPDATE=true
+                # 验证通过后，标记为待应用
             else
                 HAS_ERROR=true
                 echo -e "  ${RED}[FAIL]${NC}   ${KEY} 更新失败 (请检查 version.txt 哈希值或网络)"
+                rm -f "${temp_file}" 2>/dev/null
             fi
         else
             echo -e "  ${GREEN}[OK]${NC}      ${KEY}: ${LOCAL_VER} (最新)"
