@@ -354,95 +354,150 @@ manage_config() {
 # ====================== 【函数：简单配置】 ======================
 configure_simple() {
     echo ""
-    echo -e "${GREEN}━━━ 简单配置模式 ━━━${NC}"
+    echo -e "${GREEN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+    echo -e " ${YELLOW}CF-IP 优选配置向导 - 简单模式${NC}"
+    echo -e "${GREEN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+    echo ""
+    echo -e "${CYAN}本向导将帮助您快速配置 IP 测速参数：${NC}"
+    echo "  • 选择适合您网络的测速节点地区"
+    echo "  • 设置测速线程数（影响速度和资源占用）"
+    echo "  • 指定保留的优质 IP 数量"
     echo ""
     
-    read -r -p "1. HTML输出文件路径（默认: /opt/1panel/www/sites/sw/index/index.html）: " OUTPUT_HTML
-    OUTPUT_HTML=${OUTPUT_HTML:-"/opt/1panel/www/sites/sw/index/index.html"}
-    
-    read -r -p "2. 需要提取的优质IP数量（默认: 5）: " TAKE_IP_NUM
-    TAKE_IP_NUM=${TAKE_IP_NUM:-5}
-    
+    # 第一步：选择测速策略（最重要）
+    echo -e "${YELLOW}【步骤 1/3】选择测速节点地区${NC}"
+    echo -e "${GRAY}系统将根据您的选择自动测试对应地区的 Cloudflare 节点${NC}"
     echo ""
-    echo "常用地区代码："
-    echo "  HKG=香港  NRT=东京  LAX=洛杉矶  SJC=旧金山"
-    echo "  SEA=西雅图  SIN=新加坡  ICN=首尔  TPE=台北"
-    read -r -p "3. 测速地区（多个用逗号分隔，默认: HKG,NRT）: " CFST_COLO
-    CFST_COLO=${CFST_COLO:-"HKG,NRT"}
-    
-    read -r -p "4. 测速线程数（建议100-200，默认: 200）: " CFST_THREADS
-    CFST_THREADS=${CFST_THREADS:-200}
-    
-    # 增加测速策略选择
+    echo -e "  ${GREEN}1) 国内通用推荐${NC}     - 综合优化，适合大多数用户 (HKG, NRT)"
+    echo -e "  ${GREEN}2) 移动线路专项${NC}     - 中国移动用户优选 (HKG, SIN, TYO, LON)"
+    echo -e "  ${GREEN}3) 联通线路专项${NC}     - 中国联通用户优选 (SJC, LAX, SIN, TYO)"
+    echo -e "  ${GREEN}4) 电信线路专项${NC}     - 中国电信用户优选 (SJC, LAX, TYO, SIN)"
+    echo -e "  ${GREEN}5) 按地理区域筛选${NC}   - 亚太/北美/欧洲等地区"
+    echo -e "  ${GREEN}6) 自定义节点代码${NC}   - 查看完整代码表并手动指定"
     echo ""
-    echo -e "${YELLOW}[INFO] 请选择 IP 优选策略 (第一层):${NC}"
-    echo "  1) 国内通用推荐     - 综合筛选大陆访问最快的节点 (HKG, NRT)"
-    echo "  2) 移动线路专项     - 针对中国移动优化 (HKG, SIN, TYO, LON)"
-    echo "  3) 联通线路专项     - 针对中国联通优化 (SJC, LAX, SIN, TYO)"
-    echo "  4) 电信线路专项     - 针对中国电信优化 (SJC, LAX, TYO, SIN)"
-    echo "  5) 按大洲/区域筛选  - 进入二级菜单选择 (亚太/北美/欧洲等)"
-    echo "  6) 手动指定地区代码 - 查看代码表并自由组合"
-    echo "  7) 自定义 Colo 列表 - 直接输入已知的代码"
-    echo ""
-    read -r -p "请输入选项编号 (1-7，默认 1): " STRATEGY_CHOICE
+    read -r -p "请选择策略编号 [1-6，默认 1]: " STRATEGY_CHOICE
     STRATEGY_CHOICE=${STRATEGY_CHOICE:-1}
     
     case ${STRATEGY_CHOICE} in
-        2) CFST_COLO="HKG,SIN,TYO,LON" ;;
-        3) CFST_COLO="SJC,LAX,SIN,TYO" ;;
-        4) CFST_COLO="SJC,LAX,TYO,SIN" ;;
+        1) 
+            CFST_COLO="HKG,NRT"
+            echo -e "${GREEN}✓ 已选择：国内通用推荐${NC}"
+            ;;
+        2) 
+            CFST_COLO="HKG,SIN,TYO,LON"
+            echo -e "${GREEN}✓ 已选择：移动线路专项${NC}"
+            ;;
+        3) 
+            CFST_COLO="SJC,LAX,SIN,TYO"
+            echo -e "${GREEN}✓ 已选择：联通线路专项${NC}"
+            ;;
+        4) 
+            CFST_COLO="SJC,LAX,TYO,SIN"
+            echo -e "${GREEN}✓ 已选择：电信线路专项${NC}"
+            ;;
         5)
             # 二级菜单：区域细分
             echo ""
-            echo -e "${CYAN}[INFO] 请选择目标地理区域 (第二层):${NC}"
-            echo "  1) 亚太地区 (APAC)   - HKG, NRT, ICN, SIN, TPE, KUL, BKK"
-            echo "  2) 北美地区 (NA)     - LAX, SJC, SEA, LAS, MIA, YVR, ORD"
-            echo "  3) 欧洲地区 (EU)     - LHR, FRA, AMS, MAD, WAW, ARN"
-            echo "  4) 南美/大洋洲 (SA/OC)- GRU, EZE, SYD, MEL"
+            echo -e "${CYAN}请选择目标地理区域：${NC}"
+            echo -e "  ${GREEN}1) 亚太地区${NC}     - 香港、东京、首尔、新加坡等"
+            echo -e "  ${GREEN}2) 北美地区${NC}     - 洛杉矶、旧金山、西雅图等"
+            echo -e "  ${GREEN}3) 欧洲地区${NC}     - 伦敦、法兰克福、阿姆斯特丹等"
+            echo -e "  ${GREEN}4) 南美/大洋洲${NC}  - 圣保罗、悉尼、墨尔本等"
             echo ""
-            read -r -p "请输入区域编号 (1-4，默认 1): " REGION_CHOICE
+            read -r -p "请选择区域编号 [1-4，默认 1]: " REGION_CHOICE
             case ${REGION_CHOICE} in
-                2) CFST_COLO="LAX,SJC,SEA,LAS,MIA,YVR,ORD" ;;
-                3) CFST_COLO="LHR,FRA,AMS,MAD,WAW,ARN" ;;
-                4) CFST_COLO="GRU,EZE,SYD,MEL" ;;
-                *) CFST_COLO="HKG,NRT,ICN,SIN,TPE,KUL,BKK" ;; # 默认亚太
+                2) 
+                    CFST_COLO="LAX,SJC,SEA,LAS,MIA,YVR,ORD"
+                    echo -e "${GREEN}✓ 已选择：北美地区${NC}"
+                    ;;
+                3) 
+                    CFST_COLO="LHR,FRA,AMS,MAD,WAW,ARN"
+                    echo -e "${GREEN}✓ 已选择：欧洲地区${NC}"
+                    ;;
+                4) 
+                    CFST_COLO="GRU,EZE,SYD,MEL"
+                    echo -e "${GREEN}✓ 已选择：南美/大洋洲${NC}"
+                    ;;
+                *) 
+                    CFST_COLO="HKG,NRT,ICN,SIN,TPE,KUL,BKK"
+                    echo -e "${GREEN}✓ 已选择：亚太地区${NC}"
+                    ;;
             esac
             ;;
         6)
-            # 三级菜单：详细代码参考与手动输入
+            # 显示完整代码表
             echo ""
             echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
             echo -e " ${YELLOW}Cloudflare 数据中心代码参考表${NC}"
             echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
-            echo "  [亚太] HKG(香港) NRT(东京) ICN(首尔) SIN(新加坡)"
-            echo "         TPE(台北) KUL(吉隆坡) BKK(曼谷) MNL(马尼拉)"
-            echo "  [北美] LAX(洛杉矶) SJC(圣何塞) SEA(西雅图) LAS(拉斯维加斯)"
-            echo "         MIA(迈阿密) YVR(温哥华) ORD(芝加哥) DEN(丹佛)"
-            echo "  [欧洲] LHR(伦敦) FRA(法兰克福) AMS(阿姆斯特丹) MAD(马德里)"
-            echo "         WAW(华沙) ARN(斯德哥尔摩) CDG(巴黎) ZRH(苏黎世)"
-            echo "  [其他] GRU(圣保罗) EZE(布宜诺斯艾利斯) SYD(悉尼) MEL(墨尔本)"
+            echo -e "  ${GREEN}[亚太]${NC} HKG(香港) NRT(东京) ICN(首尔) SIN(新加坡)"
+            echo -e "         TPE(台北) KUL(吉隆坡) BKK(曼谷) MNL(马尼拉)"
+            echo -e "  ${GREEN}[北美]${NC} LAX(洛杉矶) SJC(圣何塞) SEA(西雅图) LAS(拉斯维加斯)"
+            echo -e "         MIA(迈阿密) YVR(温哥华) ORD(芝加哥) DEN(丹佛)"
+            echo -e "  ${GREEN}[欧洲]${NC} LHR(伦敦) FRA(法兰克福) AMS(阿姆斯特丹) MAD(马德里)"
+            echo -e "         WAW(华沙) ARN(斯德哥尔摩) CDG(巴黎) ZRH(苏黎世)"
+            echo -e "  ${GREEN}[其他]${NC} GRU(圣保罗) EZE(布宜诺斯艾利斯) SYD(悉尼) MEL(墨尔本)"
             echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
-            echo -e "${YELLOW}提示:${NC} 请输入代码并用逗号分隔 (例如: HKG,SJC,LHR)"
-            read -r -p "请输入您想测试的地区代码: " CFST_COLO
+            echo -e "${YELLOW}提示:${NC} 多个代码用逗号分隔，例如: HKG,SJC,LHR"
+            read -r -p "请输入节点代码: " CFST_COLO
+            CFST_COLO=${CFST_COLO:-"HKG,NRT"}
             ;;
-        7) 
-            read -r -p "请直接输入 Colo 代码 (用逗号分隔): " CFST_COLO
+        *) 
+            CFST_COLO="HKG,NRT"
+            echo -e "${GREEN}✓ 已选择：国内通用推荐${NC}"
             ;;
-        *) CFST_COLO="HKG,NRT" ;; # 默认通用
     esac
     
-    read -r -p "5. 是否启用日志记录？(y/n，默认n): " ENABLE_LOG_INPUT
+    echo ""
+    # 第二步：测速线程数
+    echo -e "${YELLOW}【步骤 2/3】设置测速线程数${NC}"
+    echo -e "${GRAY}线程数越高测速越快，但会占用更多系统资源${NC}"
+    echo -e "  • 推荐范围：100-200"
+    echo -e "  • 低配置服务器：建议使用 100"
+    echo -e "  • 高配置服务器：可使用 200 或更高"
+    echo ""
+    read -r -p "请输入线程数 [默认 200]: " CFST_THREADS
+    CFST_THREADS=${CFST_THREADS:-200}
+    
+    # 验证输入
+    if ! [[ "${CFST_THREADS}" =~ ^[0-9]+$ ]] || [[ "${CFST_THREADS}" -lt 1 ]]; then
+        echo -e "${YELLOW}[WARN] 输入无效，使用默认值 200${NC}"
+        CFST_THREADS=200
+    fi
+    
+    echo ""
+    # 第三步：提取 IP 数量
+    echo -e "${YELLOW}【步骤 3/3】设置保留的优质 IP 数量${NC}"
+    echo -e "${GRAY}测速完成后，系统将保留速度最快的前 N 个 IP${NC}"
+    echo -e "  • 推荐：3-10 个"
+    echo -e "  • 数量越多，DNS 轮询效果越好，但可能包含次优 IP"
+    echo ""
+    read -r -p "请输入 IP 数量 [默认 5]: " TAKE_IP_NUM
+    TAKE_IP_NUM=${TAKE_IP_NUM:-5}
+    
+    # 验证输入
+    if ! [[ "${TAKE_IP_NUM}" =~ ^[0-9]+$ ]] || [[ "${TAKE_IP_NUM}" -lt 1 ]]; then
+        echo -e "${YELLOW}[WARN] 输入无效，使用默认值 5${NC}"
+        TAKE_IP_NUM=5
+    fi
+    
+    # 询问是否启用日志
+    echo ""
+    echo -e "${YELLOW}【可选配置】${NC}"
+    read -r -p "是否启用详细日志记录？(y/n，默认 n): " ENABLE_LOG_INPUT
     if [[ "${ENABLE_LOG_INPUT}" = "y" ]] || [[ "${ENABLE_LOG_INPUT}" = "Y" ]]; then
         ENABLE_LOG="true"
+        echo -e "${GREEN}✓ 日志记录已启用${NC}"
     else
         ENABLE_LOG="false"
+        echo -e "${GREEN}✓ 日志记录已禁用${NC}"
     fi
     
     # 询问是否配置多线路分流
     echo ""
-    echo -e "${YELLOW}[INFO] 是否配置运营商分流测速？${NC}"
-    echo "  如果您使用 DNSPod 等多线路解析服务，建议开启此功能。"
-    read -r -p "是否开启？(y/n，默认n): " MULTI_LINE_INPUT
+    echo -e "${YELLOW}【高级选项】运营商分流测速${NC}"
+    echo -e "${GRAY}如果您使用 DNSPod 等多线路解析服务，可以为不同运营商设置不同的测速节点${NC}"
+    read -r -p "是否配置多线路分流？(y/n，默认 n): " MULTI_LINE_INPUT
     if [[ "${MULTI_LINE_INPUT}" = "y" ]] || [[ "${MULTI_LINE_INPUT}" = "Y" ]]; then
         configure_multi_line_params
     fi
@@ -539,7 +594,6 @@ generate_config_simple() {
     
     jq -n \
         --arg cfst_dir "${CFST_DIR}" \
-        --arg output_html "${OUTPUT_HTML}" \
         --argjson take_ip_num "${TAKE_IP_NUM}" \
         --argjson threads "${CFST_THREADS}" \
         --arg colo "${CFST_COLO}" \
@@ -572,7 +626,6 @@ generate_config_simple() {
             "speed_test": {
                 "take_ip_num": $take_ip_num,
                 "max_retry": 3,
-                "output_html": ($output_html == "true"),
                 "enable_log": $enable_log
             },
             "multi_line": {
@@ -590,8 +643,17 @@ generate_config_simple() {
     chmod 600 "$CONFIG_FILE"
     
     echo ""
-    echo -e "${GREEN}[OK] 简单配置完成！${NC}"
-    echo "配置文件已保存到：${CONFIG_FILE}"
+    echo -e "${GREEN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+    echo -e " ${GREEN}✓ 配置已完成！${NC}"
+    echo -e "${GREEN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+    echo ""
+    echo -e "  ${CYAN}测速节点:${NC} ${CFST_COLO}"
+    echo -e "  ${CYAN}线程数量:${NC} ${CFST_THREADS}"
+    echo -e "  ${CYAN}保留 IP 数:${NC} ${TAKE_IP_NUM}"
+    echo -e "  ${CYAN}日志记录:${NC} ${ENABLE_LOG}"
+    echo ""
+    echo -e "${GRAY}配置文件已保存到：${CONFIG_FILE}${NC}"
+    echo -e "${GRAY}下次执行测速时将自动使用这些配置${NC}"
 }
 
 # ====================== 【函数：多线路参数配置】 ======================
