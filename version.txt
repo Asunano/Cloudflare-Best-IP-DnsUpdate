@@ -5,7 +5,7 @@
 # 用途：用于客户端更新时的完整性校验
 # ============================================================
 
-CFOPT=0.1:11fa8e333bf5fde2bb3c71908f4b1c7a4ba3c04b2bae6e8f5b2945fc7443d803
+CFOPT=0.1:2cd3389d0db9c1326171836b3311cc0fed6729cc765b79b3a3f78760064d4bb6
 CF_IP_MENU=0.1:ec99268f12781132fe792e42d42ad5a29018aaac1aa76c28e7543cac7f83a307
 CF_IP_CORE=0.1:359b4b208be3a2a860520bffbe1d64d412c773ec8355d190ea44d8d7bb36367d
 CF_DNS_CORE=0.1:f622d8d7504ae9881f53871b468efea6c6a131e81eb8f2ffe9049b908b590c4b
