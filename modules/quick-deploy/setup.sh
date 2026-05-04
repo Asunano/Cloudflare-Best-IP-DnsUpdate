@@ -38,9 +38,9 @@ fi
 # ==================== 辅助函数 ====================
 show_header() {
     clear
-    echo -e "${CYAN}+============================================================+${NC}"
-    echo -e " ${YELLOW}Cloudflare IP 优选 + DNS 快速部署向导 v${SCRIPT_VERSION}${NC}"
-    echo -e "${CYAN}+============================================================+${NC}"
+    echo -e "${CYAN}+------------------------------------------------------------+${NC}"
+    echo -e " ${YELLOW}快速部署向导 v${SCRIPT_VERSION}${NC}"
+    echo -e "${CYAN}+------------------------------------------------------------+${NC}"
     echo ""
 }
 
@@ -49,9 +49,9 @@ show_step_header() {
     local total="$2"
     local title="$3"
     echo ""
-    echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+    echo -e "${CYAN}+------------------------------------------------------------+${NC}"
     echo -e " ${YELLOW}[步骤 ${step}/${total}] ${title}${NC}"
-    echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+    echo -e "${CYAN}+------------------------------------------------------------+${NC}"
     echo ""
 }
 
@@ -347,18 +347,18 @@ deploy_single_line() {
     
     # 完成
     show_header
-    echo -e "${GREEN}🎉 部署完成！${NC}"
+    echo -e " ${GREEN}[OK] 部署完成！${NC}"
     echo ""
-    echo -e "${CYAN}您的配置摘要：${NC}"
-    echo -e "  • 工作模式: 单线路"
-    echo -e "  • 域名: ${domain}"
-    echo -e "  • DNS 记录: ${domain}"
-    echo -e "  • 测速节点: ${recommended_colo}"
+    echo -e " ${CYAN}您的配置摘要：${NC}"
+    echo -e "   • 工作模式: 单线路"
+    echo -e "   • 域名: ${domain}"
+    echo -e "   • DNS 记录: ${domain}"
+    echo -e "   • 测速节点: ${recommended_colo}"
     echo ""
-    echo -e "${GRAY}后续操作：${NC}"
-    echo -e "  • 运行 'cfopt' 查看和管理配置"
-    echo -e "  • 选择 '4. 自动化调度中心' 手动触发更新"
-    echo -e "  • 选择 '5. 检查组件更新' 保持最新版本"
+    echo -e " ${GRAY}后续操作：${NC}"
+    echo -e "   • 运行 'cfopt' 查看和管理配置"
+    echo -e "   • 选择 '5. 自动化调度中心' 手动触发更新"
+    echo -e "   • 选择 '6. 检查组件更新' 保持最新版本"
     echo ""
     
     read -r -p "按回车键返回主菜单..."
@@ -411,11 +411,11 @@ deploy_multi_line() {
     echo -e "${GREEN}[OK] DNSPod 多线路配置已生成${NC}"
     
     echo ""
-    echo -e "${CYAN}多线路 DNS 记录：${NC}"
-    echo -e "  • ${domain} (默认线路)"
-    echo -e "  • unicom.${domain} (联通线路)"
-    echo -e "  • mobile.${domain} (移动线路)"
-    echo -e "  • telecom.${domain} (电信线路)"
+    echo -e " ${CYAN}多线路 DNS 记录：${NC}"
+    echo -e "   • ${domain} (默认线路)"
+    echo -e "   • unicom.${domain} (联通线路)"
+    echo -e "   • mobile.${domain} (移动线路)"
+    echo -e "   • telecom.${domain} (电信线路)"
     
     # 第3步：首次测速
     show_step_header 3 4 "执行多线路测速"
@@ -450,21 +450,21 @@ deploy_multi_line() {
     
     # 完成
     show_header
-    echo -e "${GREEN}🎉 部署完成！${NC}"
+    echo -e " ${GREEN}[OK] 部署完成！${NC}"
     echo ""
-    echo -e "${CYAN}您的配置摘要：${NC}"
-    echo -e "  • 工作模式: 多线路"
-    echo -e "  • 域名: ${domain}"
-    echo -e "  • DNS 记录:"
-    echo -e "    - ${domain} (默认)"
-    echo -e "    - unicom.${domain} (联通)"
-    echo -e "    - mobile.${domain} (移动)"
-    echo -e "    - telecom.${domain} (电信)"
+    echo -e " ${CYAN}您的配置摘要：${NC}"
+    echo -e "   • 工作模式: 多线路"
+    echo -e "   • 域名: ${domain}"
+    echo -e "   • DNS 记录:"
+    echo -e "     - ${domain} (默认)"
+    echo -e "     - unicom.${domain} (联通)"
+    echo -e "     - mobile.${domain} (移动)"
+    echo -e "     - telecom.${domain} (电信)"
     echo ""
-    echo -e "${GRAY}后续操作：${NC}"
-    echo -e "  • 运行 'cfopt' 查看和管理配置"
-    echo -e "  • 选择 '4. 自动化调度中心' 手动触发更新"
-    echo -e "  • 选择 '5. 检查组件更新' 保持最新版本"
+    echo -e " ${GRAY}后续操作：${NC}"
+    echo -e "   • 运行 'cfopt' 查看和管理配置"
+    echo -e "   • 选择 '5. 自动化调度中心' 手动触发更新"
+    echo -e "   • 选择 '6. 检查组件更新' 保持最新版本"
     echo ""
     
     read -r -p "按回车键返回主菜单..."
@@ -474,19 +474,19 @@ deploy_multi_line() {
 main() {
     show_header
     
-    echo -e "${YELLOW}本向导将帮助您快速完成 Cloudflare IP 优选和 DNS 解析的全流程配置${NC}"
+    echo -e " ${YELLOW}本向导将帮助您快速完成 Cloudflare IP 优选和 DNS 解析的全流程配置${NC}"
     echo ""
-    echo -e "${CYAN}请选择您的使用场景：${NC}"
+    echo -e " ${CYAN}请选择您的使用场景：${NC}"
     echo ""
-    echo -e "  ${GREEN}1) 个人网站（单线路）${NC}"
-    echo -e "     • 适合个人博客、小型网站"
-    echo -e "     • 配置简单，维护方便"
-    echo -e "     • 所有用户访问同一组 IP"
+    echo -e " ${GREEN}➤${NC} 1. 个人网站（单线路）"
+    echo -e "      ${CYAN}- 适合个人博客、小型网站${NC}"
+    echo -e "      ${CYAN}- 配置简单，维护方便${NC}"
+    echo -e "      ${CYAN}- 所有用户访问同一组 IP${NC}"
     echo ""
-    echo -e "  ${GREEN}2) 企业网站（多线路）${NC}"
-    echo -e "     • 适合企业官网、电商平台"
-    echo -e "     • 覆盖三大运营商，访问更快"
-    echo -e "     • 不同运营商使用不同 IP"
+    echo -e " ${GREEN}➤${NC} 2. 企业网站（多线路）"
+    echo -e "      ${CYAN}- 适合企业官网、电商平台${NC}"
+    echo -e "      ${CYAN}- 覆盖三大运营商，访问更快${NC}"
+    echo -e "      ${CYAN}- 不同运营商使用不同 IP${NC}"
     echo ""
     
     read -r -p "请选择 [1-2, 默认 1]: " scenario
