@@ -171,9 +171,8 @@ safe_remove_dir() {
 # --- 全局配置区 ---
 SCRIPT_VERSION="0.1.1"
 
-# 【优化】默认使用镜像源，提高国内访问速度
-GITHUB_MIRROR="https://gh-proxy.org/https://raw.githubusercontent.com/Asunano/Cloudflare-Best-IP-DnsUpdate/main"
-REMOTE_URL="${GITHUB_MIRROR}"  # 默认使用镜像
+# 直接使用 GitHub 原始地址，避免缓存导致的更新延迟
+REMOTE_URL="https://raw.githubusercontent.com/Asunano/Cloudflare-Best-IP-DnsUpdate/main"
 VERSION_FILE_REMOTE="${REMOTE_URL}/version.txt"
 
 # 根据用户权限动态确定安装目录
