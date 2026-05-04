@@ -159,18 +159,44 @@ delete_domain_config() {
     
     init_deploy_record
     
+    # 从部署记录中获取 record_name 和 mode
+    local record_name="@"
+    local mode="single"
+    local deploy_info
+    deploy_info=$(jq -r --arg d "$domain" '.domains[] | select(.domain == $d)' "${DEPLOY_RECORD_FILE}" 2>/dev/null)
+    
+    if [[ -n "$deploy_info" ]]; then
+        record_name=$(echo "$deploy_info" | jq -r '.record_name // "@"')
+        mode=$(echo "$deploy_info" | jq -r '.mode // "single"')
+    fi
+    
     # 删除配置文件
     if [[ "$dns_type" == "cloudflare" ]]; then
-        local cf_dns_file="${ROOT_DIR}/conf/cf-dns/${domain}.json"
+        local cf_dns_file
+        cf_dns_file=$(get_cf_dns_config_file "$domain" "$record_name")
         if [[ -f "$cf_dns_file" ]]; then
             rm -f "$cf_dns_file"
             echo -e "  [OK] 已删除: ${cf_dns_file}"
         fi
     elif [[ "$dns_type" == "dnspod" ]]; then
-        local dnspod_file="${ROOT_DIR}/conf/dnspod/${domain}.json"
-        if [[ -f "$dnspod_file" ]]; then
-            rm -f "$dnspod_file"
-            echo -e "  [OK] 已删除: ${dnspod_file}"
+        if [[ "$mode" == "multi" ]]; then
+            # 多线路模式：删除所有线路的配置文件
+            local dnspod_base="${ROOT_DIR}/conf/dnspod/${domain}"
+            for suffix in "" "_unicom" "_mobile" "_telecom"; do
+                local dnspod_file="${dnspod_base}${suffix}.json"
+                if [[ -f "$dnspod_file" ]]; then
+                    rm -f "$dnspod_file"
+                    echo -e "  [OK] 已删除: ${dnspod_file}"
+                fi
+            done
+        else
+            # 单线路模式
+            local dnspod_file
+            dnspod_file=$(get_dnspod_config_file "$domain" "$record_name" "$mode")
+            if [[ -f "$dnspod_file" ]]; then
+                rm -f "$dnspod_file"
+                echo -e "  [OK] 已删除: ${dnspod_file}"
+            fi
         fi
     fi
     
@@ -779,12 +805,17 @@ manage_deployed_domains_menu() {
     read -r -p "请选择要管理的域名 [0-$((index-1))]: " choice
     
     if [[ "$choice" == "0" ]]; then
-        return 1  # 返回1表示用户选择返回上一级
+        return 1  # 返国1表示用户选择返回上一级
     fi
     
     if [[ "$choice" =~ ^[0-9]+$ ]] && [[ "$choice" -ge 1 ]] && [[ "$choice" -lt "$index" ]]; then
         local selected_domain="${domain_array[$((choice-1))]}"
         manage_single_domain "$selected_domain"
+        local result=$?
+        if [[ $result -eq 1 ]]; then
+            # 如果子函数返回1，说明配置被删除，需要重新检测
+            return 0  # 继续循环，会重新加载列表
+        fi
         # 管理完单个域名后，自动返回域名列表（不退出循环）
         return 0
     else
@@ -901,9 +932,19 @@ manage_single_domain() {
             ;;
         2)
             echo -e "${RED}[WARN] 此操作将删除以下文件：${NC}"
-            echo -e "  • ${ROOT_DIR}/conf/cf-dns/${domain}.json"
-            if [[ "$dns_type" == "dnspod" ]]; then
-                echo -e "  • ${ROOT_DIR}/conf/dnspod/${domain}.json"
+            # 构建正确的配置文件路径
+            local config_file
+            if [[ "$dns_type" == "cloudflare" ]]; then
+                config_file=$(get_cf_dns_config_file "$domain" "$record_name")
+            elif [[ "$dns_type" == "dnspod" ]]; then
+                config_file=$(get_dnspod_config_file "$domain" "$record_name" "$mode")
+            fi
+            
+            echo -e "  • ${config_file}"
+            if [[ "$dns_type" == "dnspod" && "$mode" == "multi" ]]; then
+                echo -e "  • ${ROOT_DIR}/conf/dnspod/${domain}_unicom.json"
+                echo -e "  • ${ROOT_DIR}/conf/dnspod/${domain}_mobile.json"
+                echo -e "  • ${ROOT_DIR}/conf/dnspod/${domain}_telecom.json"
             fi
             echo -e "  • 部署记录中的相关信息"
             echo ""
@@ -912,6 +953,7 @@ manage_single_domain() {
                 delete_domain_config "$domain" "$dns_type"
                 echo -e "${GREEN}[OK] 配置已删除${NC}"
                 read -r -p "按回车键返回..."
+                return 1  # 返回1表示需要刷新列表
             fi
             ;;
         0)
