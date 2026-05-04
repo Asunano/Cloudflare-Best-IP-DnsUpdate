@@ -25,7 +25,7 @@ ROOT_DIR="$(cd "$SCRIPT_DIR/../.." && pwd)"
 # 优先级：
 # 1. 命令行参数指定配置文件: bash core.sh /path/to/config.json
 # 2. 环境变量指定域名: DNSPOD_DOMAIN=example.com bash core.sh
-# 3. 默认配置文件: conf/dnspod.json
+# 3. 默认：需要传递配置文件路径
 
 if [[ $# -gt 0 ]] && [[ -f "$1" ]]; then
     # 方式 1: 命令行参数指定配置文件
@@ -35,15 +35,13 @@ elif [[ -n "${DNSPOD_DOMAIN:-}" ]]; then
     # 方式 2: 环境变量指定域名
     DOMAIN_NAME="${DNSPOD_DOMAIN}"
     CONFIG_FILE="$ROOT_DIR/conf/dnspod/${DOMAIN_NAME}.json"
-    if [[ ! -f "$CONFIG_FILE" ]]; then
-        # 如果新路径不存在，尝试旧路径
-        CONFIG_FILE="$ROOT_DIR/conf/dnspod.json"
-        DOMAIN_NAME="default"
-    fi
 else
-    # 方式 3: 默认配置文件（向后兼容）
-    CONFIG_FILE="$ROOT_DIR/conf/dnspod.json"
-    DOMAIN_NAME="default"
+    # 方式 3: 错误，必须指定配置文件
+    echo -e "${RED}错误${NC}: 未指定配置文件"
+    echo "用法:"
+    echo "  1. bash core.sh /path/to/config.json"
+    echo "  2. DNSPOD_DOMAIN=example.com bash core.sh"
+    exit 1
 fi
 
 LOCK_FILE="${ROOT_DIR}/modules/dnspod-dns/.core.lock"
