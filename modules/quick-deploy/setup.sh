@@ -2,14 +2,14 @@
 # shellcheck shell=bash
 # ==============================================================================
 # cfopt - 快速部署向导 (Quick Deploy)
-# Version: 0.2
+# Version: 0.1
 # Description: 一键完成 CF-IP 测速和 DNS 解析的全流程配置
 # Usage: bash modules/quick-deploy/setup.sh
 # ==============================================================================
 set -uo pipefail
 IFS=$'\n\t'
 
-SCRIPT_VERSION="0.2"
+SCRIPT_VERSION="0.1"
 
 # ==================== 颜色定义 ====================
 RED='\033[0;31m'
@@ -329,7 +329,7 @@ generate_dnspod_config() {
             --arg mode "multi" \
             '{
                 "_comment": "DNSPod DNS 更新器配置",
-                "_version": "2.0",
+                "_version": "0.1",
                 "enabled": true,
                 "api": {
                     "id": $id,
@@ -375,7 +375,7 @@ generate_dnspod_config() {
             --arg mode "single" \
             '{
                 "_comment": "DNSPod DNS 更新器配置",
-                "_version": "2.0",
+                "_version": "0.1",
                 "enabled": true,
                 "api": {
                     "id": $id,
