@@ -1167,7 +1167,7 @@ check_and_update_components() {
         ["DNSPOD_SETUP"]="${INSTALL_DIR}/modules/dnspod-dns/setup.sh:modules/dnspod-dns/setup.sh:DNSPod 配置向导"
         ["SCHEDULER_RUN"]="${INSTALL_DIR}/modules/scheduler/run.sh:modules/scheduler/run.sh:自动化调度器"
         ["IP_SYNC"]="${INSTALL_DIR}/modules/ip-sync/sync.sh:modules/ip-sync/sync.sh:IP 同步工具"
-        ["CFOPT_ENTRY"]="${INSTALL_DIR}/cfopt.sh:cfopt.sh:主程序入口"
+        ["CFOPT"]="${INSTALL_DIR}/cfopt.sh:cfopt.sh:主程序入口"  # 【修复】使用 CFOPT 而非 CFOPT_ENTRY
     )
 
     HAS_UPDATE=false
@@ -1216,18 +1216,26 @@ check_and_update_components() {
         if [[ "${NEED_DOWNLOAD}" = true ]]; then
             # 确保目标目录存在
             mkdir -p "$(dirname "${LOCAL_PATH}")" 2>/dev/null
-            
-            # 下载到临时目录进行验证
-            local temp_file="${TEMP_DIR}/${REMOTE_FILE}"
-            mkdir -p "$(dirname "${temp_file}")" 2>/dev/null
-            
-            if download_with_retry "${REMOTE_URL}/${REMOTE_FILE}" "${temp_file}" "${REMOTE_HASH}"; then
-                HAS_UPDATE=true
-                # 验证通过后，标记为待应用
+                        
+            # 特殊处理 cfopt.sh 自身：下载到临时目录
+            if [[ "${REMOTE_FILE}" = "cfopt.sh" ]]; then
+                local temp_file="${TEMP_DIR}/${REMOTE_FILE}"
+                if download_with_retry "${REMOTE_URL}/${REMOTE_FILE}" "${temp_file}" "${REMOTE_HASH}"; then
+                    HAS_UPDATE=true
+                    log_success "主程序入口已下载（将在重启后生效）"
+                else
+                    HAS_ERROR=true
+                    echo -e "  ${RED}[FAIL]${NC}   ${DISPLAY_NAME} 更新失败 (请检查 version.txt 哈希值或网络)"
+                    rm -f "${temp_file}" 2>/dev/null
+                fi
             else
-                HAS_ERROR=true
-                echo -e "  ${RED}[FAIL]${NC}   ${DISPLAY_NAME} 更新失败 (请检查 version.txt 哈希值或网络)"
-                rm -f "${temp_file}" 2>/dev/null
+                # 其他文件直接下载到目标位置
+                if download_with_retry "${REMOTE_URL}/${REMOTE_FILE}" "${LOCAL_PATH}" "${REMOTE_HASH}"; then
+                    HAS_UPDATE=true
+                else
+                    HAS_ERROR=true
+                    echo -e "  ${RED}[FAIL]${NC}   ${DISPLAY_NAME} 更新失败 (请检查 version.txt 哈希值或网络)"
+                fi
             fi
         else
             echo -e "  ${GREEN}[OK]${NC}      ${DISPLAY_NAME}: ${LOCAL_VER} (最新)"
@@ -1419,6 +1427,7 @@ EOF
         ["DNSPOD_SETUP"]="${INSTALL_DIR}/modules/dnspod-dns/setup.sh:modules/dnspod-dns/setup.sh:DNSPod 配置向导"
         ["SCHEDULER_RUN"]="${INSTALL_DIR}/modules/scheduler/run.sh:modules/scheduler/run.sh:自动化调度器"
         ["IP_SYNC"]="${INSTALL_DIR}/modules/ip-sync/sync.sh:modules/ip-sync/sync.sh:IP 同步工具"
+        ["CFOPT"]="${INSTALL_DIR}/cfopt.sh:cfopt.sh:主程序入口"  # 【新增】包含 cfopt.sh 自身
     )
 
     HAS_UPDATE=false
@@ -1463,13 +1472,26 @@ EOF
                 # 确保目标目录存在
                 mkdir -p "$(dirname "${LOCAL_PATH}")" 2>/dev/null
                 
-                # 直接在目标位置下载
-                if download_with_retry "${REMOTE_URL}/${REMOTE_FILE}" "${LOCAL_PATH}" "${REMOTE_HASH}"; then
-                    HAS_UPDATE=true
+                # 【特殊处理】cfopt.sh 自身：下载到 .new 文件，避免覆盖正在运行的脚本
+                if [[ "${REMOTE_FILE}" = "cfopt.sh" ]]; then
+                    local temp_file="${INSTALL_DIR}/cfopt.sh.new"
+                    if download_with_retry "${REMOTE_URL}/${REMOTE_FILE}" "${temp_file}" "${REMOTE_HASH}"; then
+                        chmod +x "${temp_file}"
+                        HAS_UPDATE=true
+                        log_success "主程序入口已下载（将在重启后生效）"
+                    else
+                        echo -e "${RED}[ERROR] ${KEY} 下载失败，请检查网络或稍后重试。${NC}"
+                        rm -f "${temp_file}" 2>/dev/null
+                    fi
                 else
-                    echo -e "${RED}[ERROR] ${KEY} 下载失败，请检查网络或稍后重试。${NC}"
-                    # 清理可能的残留文件
-                    rm -f "${LOCAL_PATH}" 2>/dev/null
+                    # 其他文件直接下载到目标位置
+                    if download_with_retry "${REMOTE_URL}/${REMOTE_FILE}" "${LOCAL_PATH}" "${REMOTE_HASH}"; then
+                        HAS_UPDATE=true
+                    else
+                        echo -e "${RED}[ERROR] ${KEY} 下载失败，请检查网络或稍后重试。${NC}"
+                        # 清理可能的残留文件
+                        rm -f "${LOCAL_PATH}" 2>/dev/null
+                    fi
                 fi
             fi
         done
