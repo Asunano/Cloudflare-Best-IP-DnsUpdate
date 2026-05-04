@@ -350,6 +350,7 @@ generate_dnspod_config() {
     local dnspod_id="$2"
     local dnspod_token="$3"
     local mode="$4"
+    local record_name="${5:-dns}"  # 默认值为 dns
     
     # 创建多域名配置目录
     local config_dir="${ROOT_DIR}/conf/dnspod"
@@ -366,6 +367,7 @@ generate_dnspod_config() {
             --arg id "$dnspod_id" \
             --arg token "$dnspod_token" \
             --arg mode "multi" \
+            --arg record_name "$record_name" \
             '{
                 "_comment": "DNSPod DNS 更新器配置",
                 "_version": "0.1",
@@ -378,7 +380,7 @@ generate_dnspod_config() {
                 },
                 "dns": {
                     "domain": $domain,
-                    "sub_domain": "dns",
+                    "sub_domain": $record_name,
                     "record_type": "A",
                     "ttl": 600,
                     "max_ips_per_record": 2,
@@ -412,6 +414,7 @@ generate_dnspod_config() {
             --arg id "$dnspod_id" \
             --arg token "$dnspod_token" \
             --arg mode "single" \
+            --arg record_name "$record_name" \
             '{
                 "_comment": "DNSPod DNS 更新器配置",
                 "_version": "0.1",
@@ -424,7 +427,7 @@ generate_dnspod_config() {
                 },
                 "dns": {
                     "domain": $domain,
-                    "sub_domain": "dns",
+                    "sub_domain": $record_name,
                     "record_type": "A",
                     "ttl": 600,
                     "max_ips_per_record": 2,
@@ -609,9 +612,15 @@ main() {
             choose_dnspod_mode
             ;;
         3)
-            # 管理已部署域名
+            # 管理已部署域名（循环显示直到用户选择返回）
             if [[ -n "$deployed_domains" ]]; then
-                manage_deployed_domains_menu
+                while true; do
+                    manage_deployed_domains_menu
+                    # 检查是否需要退出循环（通过返回值判断）
+                    if [[ $? -eq 1 ]]; then
+                        break
+                    fi
+                done
             else
                 echo -e "${YELLOW}[WARN] 当前没有已部署的域名${NC}"
                 read -r -p "按回车键返回..."
@@ -713,15 +722,18 @@ manage_deployed_domains_menu() {
     read -r -p "请选择要管理的域名 [0-$((index-1))]: " choice
     
     if [[ "$choice" == "0" ]]; then
-        return
+        return 1  # 返回1表示用户选择返回上一级
     fi
     
     if [[ "$choice" =~ ^[0-9]+$ ]] && [[ "$choice" -ge 1 ]] && [[ "$choice" -lt "$index" ]]; then
         local selected_domain="${domain_array[$((choice-1))]}"
         manage_single_domain "$selected_domain"
+        # 管理完单个域名后，自动返回域名列表（不退出循环）
+        return 0
     else
         echo -e "${RED}[ERROR] 无效的选择${NC}"
         read -r -p "按回车键返回..."
+        return 0  # 继续显示列表
     fi
 }
 
@@ -1175,8 +1187,30 @@ deploy_dnspod_single() {
         return 1
     fi
     
-    # 第2步：生成配置
-    show_step_header 2 4 "生成配置文件"
+    # 第2步：设置主机记录
+    show_step_header 2 5 "设置主机记录"
+    
+    echo -e "${YELLOW}[说明]${NC}"
+    echo -e "  主机记录决定了完整的域名格式："
+    echo -e "  • 输入 ${GREEN}@${NC} → 解析到根域名 (${domain})"
+    echo -e "  • 输入 ${GREEN}www${NC} → 解析到 www.${domain}"
+    echo -e "  • 输入 ${GREEN}dns${NC} → 解析到 dns.${domain}"
+    echo ""
+    
+    read -r -p "请输入主机记录 [默认 dns]: " record_name
+    record_name=${record_name:-dns}
+    
+    # 验证主机记录格式
+    if [[ "$record_name" != "@" ]] && ! [[ "$record_name" =~ ^[a-zA-Z0-9][a-zA-Z0-9_-]*$ ]]; then
+        echo -e "${RED}[ERROR] 主机记录格式无效${NC}"
+        return 1
+    fi
+    
+    echo -e "${GREEN}[OK] 主机记录已设置: ${record_name}${NC}"
+    echo ""
+    
+    # 第3步：生成配置
+    show_step_header 3 5 "生成配置文件"
     
     local recommended_colo
     recommended_colo=$(detect_optimal_colo)
@@ -1186,11 +1220,11 @@ deploy_dnspod_single() {
     echo -e "${GREEN}[OK] CF-IP 配置已生成${NC}"
     
     echo -e "${CYAN}正在生成 DNSPod 配置...${NC}"
-    generate_dnspod_config "$domain" "$dnspod_id" "$dnspod_token" "single"
+    generate_dnspod_config "$domain" "$dnspod_id" "$dnspod_token" "single" "$record_name"
     echo -e "${GREEN}[OK] DNSPod 配置已生成${NC}"
     
-    # 第3步：首次测速
-    show_step_header 3 4 "执行首次测速"
+    # 第4步：首次测速
+    show_step_header 4 5 "执行首次测速"
     
     echo -e "${YELLOW}提示: 首次测速可能需要 2-5 分钟，请耐心等待...${NC}"
     read -r -p "是否立即执行首次测速？[Y/n] (默认 Y): " run_test
@@ -1326,7 +1360,7 @@ deploy_dnspod_multi() {
     echo -e "${GREEN}[OK] CF-IP 多线路配置已生成${NC}"
     
     echo -e "${CYAN}正在生成 DNSPod 多线路配置...${NC}"
-    generate_dnspod_config "$domain" "$dnspod_id" "$dnspod_token" "multi"
+    generate_dnspod_config "$domain" "$dnspod_id" "$dnspod_token" "multi" "@"
     echo -e "${GREEN}[OK] DNSPod 多线路配置已生成${NC}"
     
     echo ""
@@ -1409,3 +1443,5 @@ deploy_dnspod_multi() {
 
 # 执行主程序
 main
+
+
