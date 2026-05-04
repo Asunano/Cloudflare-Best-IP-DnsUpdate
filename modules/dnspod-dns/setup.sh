@@ -967,17 +967,7 @@ modify_work_mode() {
             current_strategy=$(json_get ".dns.subdomain_strategy" "separate")
             
             # 调用 core.sh 进行智能模式切换
-            export DNSPOD_MODE_SWITCH=1
-            export DNSPOD_FROM_MODE="multi"
-            export DNSPOD_TO_MODE="single"
-            export DNSPOD_STRATEGY="$current_strategy"
-            
-            bash "$(dirname "$0")/core.sh"
-            local switch_result=$?
-            
-            unset DNSPOD_MODE_SWITCH DNSPOD_FROM_MODE DNSPOD_TO_MODE DNSPOD_STRATEGY
-            
-            if [[ $switch_result -eq 0 ]]; then
+            if trigger_mode_switch "multi" "single" "$current_strategy"; then
                 echo ""
                 echo -e "${GREEN}[OK] 模式切换成功"
             else
@@ -1002,17 +992,7 @@ modify_work_mode() {
             current_strategy=$(json_get ".dns.subdomain_strategy" "separate")
             
             # 调用 core.sh 进行智能模式切换
-            export DNSPOD_MODE_SWITCH=1
-            export DNSPOD_FROM_MODE="single"
-            export DNSPOD_TO_MODE="multi"
-            export DNSPOD_STRATEGY="$current_strategy"
-            
-            bash "$(dirname "$0")/core.sh"
-            local switch_result=$?
-            
-            unset DNSPOD_MODE_SWITCH DNSPOD_FROM_MODE DNSPOD_TO_MODE DNSPOD_STRATEGY
-            
-            if [[ $switch_result -eq 0 ]]; then
+            if trigger_mode_switch "single" "multi" "$current_strategy"; then
                 echo ""
                 echo -e "${GREEN}[OK] 模式切换成功"
             else
@@ -1171,18 +1151,7 @@ modify_subdomain_strategy() {
                 echo ""
                 echo -e "${CYAN}正在切换到分离模式..."
                 
-                # 调用 core.sh 进行智能模式切换
-                export DNSPOD_MODE_SWITCH=1
-                export DNSPOD_FROM_MODE="multi"
-                export DNSPOD_TO_MODE="multi"
-                export DNSPOD_STRATEGY="separate"
-                
-                bash "$(dirname "$0")/core.sh"
-                local switch_result=$?
-                
-                unset DNSPOD_MODE_SWITCH DNSPOD_FROM_MODE DNSPOD_TO_MODE DNSPOD_STRATEGY
-                
-                if [[ $switch_result -ne 0 ]]; then
+                if ! trigger_mode_switch "multi" "multi" "separate"; then
                     echo -e "${RED}[ERROR] 切换失败"
                     return 0
                 fi
@@ -1191,18 +1160,7 @@ modify_subdomain_strategy() {
                 echo ""
                 echo -e "${CYAN}正在切换到分离模式..."
                 
-                # 调用 core.sh 进行智能模式切换
-                export DNSPOD_MODE_SWITCH=1
-                export DNSPOD_FROM_MODE="multi"
-                export DNSPOD_TO_MODE="multi"
-                export DNSPOD_STRATEGY="separate"
-                
-                bash "$(dirname "$0")/core.sh"
-                local switch_result=$?
-                
-                unset DNSPOD_MODE_SWITCH DNSPOD_FROM_MODE DNSPOD_TO_MODE DNSPOD_STRATEGY
-                
-                if [[ $switch_result -ne 0 ]]; then
+                if ! trigger_mode_switch "multi" "multi" "separate"; then
                     echo -e "${RED}[ERROR] 切换失败"
                     return 0
                 fi
@@ -1211,41 +1169,13 @@ modify_subdomain_strategy() {
                 echo -e "${CYAN}请设置各线路的子域名前缀:"
                 echo ""
                 
-                # 读取默认线路子域名
-                read -r -p "默认线路子域名 [default]: " custom_default
-                custom_default=${custom_default:-default}
-                if ! [[ "$custom_default" =~ ^[a-zA-Z0-9\-@]+$ ]]; then
-                    echo -e "${RED}[ERROR] 无效的子域名格式"
-                    return 0
-                fi
-                update_config_field ".dns.sub_domains.default" "$custom_default"
+                # 使用新辅助函数读取并验证各线路子域名
+                local custom_default custom_unicom custom_mobile custom_telecom
                 
-                # 读取联通线路子域名
-                read -r -p "联通线路子域名 [unicom]: " custom_unicom
-                custom_unicom=${custom_unicom:-unicom}
-                if ! [[ "$custom_unicom" =~ ^[a-zA-Z0-9\-@]+$ ]]; then
-                    echo -e "${RED}[ERROR] 无效的子域名格式"
-                    return 0
-                fi
-                update_config_field ".dns.sub_domains.unicom" "$custom_unicom"
-                
-                # 读取移动线路子域名
-                read -r -p "移动线路子域名 [mobile]: " custom_mobile
-                custom_mobile=${custom_mobile:-mobile}
-                if ! [[ "$custom_mobile" =~ ^[a-zA-Z0-9\-@]+$ ]]; then
-                    echo -e "${RED}[ERROR] 无效的子域名格式"
-                    return 0
-                fi
-                update_config_field ".dns.sub_domains.mobile" "$custom_mobile"
-                
-                # 读取电信线路子域名
-                read -r -p "电信线路子域名 [telecom]: " custom_telecom
-                custom_telecom=${custom_telecom:-telecom}
-                if ! [[ "$custom_telecom" =~ ^[a-zA-Z0-9\-@]+$ ]]; then
-                    echo -e "${RED}[ERROR] 无效的子域名格式"
-                    return 0
-                fi
-                update_config_field ".dns.sub_domains.telecom" "$custom_telecom"
+                custom_default=$(prompt_and_validate_subdomain "默认线路" "default" ".dns.sub_domains.default") || return 0
+                custom_unicom=$(prompt_and_validate_subdomain "联通线路" "unicom" ".dns.sub_domains.unicom") || return 0
+                custom_mobile=$(prompt_and_validate_subdomain "移动线路" "mobile" ".dns.sub_domains.mobile") || return 0
+                custom_telecom=$(prompt_and_validate_subdomain "电信线路" "telecom" ".dns.sub_domains.telecom") || return 0
                 
                 # 更新 SUB_DOMAIN 为默认线路的子域名
                 update_config_field ".dns.sub_domain" "$custom_default"
@@ -1357,18 +1287,7 @@ modify_subdomain_strategy() {
                 echo ""
                 echo -e "${CYAN}正在切换到统一模式..."
                 
-                # 调用 core.sh 进行智能模式切换
-                export DNSPOD_MODE_SWITCH=1
-                export DNSPOD_FROM_MODE="multi"
-                export DNSPOD_TO_MODE="multi"
-                export DNSPOD_STRATEGY="unified"
-                
-                bash "$(dirname "$0")/core.sh"
-                local switch_result=$?
-                
-                unset DNSPOD_MODE_SWITCH DNSPOD_FROM_MODE DNSPOD_TO_MODE DNSPOD_STRATEGY
-                
-                if [[ $switch_result -ne 0 ]]; then
+                if ! trigger_mode_switch "multi" "multi" "unified"; then
                     echo -e "${RED}[ERROR] 切换失败"
                     return 0
                 fi
@@ -1433,18 +1352,7 @@ modify_subdomain_strategy() {
                     echo ""
                     echo -e "${CYAN}正在更新统一模式记录..."
                     
-                    # 调用 core.sh 进行智能模式切换
-                    export DNSPOD_MODE_SWITCH=1
-                    export DNSPOD_FROM_MODE="multi"
-                    export DNSPOD_TO_MODE="multi"
-                    export DNSPOD_STRATEGY="unified"
-                    
-                    bash "$(dirname "$0")/core.sh"
-                    local switch_result=$?
-                    
-                    unset DNSPOD_MODE_SWITCH DNSPOD_FROM_MODE DNSPOD_TO_MODE DNSPOD_STRATEGY
-                    
-                    if [[ $switch_result -ne 0 ]]; then
+                    if ! trigger_mode_switch "multi" "multi" "unified"; then
                         echo -e "${RED}[ERROR] 更新失败"
                         return 0
                     fi
