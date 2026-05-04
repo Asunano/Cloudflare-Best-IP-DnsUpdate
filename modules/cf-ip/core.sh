@@ -367,7 +367,13 @@ if [[ "${EXIT_CODE}" -eq 0 ]] && [[ -f "${OUTPUT_CSV}" ]]; then
     
     # 获取最优 IP 的详细信息
     best_ip_line=$(head -n 2 "${OUTPUT_CSV}" | tail -n 1)
-    IFS=',' read -r best_ip sent recv loss delay speed region <<< "${best_ip_line}"
+    
+    # 使用 awk 解析 CSV，更健壮地处理字段
+    best_ip=$(echo "$best_ip_line" | awk -F',' '{print $1}' | xargs)
+    delay=$(echo "$best_ip_line" | awk -F',' '{print $5}' | xargs)
+    speed=$(echo "$best_ip_line" | awk -F',' '{print $6}' | xargs)
+    region=$(echo "$best_ip_line" | awk -F',' '{print $7}' | xargs | tr -d '\r')
+    
     best_region_name=$(convert_colo_to_name "${region}")
     
     echo -e "${CYAN}+------------------------------------------------------------+"
@@ -385,7 +391,11 @@ if [[ "${EXIT_CODE}" -eq 0 ]] && [[ -f "${OUTPUT_CSV}" ]]; then
     echo -e "    延迟: ${delay}ms | 下载: ${speed}MB/s | 地区: ${best_region_name}"
     echo ""
     echo -e " ${GREEN}Top 3 推荐 IP:${NC}"
-    head -n 4 "${OUTPUT_CSV}" | tail -n 3 | while IFS=',' read -r ip sent recv loss delay speed region; do
+    head -n 4 "${OUTPUT_CSV}" | tail -n 3 | while IFS= read -r line; do
+        ip=$(echo "$line" | awk -F',' '{print $1}' | xargs)
+        delay=$(echo "$line" | awk -F',' '{print $5}' | xargs)
+        speed=$(echo "$line" | awk -F',' '{print $6}' | xargs)
+        region=$(echo "$line" | awk -F',' '{print $7}' | xargs | tr -d '\r')
         region_name=$(convert_colo_to_name "${region}")
         echo -e "  ${GREEN}➤${NC} ${ip}  (延迟: ${delay}ms, 下载: ${speed}MB/s, 地区: ${region_name})"
     done
