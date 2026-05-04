@@ -1314,7 +1314,9 @@ init_cfopt() {
        grep -q '^INSTALL_CHECKED="true"' "${STATUS_CONF}" && \
        [[ -d "${INSTALL_DIR}/modules/cf-ip" ]] && \
        [[ -d "${INSTALL_DIR}/modules/scheduler" ]]; then
-        show_main_menu
+        while true; do
+            show_main_menu
+        done
         return
     fi
     
