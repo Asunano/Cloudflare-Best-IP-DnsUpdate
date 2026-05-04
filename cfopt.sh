@@ -1293,7 +1293,9 @@ init_cfopt() {
             chmod +x "${INSTALL_DIR}/cfopt.sh"
             log_success "主脚本已更新到最新版本"
             echo ""
-            # 重新启动以加载新版本
+            log_info "正在重新启动以加载新版本..."
+            echo ""
+            # 使用 exec 替换当前进程，自动进入主菜单
             exec bash "${INSTALL_DIR}/cfopt.sh"
         else
             log_error "应用新版本失败，请手动执行: mv ${INSTALL_DIR}/cfopt.sh.new ${INSTALL_DIR}/cfopt.sh"
