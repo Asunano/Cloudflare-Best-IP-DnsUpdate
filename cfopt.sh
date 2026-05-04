@@ -1084,7 +1084,8 @@ uninstall_cfopt() {
     echo "此操作将永久删除以下内容："
     echo "  1. 安装目录: ${INSTALL_DIR}"
     echo "  2. 全局命令: /usr/local/bin/cfopt"
-    echo "  3. 定时任务: 所有包含 'scheduler/run.sh' 的 Crontab 项"
+    echo "  3. 定时任务: 所有包含 'cfopt' 的 Crontab 项"
+    echo "  4. 备份文件: ${INSTALL_DIR}/backups/"
     echo ""
     echo -e "${YELLOW}注意:${NC} 此操作不会卸载系统级组件 (如 crontab, wget 等)。"
     echo ""
@@ -1096,28 +1097,82 @@ uninstall_cfopt() {
         return
     fi
 
+    # 1. 清理所有相关的 Crontab 定时任务
     echo -e "${CYAN}[INFO] 正在清理 Crontab 定时任务...${NC}"
     if command -v crontab &> /dev/null; then
-        (crontab -l 2>/dev/null | grep -v "scheduler/run.sh") | crontab -
-    fi
-
-    echo -e "${CYAN}[INFO] 正在删除全局命令链接...${NC}"
-    if [[ -f /usr/local/bin/cfopt ]]; then
-        if ! rm -f /usr/local/bin/cfopt 2>/dev/null; then
-            log_warning "删除全局命令失败，可能需要手动清理"
+        local current_cron
+        current_cron=$(crontab -l 2>/dev/null || true)
+        if [[ -n "${current_cron}" ]]; then
+            # 清理所有包含 cfopt 路径的任务（更全面）
+            local cleaned_cron
+            cleaned_cron=$(echo "${current_cron}" | grep -v "cfopt" | grep -v "scheduler/run.sh")
+            if [[ -n "${cleaned_cron}" ]]; then
+                echo "${cleaned_cron}" | crontab -
+            else
+                crontab -r 2>/dev/null || echo "" | crontab -
+            fi
+            log_success "Crontab 定时任务已清理"
+        else
+            log_info "未检测到 Crontab 任务"
         fi
     fi
 
+    # 2. 删除全局命令链接
+    echo -e "${CYAN}[INFO] 正在删除全局命令链接...${NC}"
+    if [[ -L /usr/local/bin/cfopt ]] || [[ -f /usr/local/bin/cfopt ]]; then
+        if rm -f /usr/local/bin/cfopt 2>/dev/null; then
+            log_success "全局命令已删除"
+        else
+            log_warning "删除全局命令失败，可能需要手动清理: sudo rm -f /usr/local/bin/cfopt"
+        fi
+    else
+        log_info "全局命令不存在，跳过"
+    fi
+
+    # 3. 清理用户配置文件中的别名和环境变量（可选）
+    echo -e "${CYAN}[INFO] 检查用户配置文件...${NC}"
+    local config_files=("${HOME}/.bashrc" "${HOME}/.zshrc" "${HOME}/.profile")
+    for config_file in "${config_files[@]}"; do
+        if [[ -f "${config_file}" ]]; then
+            if grep -q "cfopt" "${config_file}" 2>/dev/null; then
+                log_warning "检测到 ${config_file} 中包含 cfopt 相关配置"
+                log_warning "请手动清理以下行："
+                grep "cfopt" "${config_file}" | sed 's/^/  /'
+            fi
+        fi
+    done
+
+    # 4. 删除安装目录及所有数据
     log_info "正在删除安装目录及所有数据..."
-    if ! safe_remove_dir "${INSTALL_DIR}" "卸载清理"; then
-        log_error "卸载失败，请手动删除: ${INSTALL_DIR}"
-        exit 1
+    if [[ -d "${INSTALL_DIR}" ]]; then
+        # 显示将要删除的大小
+        local dir_size
+        dir_size=$(du -sh "${INSTALL_DIR}" 2>/dev/null | cut -f1)
+        log_info "即将删除: ${INSTALL_DIR} (${dir_size})"
+        
+        if ! safe_remove_dir "${INSTALL_DIR}" "卸载清理"; then
+            log_error "卸载失败，请手动删除: ${INSTALL_DIR}"
+            exit 1
+        fi
+        log_success "安装目录已删除"
+    else
+        log_info "安装目录不存在，跳过"
     fi
 
     echo ""
-    echo -e "${GREEN}[OK] 清理完成！cfopt 已从您的系统中消失。${NC}"
+    echo -e "${GREEN}+------------------------------------------------------------+${NC}"
+    echo -e " ${GREEN}[OK] 清理完成！cfopt 已从您的系统中消失。${NC}"
+    echo -e "${GREEN}+------------------------------------------------------------+${NC}"
+    echo ""
     echo -e "${YELLOW}感谢曾经的陪伴，再见！${NC}"
     echo ""
+    
+    # 如果是通过全局命令运行的，提示用户
+    if [[ "$(readlink -f "$0" 2>/dev/null)" = "/usr/local/bin/cfopt" ]]; then
+        echo -e "${YELLOW}[提示] 如果您是通过 'cfopt' 命令运行的，该命令已被删除${NC}"
+        echo ""
+    fi
+    
     exit 0
 }
 
