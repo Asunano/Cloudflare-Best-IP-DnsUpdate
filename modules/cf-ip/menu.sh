@@ -547,9 +547,6 @@ configure_simple() {
             ;;
     esac
     
-    echo ""
-    read -r -p "按回车键继续..."
-    
     # 第二步：测速线程数
     clear
     echo -e "${CYAN}+------------------------------------------------------------+"
@@ -572,9 +569,6 @@ configure_simple() {
         CFST_THREADS=200
     fi
     
-    echo ""
-    read -r -p "按回车键继续..."
-    
     # 第三步：提取 IP 数量
     clear
     echo -e "${CYAN}+------------------------------------------------------------+"
@@ -595,9 +589,6 @@ configure_simple() {
         echo -e "${YELLOW}[WARN] 输入无效，使用默认值 5${NC}"
         TAKE_IP_NUM=5
     fi
-    
-    echo ""
-    read -r -p "按回车键继续..."
     
     # 询问是否启用日志
     clear
