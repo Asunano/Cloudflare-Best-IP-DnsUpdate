@@ -23,9 +23,6 @@ MENU_BORDER="+------------------------------------------------------------+"
 MENU_BORDER_MID="+------------------------------------------------------------+"
 MENU_BORDER_BOTTOM="+------------------------------------------------------------+"
 
-CONFIG_FILE="$ROOT_DIR/conf/cf-dns.json"
-LOCK_FILE="$ROOT_DIR/modules/cf-dns/.setup_cfdns.lock"
-
 # ==================== 进程锁管理 ====================
 
 # 检查并获取锁
@@ -52,13 +49,17 @@ release_lock() {
     rm -f "$LOCK_FILE"
 }
 
-# ==================== 菜单显示函数 ====================
+# ==================== 路径初始化 ====================
 
 # 获取根目录 (如果之前没定义)
 if [ -z "$ROOT_DIR" ]; then
     SCRIPT_DIR="$( cd -P "$( dirname "${BASH_SOURCE[0]}" )" >/dev/null 2>&1 && pwd )"
     ROOT_DIR="$(cd "$SCRIPT_DIR/../.." && pwd)"
 fi
+
+# 配置文件路径（必须在 ROOT_DIR 定义之后）
+CONFIG_FILE="$ROOT_DIR/conf/cf-dns.json"
+LOCK_FILE="$ROOT_DIR/modules/cf-dns/.setup_cfdns.lock"
 
 # 显示主菜单
 show_menu() {
