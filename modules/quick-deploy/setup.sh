@@ -368,6 +368,10 @@ generate_dnspod_config() {
             --arg token "$dnspod_token" \
             --arg mode "multi" \
             --arg record_name "$record_name" \
+            --arg ip_file_default "${ROOT_DIR}/assets/data/dnspod-dns/ip_list_default.txt" \
+            --arg ip_file_unicom "${ROOT_DIR}/assets/data/dnspod-dns/ip_list_unicom.txt" \
+            --arg ip_file_mobile "${ROOT_DIR}/assets/data/dnspod-dns/ip_list_mobile.txt" \
+            --arg ip_file_telecom "${ROOT_DIR}/assets/data/dnspod-dns/ip_list_telecom.txt" \
             '{
                 "_comment": "DNSPod DNS 更新器配置",
                 "_version": "0.1",
@@ -394,12 +398,12 @@ generate_dnspod_config() {
                     }
                 },
                 "ip_source": {
-                    "file_path": "./assets/data/dnspod-dns/ip_list.txt",
+                    "file_path": $ip_file_default,
                     "files": {
-                        "default": "./assets/data/dnspod-dns/ip_list_default.txt",
-                        "unicom": "./assets/data/dnspod-dns/ip_list_unicom.txt",
-                        "mobile": "./assets/data/dnspod-dns/ip_list_mobile.txt",
-                        "telecom": "./assets/data/dnspod-dns/ip_list_telecom.txt"
+                        "default": $ip_file_default,
+                        "unicom": $ip_file_unicom,
+                        "mobile": $ip_file_mobile,
+                        "telecom": $ip_file_telecom
                     }
                 },
                 "logging": {
@@ -415,6 +419,7 @@ generate_dnspod_config() {
             --arg token "$dnspod_token" \
             --arg mode "single" \
             --arg record_name "$record_name" \
+            --arg ip_file "${ROOT_DIR}/assets/data/dnspod-dns/ip_list.txt" \
             '{
                 "_comment": "DNSPod DNS 更新器配置",
                 "_version": "0.1",
@@ -434,7 +439,7 @@ generate_dnspod_config() {
                     "mode": $mode
                 },
                 "ip_source": {
-                    "file_path": "./assets/data/dnspod-dns/ip_list.txt"
+                    "file_path": $ip_file
                 },
                 "logging": {
                     "log_dir": "./logs/dnspod-dns",
@@ -471,6 +476,7 @@ generate_cf_dns_config() {
         --arg token "$cf_token" \
         --arg zone_id "$cf_zone_id" \
         --arg record_name "$record_name" \
+        --arg ip_file "${ROOT_DIR}/assets/data/cf-dns/ip_list.txt" \
         '{
             "_comment": "Cloudflare DNS 更新器配置",
             "_version": "0.1",
@@ -487,7 +493,7 @@ generate_cf_dns_config() {
                 "max_ips_per_record": 2
             },
             "ip_source": {
-                "file_path": "./assets/data/cf-dns/ip_list.txt"
+                "file_path": $ip_file
             }
         }' > "$temp_file"
     
