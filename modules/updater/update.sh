@@ -143,22 +143,25 @@ download_file() {
 
 # 检查更新
 check_updates() {
-    echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
-    echo -e " ${YELLOW}cfopt 更新检查 v${SCRIPT_VERSION}${NC}"
-    echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+    clear
+    echo -e "${CYAN}+------------------------------------------------------------+${NC}"
+    echo -e " ${YELLOW}cfopt 组件更新检查${NC}"
+    echo -e "${CYAN}+------------------------------------------------------------+${NC}"
     echo ""
     
     # 获取版本信息
     local local_version
     local_version=$(get_local_version)
     
-    echo -e "${CYAN}正在检查更新...${NC}"
+    echo -e "${CYAN}[INFO] 正在检查更新...${NC}"
     local remote_version
     remote_version=$(get_remote_version)
     
     if [[ -z "${remote_version}" ]]; then
         echo -e "${RED}[ERROR] 无法获取远程版本信息${NC}"
         echo -e "${YELLOW}提示: 请检查网络连接或 GitHub 访问${NC}"
+        echo ""
+        read -r -p "按回车键返回..."
         return 1
     fi
     
@@ -168,6 +171,8 @@ check_updates() {
     
     if [[ "${local_version}" == "${remote_version}" ]]; then
         echo -e "${GREEN}[OK] 已是最新版本${NC}"
+        echo ""
+        read -r -p "按回车键返回..."
         return 0
     else
         echo -e "${YELLOW}[INFO] 发现新版本！${NC}"
@@ -181,28 +186,36 @@ check_updates() {
         
         echo ""
         echo -e "${YELLOW}运行以下命令进行更新：${NC}"
-        echo -e "  ${CYAN}bash ${ROOT_DIR}/modules/updater/update.sh update${NC}"
+        echo -e "  ${CYAN}bash modules/updater/update.sh update${NC}"
+        echo ""
+        read -r -p "是否立即执行更新？[y/N] (默认 N): " confirm_update
+        if [[ "${confirm_update}" =~ ^[Yy]$ ]]; then
+            perform_update
+        fi
         return 0
     fi
 }
 
 # 执行更新
 perform_update() {
-    echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
-    echo -e " ${YELLOW}cfopt 自动更新 v${SCRIPT_VERSION}${NC}"
-    echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+    clear
+    echo -e "${CYAN}+------------------------------------------------------------+${NC}"
+    echo -e " ${YELLOW}cfopt 组件更新${NC}"
+    echo -e "${CYAN}+------------------------------------------------------------+${NC}"
     echo ""
     
     # 获取版本信息
     local local_version
     local_version=$(get_local_version)
     
-    echo -e "${CYAN}正在检查更新...${NC}"
+    echo -e "${CYAN}[INFO] 正在检查更新...${NC}"
     local remote_version
     remote_version=$(get_remote_version)
     
     if [[ -z "${remote_version}" ]]; then
         echo -e "${RED}[ERROR] 无法获取远程版本信息${NC}"
+        echo ""
+        read -r -p "按回车键返回..."
         return 1
     fi
     
@@ -212,6 +225,8 @@ perform_update() {
     
     if [[ "${local_version}" == "${remote_version}" ]]; then
         echo -e "${GREEN}[OK] 已是最新版本，无需更新${NC}"
+        echo ""
+        read -r -p "按回车键返回..."
         return 0
     fi
     
@@ -233,13 +248,14 @@ perform_update() {
     done
     
     echo ""
-    echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+    echo -e "${CYAN}+------------------------------------------------------------+${NC}"
     echo -e "${GREEN}更新完成！${NC}"
     echo -e "  成功: ${success_count} 个组件"
     if [[ ${fail_count} -gt 0 ]]; then
         echo -e "  失败: ${RED}${fail_count}${NC} 个组件"
     fi
     echo -e "  新版本: ${CYAN}${remote_version}${NC}"
+    echo -e "${CYAN}+------------------------------------------------------------+${NC}"
     echo ""
     
     # 更新 version.txt
@@ -259,14 +275,17 @@ perform_update() {
         fi
     fi
     
+    echo ""
+    read -r -p "按回车键返回..."
     return 0
 }
 
 # 显示帮助
 show_help() {
-    echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
-    echo -e " ${YELLOW}cfopt 更新工具 v${SCRIPT_VERSION}${NC}"
-    echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+    clear
+    echo -e "${CYAN}+------------------------------------------------------------+${NC}"
+    echo -e " ${YELLOW}cfopt 更新工具${NC}"
+    echo -e "${CYAN}+------------------------------------------------------------+${NC}"
     echo ""
     echo -e "${CYAN}用法:${NC}"
     echo -e "  bash modules/updater/update.sh [command]"
@@ -280,6 +299,7 @@ show_help() {
     echo -e "  bash modules/updater/update.sh check"
     echo -e "  bash modules/updater/update.sh update"
     echo ""
+    read -r -p "按回车键返回..."
 }
 
 # 执行主函数
