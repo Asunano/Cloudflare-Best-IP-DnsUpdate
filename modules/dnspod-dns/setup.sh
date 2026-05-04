@@ -21,6 +21,12 @@ if [ -z "$CF_OPT_ENTRY" ] && [ "$(basename "$0")" != "setup.sh" ]; then
     fi
 fi
 
+# 确保 ROOT_DIR 已定义（兜底逻辑）
+if [ -z "$ROOT_DIR" ]; then
+    SCRIPT_DIR="$( cd -P "$( dirname "${BASH_SOURCE[0]}" )" >/dev/null 2>&1 && pwd )"
+    ROOT_DIR="$(cd "$SCRIPT_DIR/../.." && pwd)"
+fi
+
 # ==================== 终端显示配置 ====================
 RED='\033[0;31m'
 GREEN='\033[0;32m'
