@@ -835,15 +835,15 @@ show_main_menu() {
     case "${choice}" in
         1)
             export CF_OPT_ENTRY="main_menu"
-            bash "${INSTALL_DIR}/modules/cf-ip/menu.sh"
+            bash "${INSTALL_DIR}/modules/cf-ip/menu.sh" || true
             ;;
         2)
             export CF_OPT_ENTRY="main_menu"
-            bash "${INSTALL_DIR}/modules/cf-dns/setup.sh"
+            bash "${INSTALL_DIR}/modules/cf-dns/setup.sh" || true
             ;;
         3)
             export CF_OPT_ENTRY="main_menu"
-            bash "${INSTALL_DIR}/modules/dnspod-dns/setup.sh"
+            bash "${INSTALL_DIR}/modules/dnspod-dns/setup.sh" || true
             ;;
         4)
             manage_scheduler
