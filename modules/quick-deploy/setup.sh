@@ -598,7 +598,13 @@ deploy_cloudflare_dns() {
     
     echo -e "${CYAN}正在生成 Cloudflare DNS 配置...${NC}"
     generate_cf_dns_config "$domain" "$cf_token" "$cf_zone_id"
-    echo -e "${GREEN}[OK] Cloudflare DNS 配置已生成${NC}"
+    echo -e "${GREEN}[OK] Cloudflare DNS 配置已生成: ${ROOT_DIR}/conf/cf-dns/${domain}.json${NC}"
+    echo ""
+    echo -e "${CYAN}配置信息：${NC}"
+    echo -e "  • 域名: ${domain}"
+    echo -e "  • Zone ID: ${cf_zone_id:0:8}...${cf_zone_id: -4}"  # 隐藏中间部分
+    echo -e "  • 测速节点: ${recommended_colo}"
+    echo ""
     
     # 第3步：首次测速
     show_step_header 3 4 "执行首次测速"
