@@ -1491,6 +1491,15 @@ deploy_dnspod_multi() {
         echo -e "${CYAN}正在执行多线路并发测速...${NC}"
         CF_OPT_ENTRY=scheduler bash "${ROOT_DIR}/modules/scheduler/run.sh" || true
         echo -e "${GREEN}[OK] 多线路测速完成${NC}"
+        
+        # 执行 IP 同步，将测速结果同步到 DNS 模块的 IP 文件
+        echo -e "${CYAN}正在同步 IP 数据...${NC}"
+        bash "${ROOT_DIR}/modules/ip-sync/sync.sh" || true
+        echo -e "${GREEN}[OK] IP 数据已同步到:${NC}"
+        echo -e "   • ${ROOT_DIR}/assets/data/dnspod-dns/ip_list_default.txt"
+        echo -e "   • ${ROOT_DIR}/assets/data/dnspod-dns/ip_list_unicom.txt"
+        echo -e "   • ${ROOT_DIR}/assets/data/dnspod-dns/ip_list_mobile.txt"
+        echo -e "   • ${ROOT_DIR}/assets/data/dnspod-dns/ip_list_telecom.txt"
     fi
     
     # 第5步：设置定时任务
