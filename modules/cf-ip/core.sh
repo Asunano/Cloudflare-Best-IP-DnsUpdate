@@ -79,10 +79,13 @@ fi
 SCRIPT_DIR="$( cd -P "$( dirname "${BASH_SOURCE[0]}" )" >/dev/null 2>&1 && pwd )"
 ROOT_DIR="$(cd "$SCRIPT_DIR/../.." && pwd)"
 
-echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
-echo -e " ${YELLOW}CF-IP 优选测速核心 v${SCRIPT_VERSION}${NC}"
-echo -e " 启动时间: $(date '+%Y-%m-%d %H:%M:%S')"
-echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+# 清屏，准备显示测速信息
+clear 2>/dev/null || true
+
+echo -e "${CYAN}+------------------------------------------------------------+"
+echo -e " ${YELLOW}CF-IP 优选测速 v${SCRIPT_VERSION}${NC}"
+echo -e " ${GRAY}启动时间: $(date '+%Y-%m-%d %H:%M:%S')${NC}"
+echo -e "${CYAN}+------------------------------------------------------------+"
 
 # ==================== 配置加载与参数校验 ====================
 CONFIG_FILE="${ROOT_DIR}/conf/cf-ip.json"
@@ -227,11 +230,13 @@ elif [[ -z "${IP_DATA_FILE}" ]]; then
 fi
 
 # ==================== 执行测速 ====================
-echo -e "${GREEN}[INFO] 正在启动测速程序...${NC}"
-echo -e "  线程数: ${CFST_THREADS}"
-echo -e "  目标地区: ${TARGET_COLO}"
-echo -e "  提取数量: ${TAKE_IP_NUM}"
-echo -e "  输出文件: ${OUTPUT_CSV}"
+# 简化启动信息显示
+echo -e "${GREEN}✓${NC} 测速程序: ${CFST_BIN}"
+echo -e "${GREEN}✓${NC} 配置参数:"
+echo -e "   • 线程数: ${CFST_THREADS}"
+echo -e "   • 目标地区: ${TARGET_COLO}"
+echo -e "   • 提取数量: ${TAKE_IP_NUM}"
+echo -e "   • 输出文件: ${OUTPUT_CSV}"
 
 # 构建 cfst 命令 - 使用绝对路径
 CMD=(./cfst "-n" "${CFST_THREADS}" "-t" "${CFST_PING_TIMES}")
@@ -249,13 +254,17 @@ CMD+=("-o" "${OUTPUT_CSV}")
 # 执行并记录日志（带实时进度提示）
 if [[ "${ENABLE_LOG}" = "true" ]]; then
     LOG_FILE="${LOG_DIR}/cfst_$(date +%Y%m%d_%H%M%S).log"
-    echo -e "${CYAN}[INFO] 日志已开启: ${LOG_FILE}${NC}"
 else
     LOG_FILE="/dev/null"
 fi
 
+# 清屏，开始显示进度
+clear 2>/dev/null || true
+
+echo -e "${CYAN}+------------------------------------------------------------+"
+echo -e " ${YELLOW}测速进行中...${NC}"
+echo -e "${CYAN}+------------------------------------------------------------+"
 echo ""
-echo -e "${YELLOW}[INFO] 测速进行中，请稍候...${NC}"
 echo -e "${GRAY}  第一阶段: 延迟测速 (TCP Ping)${NC}"
 
 # 切换到 cfst 所在目录执行
@@ -355,8 +364,12 @@ echo -e "\r${CYAN}  [███████████████████�
 echo ""
 
 if [[ "${EXIT_CODE}" -eq 0 ]] && [[ -f "${OUTPUT_CSV}" ]]; then
+    # 清屏，显示结果
+    clear 2>/dev/null || true
+    
     echo ""
-    echo -e "${GREEN}[OK] 测速完成！结果已保存至: ${OUTPUT_CSV}${NC}"
+    echo -e "${GREEN}[OK] 测速完成！${NC}"
+    echo ""
     
     # 展示测速结果摘要（从配置文件读取）
     total_ips=$(wc -l < "${OUTPUT_CSV}")
@@ -380,15 +393,15 @@ if [[ "${EXIT_CODE}" -eq 0 ]] && [[ -f "${OUTPUT_CSV}" ]]; then
     IFS=',' read -r best_ip sent recv loss delay speed region <<< "${best_ip_line}"
     best_region_name=$(convert_colo_to_name "${region}")
     
-    echo -e "\n${CYAN}+------------------------------------------------------------+"
+    echo -e "${CYAN}+------------------------------------------------------------+"
     echo -e " ${YELLOW}测速结果摘要${NC}"
     echo -e "${CYAN}+------------------------------------------------------------+"
-    echo -e "  ${CYAN}测速节点:${NC}   ${colo_names} (${TARGET_COLO})"
+    echo -e "  ${CYAN}测试节点:${NC}   ${colo_names} (${TARGET_COLO})"
     echo -e "  ${CYAN}线程数量:${NC}   ${CFST_THREADS}"
-    echo -e "  ${CYAN}测试统计:${NC}"
-    echo -e "    - 总测试 IP:  ${total_ips}"
-    echo -e "    - 可用 IP 数:  ${available_ips}"
-    echo -e "    - 保留策略:   取前 ${TAKE_IP_NUM} 个最优 IP"
+    echo -e "  ${CYAN}测试结果:${NC}"
+    echo -e "    • 测试总数: ${total_ips} 个 IP"
+    echo -e "    • 可用数量: ${available_ips} 个 IP"
+    echo -e "    • 选取策略: 保留前 ${TAKE_IP_NUM} 个最优"
     echo ""
     echo -e " ${GREEN}[最佳] 最优 IP:${NC}"
     echo -e "  ${GREEN}➤${NC} ${best_ip}"
@@ -401,10 +414,10 @@ if [[ "${EXIT_CODE}" -eq 0 ]] && [[ -f "${OUTPUT_CSV}" ]]; then
     done
     echo -e "${CYAN}+------------------------------------------------------------+"
     echo ""
-    echo -e "${GRAY}[提示]:${NC}"
-    echo -e "  - 完整结果请查看: ${OUTPUT_CSV}"
+    echo -e "${GRAY}文件位置:${NC}"
+    echo -e "  • 完整结果: ${OUTPUT_CSV}"
     if [[ "${ENABLE_LOG}" = "true" ]] && [[ -f "${LOG_FILE:-}" ]]; then
-        echo -e "  - 详细日志请查看: ${LOG_FILE}"
+        echo -e "  • 运行日志: ${LOG_FILE}"
     fi
 else
     echo -e "${RED}[ERROR] 测速程序执行失败 (Exit Code: ${EXIT_CODE})${NC}"
