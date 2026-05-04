@@ -287,41 +287,53 @@ while kill -0 "${CFST_PID}" 2>/dev/null; do
             
             # 从日志中提取当前进度
             if [[ "${stage}" = "ping" ]]; then
-                # 提取 "可用: XXXX" 的数字
-                available_count=$(grep -o '可用: *[0-9]*' "${LOG_FILE}" 2>/dev/null | tail -1 | grep -o '[0-9]*$')
-                total_count=$(grep -o '[0-9]* / [0-9]*' "${LOG_FILE}" 2>/dev/null | tail -1 | awk '{print $3}')
-                
-                if [[ -n "${available_count}" ]] && [[ -n "${total_count}" ]]; then
-                    # 计算进度百分比
-                    progress=$((available_count * 100 / total_count))
-                    filled=$((progress * progress_bar_width / 100))
-                    empty=$((progress_bar_width - filled))
+                # 延迟阶段：提取 "可用: XXXX" 和 "XXXX / XXXX"
+                # 只提取包含“可用”的那一行的进度
+                ping_line=$(grep '可用:' "${LOG_FILE}" 2>/dev/null | tail -1)
+                if [[ -n "${ping_line}" ]]; then
+                    available_count=$(echo "${ping_line}" | grep -o '可用: *[0-9]*' | grep -o '[0-9]*$')
+                    total_count=$(echo "${ping_line}" | grep -o '[0-9]* / [0-9]*' | awk '{print $3}')
                     
-                    # 构建进度条
-                    bar=""
-                    for ((i=0; i<filled; i++)); do bar+="█"; done
-                    for ((i=0; i<empty; i++)); do bar+="░"; done
-                    
-                    echo -ne "\r${CYAN}  [${bar}] ${progress}% (${available_count}/${total_count})${NC}   "
+                    if [[ -n "${available_count}" ]] && [[ -n "${total_count}" ]]; then
+                        # 计算进度百分比
+                        progress=$((available_count * 100 / total_count))
+                        filled=$((progress * progress_bar_width / 100))
+                        empty=$((progress_bar_width - filled))
+                        
+                        # 构建进度条
+                        bar=""
+                        for ((i=0; i<filled; i++)); do bar+="█"; done
+                        for ((i=0; i<empty; i++)); do bar+="░"; done
+                        
+                        echo -ne "\r${CYAN}  [${bar}] ${progress}% (${available_count}/${total_count})${NC}   "
+                    else
+                        echo -ne "\r${CYAN}  [进度] 正在测速中...${NC}   "
+                    fi
                 else
                     echo -ne "\r${CYAN}  [进度] 正在测速中...${NC}   "
                 fi
             else
-                # 下载阶段，显示下载进度
-                download_current=$(grep -o '[0-9]* / [0-9]*' "${LOG_FILE}" 2>/dev/null | tail -1 | awk '{print $1}')
-                download_total=$(grep -o '[0-9]* / [0-9]*' "${LOG_FILE}" 2>/dev/null | tail -1 | awk '{print $3}')
-                
-                if [[ -n "${download_current}" ]] && [[ -n "${download_total}" ]]; then
-                    progress=$((download_current * 100 / download_total))
-                    filled=$((progress * progress_bar_width / 100))
-                    empty=$((progress_bar_width - filled))
+                # 下载阶段：提取 "X / 10" 格式的进度
+                # 只提取“开始下载测速”之后的行
+                download_line=$(grep -A 100 "开始下载测速" "${LOG_FILE}" 2>/dev/null | grep -E '^[0-9]+ / [0-9]+' | tail -1)
+                if [[ -n "${download_line}" ]]; then
+                    download_current=$(echo "${download_line}" | awk '{print $1}')
+                    download_total=$(echo "${download_line}" | awk '{print $3}')
                     
-                    # 构建进度条
-                    bar=""
-                    for ((i=0; i<filled; i++)); do bar+="█"; done
-                    for ((i=0; i<empty; i++)); do bar+="░"; done
-                    
-                    echo -ne "\r${CYAN}  [${bar}] ${progress}% (${download_current}/${download_total})${NC}   "
+                    if [[ -n "${download_current}" ]] && [[ -n "${download_total}" ]]; then
+                        progress=$((download_current * 100 / download_total))
+                        filled=$((progress * progress_bar_width / 100))
+                        empty=$((progress_bar_width - filled))
+                        
+                        # 构建进度条
+                        bar=""
+                        for ((i=0; i<filled; i++)); do bar+="█"; done
+                        for ((i=0; i<empty; i++)); do bar+="░"; done
+                        
+                        echo -ne "\r${CYAN}  [${bar}] ${progress}% (${download_current}/${download_total})${NC}   "
+                    else
+                        echo -ne "\r${CYAN}  [进度] 正在测试下载速度...${NC}   "
+                    fi
                 else
                     echo -ne "\r${CYAN}  [进度] 正在测试下载速度...${NC}   "
                 fi
