@@ -266,14 +266,33 @@ cd "$(dirname "$CFST_BIN")" || exit 1
 CFST_PID=$!
 
 # 实时显示进度
+last_line_count=0
+stage="ping"
 while kill -0 "${CFST_PID}" 2>/dev/null; do
     # 检查是否有新的结果生成
     if [[ -f "${OUTPUT_CSV}" ]]; then
         current_lines=$(wc -l < "${OUTPUT_CSV}" 2>/dev/null || echo "0")
         if [[ "${current_lines}" -gt 1 ]]; then
             available_count=$((current_lines - 1))  # 减去表头
-            # 每 3 秒刷新一次显示
-            echo -ne "\r${CYAN}  [进度] 已发现 ${available_count} 个可用 IP...${NC}   "
+            
+            # 检测是否进入第二阶段（下载测速）
+            if [[ "${available_count}" -gt "${last_line_count}" ]] && [[ "${stage}" = "ping" ]]; then
+                # 如果 IP 数量稳定了一段时间，可能进入了下载阶段
+                # 通过检查日志文件判断
+                if [[ -f "${LOG_FILE}" ]] && grep -q "开始下载测速" "${LOG_FILE}" 2>/dev/null; then
+                    stage="download"
+                    echo -e "\r${CYAN}  [进度] 延迟测速完成，正在进行下载测速...          ${NC}"
+                    echo -e "${GRAY}  第二阶段: 下载速度测试${NC}"
+                fi
+            fi
+            
+            last_line_count=${available_count}
+            # 每 2 秒刷新一次显示
+            if [[ "${stage}" = "ping" ]]; then
+                echo -ne "\r${CYAN}  [进度] 已发现 ${available_count} 个可用 IP...${NC}   "
+            else
+                echo -ne "\r${CYAN}  [进度] 正在测试下载速度 (${available_count} 个 IP)...${NC}   "
+            fi
         fi
     fi
     sleep 2
@@ -307,23 +326,37 @@ if [[ "${EXIT_CODE}" -eq 0 ]] && [[ -f "${OUTPUT_CSV}" ]]; then
         fi
     done
     
+    # 获取最优 IP 的详细信息
+    best_ip_line=$(head -n 2 "${OUTPUT_CSV}" | tail -n 1)
+    IFS=',' read -r best_ip sent recv loss delay speed region <<< "${best_ip_line}"
+    best_region_name=$(convert_colo_to_name "${region}")
+    
     echo -e "\n${CYAN}+------------------------------------------------------------+"
     echo -e " ${YELLOW}测速结果摘要${NC}"
     echo -e "${CYAN}+------------------------------------------------------------+"
     echo -e "  ${CYAN}测速节点:${NC}   ${colo_names} (${TARGET_COLO})"
     echo -e "  ${CYAN}线程数量:${NC}   ${CFST_THREADS}"
-    echo -e "  ${CYAN}总测试 IP:${NC}  ${total_ips}"
-    echo -e "  ${CYAN}可用 IP 数:${NC}  ${available_ips}"
-    echo -e "  ${CYAN}保留策略:${NC}   取前 ${TAKE_IP_NUM} 个最优 IP"
+    echo -e "  ${CYAN}测试统计:${NC}"
+    echo -e "    - 总测试 IP:  ${total_ips}"
+    echo -e "    - 可用 IP 数:  ${available_ips}"
+    echo -e "    - 保留策略:   取前 ${TAKE_IP_NUM} 个最优 IP"
     echo ""
-    echo -e " ${GREEN}Top 3 最优 IP:${NC}"
+    echo -e " ${GREEN}[最佳] 最优 IP:${NC}"
+    echo -e "  ${GREEN}➤${NC} ${best_ip}"
+    echo -e "    延迟: ${delay}ms | 地区: ${best_region_name}"
+    echo ""
+    echo -e " ${GREEN}Top 3 推荐 IP:${NC}"
     head -n 4 "${OUTPUT_CSV}" | tail -n 3 | while IFS=',' read -r ip sent recv loss delay speed region; do
         region_name=$(convert_colo_to_name "${region}")
         echo -e "  ${GREEN}➤${NC} ${ip}  (延迟: ${delay}ms, 地区: ${region_name})"
     done
     echo -e "${CYAN}+------------------------------------------------------------+"
     echo ""
-    echo -e "${GRAY}完整结果请查看: ${OUTPUT_CSV}${NC}"
+    echo -e "${GRAY}[提示]:${NC}"
+    echo -e "  - 完整结果请查看: ${OUTPUT_CSV}"
+    if [[ "${ENABLE_LOG}" = "true" ]] && [[ -f "${LOG_FILE:-}" ]]; then
+        echo -e "  - 详细日志请查看: ${LOG_FILE}"
+    fi
 else
     echo -e "${RED}[ERROR] 测速程序执行失败 (Exit Code: ${EXIT_CODE})${NC}"
     if [[ "${ENABLE_LOG}" = "true" ]] && [[ -f "${LOG_FILE:-}" ]]; then
