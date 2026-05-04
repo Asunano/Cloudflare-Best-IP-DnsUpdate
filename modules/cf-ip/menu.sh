@@ -937,7 +937,7 @@ view_config() {
     
     echo ""
     echo -e "${CYAN}+------------------------------------------------------------+${NC}"
-    echo -e " ${YELLOW}📋 CF-IP 优选配置概览${NC}"
+    echo -e " ${YELLOW}CF-IP 优选配置概览${NC}"
     echo -e "${CYAN}+------------------------------------------------------------+${NC}"
     
     # 提取关键配置项
@@ -963,16 +963,16 @@ view_config() {
     
     # 显示模块状态
     echo ""
-    echo -e " ${GREEN}【模块状态】${NC}"
+    echo -e " ${GREEN}[模块状态]${NC}"
     if [[ "${enabled}" = "true" ]]; then
-        echo -e "   启用状态: ${GREEN}✓ 已启用${NC}"
+        echo -e "   启用状态: ${GREEN}[已启用]${NC}"
     else
-        echo -e "   启用状态: ${RED}✗ 已禁用${NC}"
+        echo -e "   启用状态: ${RED}[已禁用]${NC}"
     fi
     
     # 显示测速参数
     echo ""
-    echo -e " ${GREEN}【测速参数】${NC}"
+    echo -e " ${GREEN}[测速参数]${NC}"
     echo -e "   并发线程: ${YELLOW}${threads}${NC}"
     echo -e "   测速节点: ${YELLOW}${colo}${NC}"
     echo -e "   Ping 次数: ${YELLOW}${ping_times}${NC}"
@@ -980,7 +980,7 @@ view_config() {
     
     # 显示筛选条件
     echo ""
-    echo -e " ${GREEN}【筛选条件】${NC}"
+    echo -e " ${GREEN}[筛选条件]${NC}"
     echo -e "   最大延迟: ${YELLOW}${latency_max} ms${NC}"
     echo -e "   最大丢包: ${YELLOW}${packet_loss_max}%${NC}"
     echo -e "   最低速度: ${YELLOW}${speed_min} MB/s${NC}"
@@ -988,17 +988,25 @@ view_config() {
     
     # 显示结果处理
     echo ""
-    echo -e " ${GREEN}【结果处理】${NC}"
+    echo -e " ${GREEN}[结果处理]${NC}"
     echo -e "   选取 IP 数: ${YELLOW}${take_ip_num} 个${NC}"
     echo -e "   最大重试: ${YELLOW}${max_retry} 次${NC}"
-    echo -e "   HTML 报告: $(if [[ "${output_html}" = "true" ]]; then echo -e "${GREEN}✓ 开启${NC}"; else echo -e "${GRAY}✗ 关闭${NC}"; fi)"
-    echo -e "   运行日志: $(if [[ "${enable_log}" = "true" ]]; then echo -e "${GREEN}✓ 开启${NC}"; else echo -e "${GRAY}✗ 关闭${NC}"; fi)"
+    if [[ "${output_html}" = "true" ]]; then
+        echo -e "   HTML 报告: ${GREEN}[开启]${NC}"
+    else
+        echo -e "   HTML 报告: ${GRAY}[关闭]${NC}"
+    fi
+    if [[ "${enable_log}" = "true" ]]; then
+        echo -e "   运行日志: ${GREEN}[开启]${NC}"
+    else
+        echo -e "   运行日志: ${GRAY}[关闭]${NC}"
+    fi
     
     # 显示多线路状态
     echo ""
-    echo -e " ${GREEN}【多线路支持】${NC}"
+    echo -e " ${GREEN}[多线路支持]${NC}"
     if [[ "${multi_line_enabled}" = "true" ]]; then
-        echo -e "   状态: ${GREEN}✓ 已启用${NC}"
+        echo -e "   状态: ${GREEN}[已启用]${NC}"
         local colo_mobile colo_unicom colo_telecom
         colo_mobile="$(jq -r '.multi_line.colo_mobile // ""' "${CONFIG_FILE}")"
         colo_unicom="$(jq -r '.multi_line.colo_unicom // ""' "${CONFIG_FILE}")"
@@ -1007,7 +1015,7 @@ view_config() {
         [[ -n "${colo_unicom}" ]] && echo -e "   联通节点: ${YELLOW}${colo_unicom}${NC}"
         [[ -n "${colo_telecom}" ]] && echo -e "   电信节点: ${YELLOW}${colo_telecom}${NC}"
     else
-        echo -e "   状态: ${GRAY}✗ 未启用${NC}"
+        echo -e "   状态: ${GRAY}[未启用]${NC}"
     fi
     
     echo ""
