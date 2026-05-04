@@ -118,6 +118,38 @@ list_deployed_domains() {
     jq -r '.domains[].domain' "${DEPLOY_RECORD_FILE}" 2>/dev/null
 }
 
+# 删除域名配置
+delete_domain_config() {
+    local domain="$1"
+    local dns_type="$2"  # "cloudflare" 或 "dnspod"
+    
+    init_deploy_record
+    
+    # 删除配置文件
+    if [[ "$dns_type" == "cloudflare" ]]; then
+        local cf_dns_file="${ROOT_DIR}/conf/cf-dns/${domain}.json"
+        if [[ -f "$cf_dns_file" ]]; then
+            rm -f "$cf_dns_file"
+            echo -e "  [OK] 已删除: ${cf_dns_file}"
+        fi
+    elif [[ "$dns_type" == "dnspod" ]]; then
+        local dnspod_file="${ROOT_DIR}/conf/dnspod/${domain}.json"
+        if [[ -f "$dnspod_file" ]]; then
+            rm -f "$dnspod_file"
+            echo -e "  [OK] 已删除: ${dnspod_file}"
+        fi
+    fi
+    
+    # 从部署记录中删除
+    local temp_file
+    temp_file=$(mktemp)
+    jq --arg d "$domain" '.domains = [.domains[] | select(.domain != $d)]' \
+       "${DEPLOY_RECORD_FILE}" > "$temp_file"
+    mv "$temp_file" "${DEPLOY_RECORD_FILE}"
+    chmod 600 "${DEPLOY_RECORD_FILE}"
+    echo -e "  [OK] 已删除部署记录"
+}
+
 detect_optimal_colo() {
     # 简单检测：根据常见网络环境推荐
     # 实际可以扩展为 ping 测试或 traceroute 分析
@@ -510,6 +542,11 @@ main() {
             echo -e "   • ${domain} (${dns_label}, ${mode_label})"
         done <<< "$deployed_domains"
         echo ""
+        
+        # 如果有已部署的域名，显示管理选项
+        echo -e " ${YELLOW}[管理]${NC}"
+        echo -e "   输入域名可直接管理该域名的配置（删除、重新部署等）"
+        echo ""
     fi
     
     echo -e " ${CYAN}请选择 DNS 服务商：${NC}"
@@ -525,8 +562,34 @@ main() {
     echo -e " ${RED}➤${NC} 0. 返回主菜单"
     echo ""
     
-    read -r -p "请选择 [0-2, 默认 1]: " dns_choice
+    read -r -p "请选择 [0-2, 默认 1] 或输入域名: " dns_choice
     dns_choice=${dns_choice:-1}
+    
+    # 检查是否输入了域名
+    if [[ "$dns_choice" =~ ^[a-zA-Z0-9][a-zA-Z0-9.-]*\.[a-zA-Z]{2,}$ ]]; then
+        # 用户输入了域名，检查是否已部署
+        if is_domain_deployed "$dns_choice"; then
+            manage_deployed_domain "$dns_choice"
+        else
+            echo -e "${YELLOW}[WARN] 该域名尚未部署${NC}"
+            read -r -p "是否立即部署？[y/N] (默认 N): " confirm
+            if [[ "$confirm" =~ ^[Yy]$ ]]; then
+                # 询问使用哪个 DNS 服务商
+                echo ""
+                echo -e " ${CYAN}请选择 DNS 服务商：${NC}"
+                echo -e " ${GREEN}➤${NC} 1. Cloudflare DNS"
+                echo -e " ${GREEN}➤${NC} 2. DNSPod DNS"
+                echo ""
+                read -r -p "请选择 [1-2]: " new_dns_choice
+                case "$new_dns_choice" in
+                    1) deploy_cloudflare_dns ;;
+                    2) choose_dnspod_mode ;;
+                    *) echo -e "${RED}[ERROR] 无效的选择${NC}" ;;
+                esac
+            fi
+        fi
+        return
+    fi
     
     case "$dns_choice" in
         1)
@@ -538,6 +601,100 @@ main() {
         0)
             # 返回主菜单
             exit 0
+            ;;
+        *)
+            echo -e "${RED}[ERROR] 无效的选择${NC}"
+            read -r -p "按回车键返回..."
+            ;;
+    esac
+}
+
+# 管理已部署的域名
+manage_deployed_domain() {
+    local domain="$1"
+    
+    show_header
+    echo -e "${GREEN}管理已部署域名：${domain}${NC}"
+    echo ""
+    
+    # 获取当前配置信息
+    local info
+    info=$(get_domain_info "$domain")
+    local dns_type
+    dns_type=$(echo "$info" | jq -r '.dns_type')
+    local mode
+    mode=$(echo "$info" | jq -r '.mode')
+    local deploy_time
+    deploy_time=$(echo "$info" | jq -r '.deploy_time')
+    
+    local dns_label
+    if [[ "$dns_type" == "cloudflare" ]]; then
+        dns_label="Cloudflare DNS"
+    else
+        dns_label="DNSPod DNS"
+    fi
+    
+    local mode_label
+    if [[ "$mode" == "multi" ]]; then
+        mode_label="多线路"
+    else
+        mode_label="单线路"
+    fi
+    
+    echo -e "${CYAN}当前配置：${NC}"
+    echo -e "  • DNS 服务商: ${dns_label}"
+    echo -e "  • 工作模式: ${mode_label}"
+    echo -e "  • 部署时间: ${deploy_time}"
+    echo ""
+    
+    echo -e "${CYAN}请选择操作：${NC}"
+    echo ""
+    echo -e " ${GREEN}➤${NC} 1. 重新部署"
+    echo -e "      ${CYAN}- 覆盖现有配置，重新执行部署流程${NC}"
+    echo ""
+    echo -e " ${RED}➤${NC} 2. 删除配置"
+    echo -e "      ${CYAN}- 删除该域名的所有配置文件和部署记录${NC}"
+    echo ""
+    echo -e " ${RED}➤${NC} 0. 返回上一级"
+    echo ""
+    
+    read -r -p "请选择 [0-2]: " manage_choice
+    
+    case "$manage_choice" in
+        1)
+            echo -e "${YELLOW}[WARN] 重新部署将覆盖现有配置${NC}"
+            read -r -p "是否继续？[y/N] (默认 N): " confirm
+            if [[ "$confirm" =~ ^[Yy]$ ]]; then
+                # 根据 DNS 类型选择部署方式
+                if [[ "$dns_type" == "cloudflare" ]]; then
+                    deploy_cloudflare_dns
+                elif [[ "$dns_type" == "dnspod" ]]; then
+                    if [[ "$mode" == "multi" ]]; then
+                        deploy_dnspod_multi
+                    else
+                        deploy_dnspod_single
+                    fi
+                fi
+            fi
+            ;;
+        2)
+            echo -e "${RED}[WARN] 此操作将删除以下文件：${NC}"
+            echo -e "  • ${ROOT_DIR}/conf/cf-dns/${domain}.json"
+            if [[ "$dns_type" == "dnspod" ]]; then
+                echo -e "  • ${ROOT_DIR}/conf/dnspod/${domain}.json"
+            fi
+            echo -e "  • 部署记录中的相关信息"
+            echo ""
+            read -r -p "确认删除？[y/N] (默认 N): " confirm
+            if [[ "$confirm" =~ ^[Yy]$ ]]; then
+                delete_domain_config "$domain" "$dns_type"
+                echo -e "${GREEN}[OK] 配置已删除${NC}"
+                read -r -p "按回车键返回..."
+            fi
+            ;;
+        0)
+            # 返回上一级
+            return
             ;;
         *)
             echo -e "${RED}[ERROR] 无效的选择${NC}"
