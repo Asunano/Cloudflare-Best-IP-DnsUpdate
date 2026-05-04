@@ -3916,67 +3916,91 @@ MAX_IPS_PER_RECORD=${MAX_IPS_PER_RECORD}
 EOF
 
 echo -e "\n${GREEN}[OK] 配置文件已生成: ${CONFIG_FILE}"
-
 # 如果是多线路模式,创建 IP 文件模板
 if [ "$MODE" = "multi" ]; then
-    echo "正在创建 IP 文件模板..."
+    echo -e "${CYAN}正在创建 IP 文件模板...${NC}"
+    echo ""
     
-    # 确保 ip-data 目录存在
-    mkdir -p "./ip-data"
+    # 从配置文件读取实际的 IP 文件路径
+    local ip_dir
+    ip_dir=$(jq -r '.ip_source.files // empty' "$CONFIG_FILE" 2>/dev/null)
     
-    # 检查线路是否包含某个类型,然后创建对应文件
-    if [[ "$ISP_LINES" == *"默认"* ]]; then
-        if [ ! -f "./ip-data/cf_ips.txt" ]; then
-            cat > "./ip-data/cf_ips.txt" << 'EOF'
-# 默认线路优选 IP
-# 生成时间: 自动生成
-# 格式: 逗号分隔或每行一个
-# 请替换为实际的优选 IP
-104.16.0.1,104.16.0.2
-EOF
-            echo -e "  ${GREEN}[OK] 创建: ip-data/cf_ips.txt"
+    if [[ -z "$ip_dir" ]] || [[ "$ip_dir" == "null" ]]; then
+        # 如果配置文件中没有 files 字段，使用默认路径
+        ip_dir="${ROOT_DIR}/assets/data/dnspod-dns"
+    else
+        # 提取目录路径（从第一个文件路径推断）
+        local first_file
+        first_file=$(echo "$ip_dir" | jq -r 'to_entries[0].value // empty' 2>/dev/null)
+        if [[ -n "$first_file" ]] && [[ "$first_file" != "null" ]]; then
+            ip_dir=$(dirname "$first_file")
+        else
+            ip_dir="${ROOT_DIR}/assets/data/dnspod-dns"
         fi
     fi
     
-    if [[ "$ISP_LINES" == *"联通"* ]]; then
-        if [ ! -f "./ip-data/cf_ips_unicom.txt" ]; then
-            cat > "./ip-data/cf_ips_unicom.txt" << 'EOF'
-# 联通线路优选 IP
-# 生成时间: 自动生成
-# 格式: 逗号分隔或每行一个
-# 请替换为实际的优选 IP
-104.16.1.1,104.16.1.2
-EOF
-            echo -e "  ${GREEN}[OK] 创建: ip-data/cf_ips_unicom.txt"
-        fi
-    fi
+    # 确保目录存在
+    mkdir -p "$ip_dir"
+    chmod 755 "$ip_dir"
     
-    if [[ "$ISP_LINES" == *"移动"* ]]; then
-        if [ ! -f "./ip-data/cf_ips_mobile.txt" ]; then
-            cat > "./ip-data/cf_ips_mobile.txt" << 'EOF'
-# 移动线路优选 IP
-# 生成时间: 自动生成
-# 格式: 逗号分隔或每行一个
-# 请替换为实际的优选 IP
-104.16.2.1,104.16.2.2
-EOF
-            echo -e "  ${GREEN}[OK] 创建: ip-data/cf_ips_mobile.txt"
-        fi
-    fi
+    # 定义线路和文件名的映射
+    declare -A line_files=(
+        ["默认"]="default.txt"
+        ["联通"]="unicom.txt"
+        ["移动"]="mobile.txt"
+        ["电信"]="telecom.txt"
+    )
     
-    if [[ "$ISP_LINES" == *"电信"* ]]; then
-        if [ ! -f "./ip-data/cf_ips_telecom.txt" ]; then
-            cat > "./ip-data/cf_ips_telecom.txt" << 'EOF'
-# 电信线路优选 IP
-# 生成时间: 自动生成
-# 格式: 逗号分隔或每行一个
-# 请替换为实际的优选 IP
-104.16.3.1,104.16.3.2
-EOF
-            echo -e "  ${GREEN}[OK] 创建: ip-data/cf_ips_telecom.txt"
+    # 遍历配置的线路，创建对应的 IP 文件
+    IFS=' ' read -ra lines_array <<< "$ISP_LINES"
+    for line in "${lines_array[@]}"; do
+        line=$(echo "$line" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
+        
+        if [[ -z "$line" ]]; then
+            continue
         fi
-    fi
+        
+        # 获取对应的文件名
+        local filename="${line_files[$line]:-}"
+        if [[ -z "$filename" ]]; then
+            echo -e "${YELLOW}[WARN] 未知线路: ${line}，跳过${NC}"
+            continue
+        fi
+        
+        local filepath="${ip_dir}/${filename}"
+        
+        # 只在文件不存在时创建
+        if [[ ! -f "$filepath" ]]; then
+            # 使用临时文件 + mv 实现原子写入
+            local temp_file
+            temp_file=$(mktemp "${ip_dir}/.tmp.XXXXXX")
+            
+            cat > "$temp_file" << EOF
+# DNSPod ${line}线路优选 IP
+# 生成时间: $(date '+%Y-%m-%d %H:%M:%S')
+# 格式: 每行一个 IP 或逗号分隔
+# 请替换为实际的优选 IP
+#
+# 示例:
+# 104.16.0.1
+# 104.16.0.2
+EOF
+            
+            # 设置安全权限（仅所有者可读写）
+            chmod 600 "$temp_file"
+            
+            # 原子移动（避免部分写入）
+            mv "$temp_file" "$filepath"
+            
+            echo -e "  ${GREEN}[OK] 创建: ${filepath#${ROOT_DIR}/}${NC}"
+        else
+            echo -e "  ${CYAN}[SKIP] 已存在: ${filepath#${ROOT_DIR}/}${NC}"
+        fi
+    done
     
+    echo ""
+    echo -e "${CYAN}提示: 请编辑上述文件，填入实际的优选 IP${NC}"
+    echo -e "${CYAN}      或使用测速程序自动生成 IP 列表${NC}"
     echo ""
 fi
 
