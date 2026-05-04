@@ -234,6 +234,14 @@ check_config() {
         return 2
     fi
     
+    # 检查是否包含关键配置字段（验证是否真正完成了用户配置）
+    local has_colo
+    has_colo=$(jq -r '.cfst.colo // empty' "${CONFIG_FILE}" 2>/dev/null)
+    if [[ -z "${has_colo}" ]]; then
+        # 配置文件存在但缺少关键配置，视为未配置
+        return 3
+    fi
+    
     return 0
 }
 
@@ -291,6 +299,8 @@ show_main_menu() {
     
     if [[ "${config_status}" -eq 0 ]]; then
         echo -e " ${GREEN}[OK] 配置文件: 已就绪"
+    elif [[ "${config_status}" -eq 3 ]]; then
+        echo -e " ${YELLOW}[WARN] 配置文件: 存在但未完成配置"
     else
         echo -e " ${RED}[NONE] 配置文件: 未找到 (请先运行 cfopt 安装)"
     fi
