@@ -28,6 +28,7 @@ RAW_BASE_URL="https://raw.githubusercontent.com/${GITHUB_REPO}/main"
 # 定义需要更新的组件映射
 # 格式: "KEY:本地路径:远程相对路径:显示名称"
 declare -a COMPONENTS=(
+    "UPDATER:modules/updater/update.sh:modules/updater/update.sh:自动更新组件"
     "QUICK_DEPLOY:modules/quick-deploy/setup.sh:modules/quick-deploy/setup.sh:快速部署向导"
     "CF_IP_MENU:modules/cf-ip/menu.sh:modules/cf-ip/menu.sh:CF-IP 测速管理"
     "CF_IP_CORE:modules/cf-ip/core.sh:modules/cf-ip/core.sh:CF-IP 核心引擎"
@@ -72,15 +73,24 @@ download_file() {
     local display_name="$3"
     
     local full_url="${RAW_BASE_URL}/${remote_path}"
+    local target_file="${ROOT_DIR}/${local_path}"
     local temp_file
     temp_file=$(mktemp)
+    
+    # 【特殊处理】updater.sh 自身：下载到 .new 文件，避免覆盖正在运行的脚本
+    if [[ "${remote_path}" = "modules/updater/update.sh" ]]; then
+        temp_file="${ROOT_DIR}/modules/updater/update.sh.new"
+    fi
     
     # 下载到临时文件
     if curl -s --max-time 30 -o "${temp_file}" "${full_url}" 2>/dev/null; then
         # 验证下载的文件非空
         if [[ -s "${temp_file}" ]]; then
-            mv "${temp_file}" "${ROOT_DIR}/${local_path}"
-            chmod +x "${ROOT_DIR}/${local_path}" 2>/dev/null || true
+            # 如果不是 updater.sh 自身，直接移动到目标位置
+            if [[ "${remote_path}" != "modules/updater/update.sh" ]]; then
+                mv "${temp_file}" "${target_file}"
+                chmod +x "${target_file}" 2>/dev/null || true
+            fi
             echo -e "  ${GREEN}[OK]${NC} ${display_name}"
             return 0
         else
@@ -200,10 +210,17 @@ perform_update() {
     echo "${remote_version}" > "${VERSION_FILE}"
     echo -e "${GREEN}[OK] 版本号文件已更新${NC}"
     
-    # 如果更新了 cfopt.sh，提示用户重启
+    # 提示用户重启或重新运行
     if [[ ${success_count} -gt 0 ]]; then
         echo ""
-        echo -e "${YELLOW}[INFO] 建议重新启动 cfopt.sh 以应用所有更新${NC}"
+        echo -e "${YELLOW}[INFO] 建议重新启动以应用所有更新${NC}"
+        
+        # 如果更新了 cfopt.sh 或 updater.sh，给出明确提示
+        if [[ -f "${INSTALL_DIR}/cfopt.sh.new" ]] || [[ -f "${ROOT_DIR}/modules/updater/update.sh.new" ]]; then
+            echo -e "${CYAN}注意: 以下组件将在下次运行时自动应用：${NC}"
+            [[ -f "${INSTALL_DIR}/cfopt.sh.new" ]] && echo -e "  • 主程序 (cfopt.sh)"
+            [[ -f "${ROOT_DIR}/modules/updater/update.sh.new" ]] && echo -e "  • 更新组件 (updater.sh)"
+        fi
     fi
     
     return 0
@@ -229,8 +246,18 @@ show_help() {
     echo ""
 }
 
-# ==================== 主逻辑 ====================
+# 执行主函数
 main() {
+    # 【自动应用】检查是否有待应用的 updater.sh.new
+    local updater_new="${ROOT_DIR}/modules/updater/update.sh.new"
+    if [[ -f "${updater_new}" ]]; then
+        echo -e "${CYAN}[INFO] 检测到更新版本的 updater.sh，正在应用...${NC}"
+        mv "${updater_new}" "${ROOT_DIR}/modules/updater/update.sh"
+        chmod +x "${ROOT_DIR}/modules/updater/update.sh"
+        echo -e "${GREEN}[OK] updater.sh 已更新！${NC}"
+        echo ""
+    fi
+    
     local command="${1:-help}"
     
     case "${command}" in
