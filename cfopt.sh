@@ -586,15 +586,16 @@ get_module_status() {
     fi
 }
 
-# ====================== 【系统健康检测】 ======================
+# ====================== 【系统健康检测与修复】 ======================
 
-# 全面的系统检测函数
-run_system_diagnostics() {
+# 全面的系统检测与修复函数
+system_health_check() {
+    clear
     local has_issues=false
     
-    echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
-    echo -e " ${YELLOW}系统健康检测${NC}"
-    echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+    echo -e "${CYAN}+------------------------------------------------------------+${NC}"
+    echo -e " ${YELLOW}系统健康检测与修复${NC}"
+    echo -e "${CYAN}+------------------------------------------------------------+${NC}"
     echo ""
     
     # 1. 检查全局命令
@@ -696,39 +697,18 @@ run_system_diagnostics() {
     fi
     
     echo ""
-    echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+    echo -e "${CYAN}+------------------------------------------------------------+${NC}"
     
-    # 显示检测结果
+    # 显示检测结果并提供修复
     if [[ "${has_issues}" = true ]]; then
-        echo -e " ${RED}⚠ 检测到问题，建议修复${NC}"
+        echo -e " ${RED}[警告] 检测到系统问题${NC}"
         echo ""
+        echo -e "${YELLOW}是否立即执行自动修复？${NC}"
+        read -r -p "请输入 y 确认修复 (默认n): " FIX_CHOICE
         
-        # 提供修复选项
-        echo -e "${YELLOW}可用的修复操作：${NC}"
-        
-        # 修复全局命令
-        if [[ -e "${SYSTEM_CMD_PATH}" ]] && ! check_system_cmd; then
-            echo -e "  ${GREEN}1) 修复全局命令${NC} - 重新创建符号链接"
-        fi
-        
-        # 修复缺失模块
-        if [[ ${#missing_modules[@]} -gt 0 ]]; then
-            echo -e "  ${GREEN}2) 重新下载模块${NC} - 从 GitHub 获取最新版本"
-        fi
-        
-        # 修复缺失配置
-        if [[ ${#missing_configs[@]} -gt 0 ]]; then
-            echo -e "  ${GREEN}3) 初始化配置${NC} - 生成默认配置文件"
-        fi
-        
-        # 修复依赖
-        if [[ ${#missing_tools[@]} -gt 0 ]]; then
-            echo -e "  ${GREEN}4) 安装依赖工具${NC} - 自动安装缺失的工具"
-        fi
-        
-        echo ""
-        read -r -p "是否立即修复？(y/n，默认n): " FIX_CHOICE
         if [[ "${FIX_CHOICE}" =~ ^[Yy]$ ]]; then
+            echo ""
+            log_info "开始执行自动修复..."
             echo ""
             
             # 执行修复
@@ -781,18 +761,23 @@ run_system_diagnostics() {
             
             echo ""
             if [[ ${fixed_count} -gt 0 ]]; then
-                log_success "已完成 ${fixed_count} 项修复"
+                log_success "已完成 ${fixed_count} 项修复，请重新运行检测确认"
             else
                 log_warning "没有执行任何修复操作"
             fi
+            echo ""
+            read -r -p "按回车键返回主菜单..."
+        else
+            echo ""
+            log_info "已取消修复"
+            echo ""
+            read -r -p "按回车键返回主菜单..."
         fi
     else
-        echo -e " ${GREEN}✓ 所有检测项均正常${NC}"
+        echo -e " ${GREEN}[OK] 所有检测项均正常${NC}"
+        echo ""
+        read -r -p "按回车键返回主菜单..."
     fi
-    
-    echo ""
-    read -r -p "按回车键继续..."
-    echo ""
 }
 
 # --- 主菜单逻辑 ---
@@ -833,6 +818,7 @@ show_main_menu() {
     echo -e " ${GREEN}➤${NC} 3. DNSPod DNS 更新    ${CYAN}- 腾讯云 DNSPod 分线路解析管理${NC}"
     echo -e " ${GREEN}➤${NC} 4. 自动化调度中心    ${CYAN}- 一键执行全链路测速、同步与更新${NC}"
     echo -e " ${GREEN}➤${NC} 5. 检查组件更新       ${CYAN}- 同步远程最新版本${NC}"
+    echo -e " ${GREEN}➤${NC} 6. 系统健康检测       ${CYAN}- 检测并修复系统问题${NC}"
     echo ""
     echo -e " ${RED}➤${NC} 9. 一键跑路         ${CYAN}- 删除脚本及相关配置${NC}"
     echo -e " ${RED}➤${NC} 0. 退出程序"
@@ -845,7 +831,7 @@ show_main_menu() {
         input_device="/dev/stdin"
     fi
 
-    read -r -p "请选择功能 [0-5, 9]: " choice < "${input_device}"
+    read -r -p "请选择功能 [0-6, 9]: " choice < "${input_device}"
 
     case "${choice}" in
         1)
@@ -865,6 +851,9 @@ show_main_menu() {
             ;;
         5)
             check_and_update_components
+            ;;
+        6)
+            system_health_check
             ;;
         9)
             uninstall_cfopt
@@ -1304,8 +1293,6 @@ init_cfopt() {
        grep -q '^INSTALL_CHECKED="true"' "${STATUS_CONF}" && \
        [[ -d "${INSTALL_DIR}/modules/cf-ip" ]] && \
        [[ -d "${INSTALL_DIR}/modules/scheduler" ]]; then
-        # 运行系统健康检测
-        run_system_diagnostics
         show_main_menu
         return
     fi
