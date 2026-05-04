@@ -343,74 +343,6 @@ check_network_health() {
     return 1
 }
 
-# --- 自动回滚机制 ---
-# 备份当前版本，更新失败时可快速恢复
-backup_current_version() {
-    local backup_dir="${INSTALL_DIR}/backups/$(date +%Y%m%d_%H%M%S)"
-    
-    # 如果安装目录不存在，无需备份
-    if [[ ! -d "${INSTALL_DIR}" ]]; then
-        return 0
-    fi
-    
-    mkdir -p "${backup_dir}"
-    
-    # 备份配置文件
-    if [[ -d "${INSTALL_DIR}/conf" ]]; then
-        if ! safe_copy "${INSTALL_DIR}/conf" "${backup_dir}/conf" "备份配置文件"; then
-            log_warning "配置文件备份失败，继续执行..."
-        fi
-    fi
-    
-    # 备份模块文件
-    if [[ -d "${INSTALL_DIR}/modules" ]]; then
-        if ! safe_copy "${INSTALL_DIR}/modules" "${backup_dir}/modules" "备份模块文件"; then
-            log_warning "模块文件备份失败，继续执行..."
-        fi
-    fi
-    
-    # 记录版本信息
-    echo "$(date '+%Y-%m-%d %H:%M:%S')" > "${backup_dir}/timestamp.txt"
-    echo "Backup created at: $(date)" >> "${backup_dir}/README.txt"
-    
-    echo -e "${GREEN}[OK] 备份完成: ${backup_dir}${NC}"
-}
-
-# 更新失败时回滚到上一版本
-rollback_on_failure() {
-    local latest_backup
-    latest_backup=$(ls -t "${INSTALL_DIR}/backups/" 2>/dev/null | head -1)
-    
-    if [[ -n "${latest_backup}" ]] && [[ -d "${INSTALL_DIR}/backups/${latest_backup}" ]]; then
-        log_warning "检测到更新失败，正在回滚到上一版本..."
-        
-        # 回滚配置文件
-        if [[ -d "${INSTALL_DIR}/backups/${latest_backup}/conf" ]]; then
-            if safe_remove_dir "${INSTALL_DIR}/conf" "清理旧配置" && \
-               safe_copy "${INSTALL_DIR}/backups/${latest_backup}/conf" "${INSTALL_DIR}/conf" "恢复配置"; then
-                log_success "配置文件已回滚"
-            else
-                log_error "配置文件回滚失败"
-            fi
-        fi
-        
-        # 回滚模块文件
-        if [[ -d "${INSTALL_DIR}/backups/${latest_backup}/modules" ]]; then
-            if safe_remove_dir "${INSTALL_DIR}/modules" "清理旧模块" && \
-               safe_copy "${INSTALL_DIR}/backups/${latest_backup}/modules" "${INSTALL_DIR}/modules" "恢复模块"; then
-                log_success "模块文件已回滚"
-            else
-                log_error "模块文件回滚失败"
-            fi
-        fi
-        
-        log_success "回滚成功，系统已恢复到: ${latest_backup}"
-        return 0
-    else
-        log_error "无可用备份，请手动修复或重新安装"
-        return 1
-    fi
-}
 
 # --- 辅助函数：带重试的下载与校验（支持镜像回退） ---
 download_with_retry() {
@@ -1123,7 +1055,6 @@ uninstall_cfopt() {
     echo "     - conf/ (所有配置文件)"
     echo "     - assets/ (测速数据和 IP 列表)"
     echo "     - logs/ (运行日志)"
-    echo "     - backups/ (备份文件)"
     echo "  2. 全局命令: /usr/local/bin/cfopt"
     echo "  3. 定时任务: 所有包含 'cfopt' 的 Crontab 项"
     echo ""
@@ -1206,9 +1137,6 @@ uninstall_cfopt() {
         fi
         if [[ -d "${INSTALL_DIR}/logs" ]]; then
             echo -e "  ${CYAN}- logs/${NC} (日志文件)"
-        fi
-        if [[ -d "${INSTALL_DIR}/backups" ]]; then
-            echo -e "  ${CYAN}- backups/${NC} (备份文件)"
         fi
         echo ""
         
