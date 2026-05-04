@@ -1107,7 +1107,7 @@ run_test() {
     echo "--------------------------------------------------------"
     # 切换到 ROOT_DIR 以确保相对路径正确
     cd "${ROOT_DIR}" || return 1
-    CF_OPT_ENTRY=1 bash "${IP_AUTO_SCRIPT}"
+    CF_OPT_ENTRY=1 bash "${IP_AUTO_SCRIPT}" || true
     echo ""
     read -r -p "按回车键返回..."
 }
