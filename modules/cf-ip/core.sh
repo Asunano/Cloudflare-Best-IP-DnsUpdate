@@ -246,19 +246,45 @@ if [[ "${CFST_DISABLE_DOWNLOAD}" = "true" ]]; then CMD+=("-dd"); fi
 if [[ "${CFST_ALL_IP}" = "true" ]]; then CMD+=("-allip"); fi
 CMD+=("-o" "${OUTPUT_CSV}")
 
-# 执行并记录日志（静默模式，不显示进度条）
+# 执行并记录日志（带实时进度提示）
 if [[ "${ENABLE_LOG}" = "true" ]]; then
     LOG_FILE="${LOG_DIR}/cfst_$(date +%Y%m%d_%H%M%S).log"
     echo -e "${CYAN}[INFO] 日志已开启: ${LOG_FILE}${NC}"
-    # 切换到 cfst 所在目录执行，避免 cfst 寻找当前目录下的 ip.txt
-    # 使用 > 重定向而不是 tee，隐藏所有输出到屏幕
-    cd "$(dirname "$CFST_BIN")" && "${CMD[@]}" > "${LOG_FILE}" 2>&1
 else
-    # 即使不开启日志，也重定向输出以避免进度刷屏
-    cd "$(dirname "$CFST_BIN")" && "${CMD[@]}" > /dev/null 2>&1
+    LOG_FILE="/dev/null"
 fi
 
+echo ""
+echo -e "${YELLOW}[INFO] 测速进行中，请稍候...${NC}"
+echo -e "${GRAY}  第一阶段: 延迟测速 (TCP Ping)${NC}"
+
+# 切换到 cfst 所在目录执行
+cd "$(dirname "$CFST_BIN")" || exit 1
+
+# 启动测速程序（后台运行）
+"${CMD[@]}" > "${LOG_FILE}" 2>&1 &
+CFST_PID=$!
+
+# 实时显示进度
+while kill -0 "${CFST_PID}" 2>/dev/null; do
+    # 检查是否有新的结果生成
+    if [[ -f "${OUTPUT_CSV}" ]]; then
+        current_lines=$(wc -l < "${OUTPUT_CSV}" 2>/dev/null || echo "0")
+        if [[ "${current_lines}" -gt 1 ]]; then
+            available_count=$((current_lines - 1))  # 减去表头
+            # 每 3 秒刷新一次显示
+            echo -ne "\r${CYAN}  [进度] 已发现 ${available_count} 个可用 IP...${NC}   "
+        fi
+    fi
+    sleep 2
+done
+
+# 等待进程结束
+wait "${CFST_PID}"
 EXIT_CODE=$?
+
+echo -e "\r${CYAN}  [进度] 测速完成！                         ${NC}"
+echo ""
 
 if [[ "${EXIT_CODE}" -eq 0 ]] && [[ -f "${OUTPUT_CSV}" ]]; then
     echo ""
