@@ -68,6 +68,15 @@ acquire_lock() {
 }
 
 acquire_lock
+
+# ==================== 模式切换检测（供 setup.sh 调用） ====================
+if [[ -n "${DNSPOD_MODE_SWITCH:-}" ]]; then
+    # 检测到模式切换请求，执行智能处理
+    log_msg "INFO" "检测到模式切换请求: ${DNSPOD_FROM_MODE} → ${DNSPOD_TO_MODE}"
+    handle_mode_switch "$DNSPOD_FROM_MODE" "$DNSPOD_TO_MODE" "$DNSPOD_STRATEGY"
+    exit $?
+fi
+
 LOG_DIR="${ROOT_DIR}/logs/dnspod-dns"
 mkdir -p "${LOG_DIR}"
 LOG_FILE="${LOG_DIR}/dnspod_$(date +%Y%m%d_%H%M%S).log"
@@ -1594,6 +1603,317 @@ main_delete_unified_non_default() {
     log_msg "INFO" "================================================================"
 }
 
+
+# ==================== 记录管理辅助函数（供 setup.sh 调用） ====================
+
+# 检查是否存在 DNS 记录
+check_records_exist() {
+    local subdomain="$1"
+    local domain="$2"
+    
+    local payload="{\"Domain\":\"${domain}\",\"Subdomain\":\"${subdomain}\",\"RecordType\":\"A\",\"Limit\":1}"
+    local response
+    response="$(call_api "DescribeRecordList" "$payload")"
+    
+    local count
+    count="$(echo "$response" | jq '.Response.RecordList | length' 2>/dev/null)"
+    
+    if [[ -z "$count" ]] || [[ "$count" = "null" ]] || [[ "$count" -eq 0 ]]; then
+        return 1  # 不存在
+    else
+        return 0  # 存在
+    fi
+}
+
+# 获取记录数量
+get_record_count() {
+    local subdomain="$1"
+    local domain="$2"
+    
+    local payload="{\"Domain\":\"${domain}\",\"Subdomain\":\"${subdomain}\",\"RecordType\":\"A\",\"Limit\":100}"
+    local response
+    response="$(call_api "DescribeRecordList" "$payload")"
+    
+    local count
+    count="$(echo "$response" | jq '.Response.RecordList | length' 2>/dev/null)"
+    
+    echo "${count:-0}"
+}
+
+# 获取记录详情（JSON 格式）
+get_record_details() {
+    local subdomain="$1"
+    local domain="$2"
+    
+    local payload="{\"Domain\":\"${domain}\",\"Subdomain\":\"${subdomain}\",\"RecordType\":\"A\",\"Limit\":100}"
+    call_api "DescribeRecordList" "$payload"
+}
+
+# 智能处理模式切换时的记录迁移
+# 参数:
+#   $1: from_mode (single/multi)
+#   $2: to_mode (single/multi)
+#   $3: strategy (unified/separate, 仅多线路时需要)
+#   $4: new_subdomain (可选，新的子域名)
+handle_mode_switch() {
+    local from_mode="$1"
+    local to_mode="$2"
+    local strategy="${3:-separate}"
+    local new_subdomain="$4"
+    
+    log_msg "INFO" "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    log_msg "INFO" "开始处理模式切换: ${from_mode} → ${to_mode}"
+    log_msg "INFO" "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    
+    if [[ "$from_mode" == "single" ]] && [[ "$to_mode" == "multi" ]]; then
+        # 单线路 → 多线路
+        handle_single_to_multi "$strategy" "$new_subdomain"
+    elif [[ "$from_mode" == "multi" ]] && [[ "$to_mode" == "single" ]]; then
+        # 多线路 → 单线路
+        handle_multi_to_single "$strategy" "$new_subdomain"
+    else
+        log_msg "ERROR" "不支持的模式切换: ${from_mode} → ${to_mode}"
+        return 1
+    fi
+}
+
+# 单线路 → 多线路
+handle_single_to_multi() {
+    local strategy="$1"
+    local new_subdomain="$2"
+    
+    local old_subdomain
+    old_subdomain=$(jq -r '.dns.sub_domain // empty' "$CONFIG_FILE")
+    local domain
+    domain=$(jq -r '.dns.domain // empty' "$CONFIG_FILE")
+    
+    if [[ -z "$old_subdomain" ]] || [[ -z "$domain" ]]; then
+        log_msg "ERROR" "配置不完整，无法执行模式切换"
+        return 1
+    fi
+    
+    log_msg "INFO" "检测到单线路记录: ${old_subdomain}.${domain}"
+    
+    # 检查是否存在单线路记录
+    if check_records_exist "$old_subdomain" "$domain"; then
+        local record_count
+        record_count=$(get_record_count "$old_subdomain" "$domain")
+        log_msg "INFO" "找到 ${record_count} 条单线路记录"
+        
+        # 询问用户如何处理（交互式环境）
+        if [[ -t 0 ]]; then
+            echo ""
+            echo -e "${YELLOW}请选择如何处理现有记录：${NC}"
+            echo "  1) 删除单线路记录并创建多线路记录（推荐）"
+            echo "  2) 保留单线路记录，仅创建多线路记录"
+            echo "  3) 取消切换"
+            echo ""
+            read -r -p "请选择 (1/2/3, 默认 1): " choice
+            choice=${choice:-1}
+            
+            case "$choice" in
+                1)
+                    # 删除单线路记录
+                    log_msg "INFO" "正在删除单线路记录..."
+                    main_delete
+                    
+                    # 创建多线路记录
+                    log_msg "INFO" "正在创建多线路记录..."
+                    main_multi
+                    ;;
+                2)
+                    # 仅创建多线路记录
+                    log_msg "INFO" "正在创建多线路记录（保留单线路记录）..."
+                    main_multi
+                    log_msg "WARN" "注意: 单线路记录 ${old_subdomain}.${domain} 仍然保留"
+                    ;;
+                3)
+                    log_msg "INFO" "已取消模式切换"
+                    return 1
+                    ;;
+                *)
+                    log_msg "ERROR" "无效的选择"
+                    return 1
+                    ;;
+            esac
+        else
+            # 非交互式环境，默认删除并创建
+            log_msg "INFO" "非交互式环境，自动删除单线路记录并创建多线路记录"
+            main_delete
+            main_multi
+        fi
+    else
+        log_msg "INFO" "未找到单线路记录，直接创建多线路记录"
+        main_multi
+    fi
+}
+
+# 多线路 → 单线路
+handle_multi_to_single() {
+    local strategy="$1"
+    local new_subdomain="$2"
+    
+    local domain
+    domain=$(jq -r '.dns.domain // empty' "$CONFIG_FILE")
+    
+    if [[ -z "$domain" ]]; then
+        log_msg "ERROR" "配置不完整，无法执行模式切换"
+        return 1
+    fi
+    
+    log_msg "INFO" "检测到多线路配置"
+    
+    # 根据策略处理
+    if [[ "$strategy" == "unified" ]]; then
+        local unified_subdomain
+        unified_subdomain=$(jq -r '.dns.sub_domain_unified // "dns"' "$CONFIG_FILE")
+        
+        log_msg "INFO" "统一模式子域名: ${unified_subdomain}.${domain}"
+        
+        # 检查是否存在统一模式记录
+        if check_records_exist "$unified_subdomain" "$domain"; then
+            local record_count
+            record_count=$(get_record_count "$unified_subdomain" "$domain")
+            log_msg "INFO" "找到 ${record_count} 条统一模式记录"
+            
+            if [[ -t 0 ]]; then
+                echo ""
+                echo -e "${YELLOW}请选择如何处理默认线路记录：${NC}"
+                echo "  1) 保留默认线路（推荐）"
+                echo "  2) 使用新的子域名"
+                echo ""
+                read -r -p "请选择 (1/2, 默认 1): " choice
+                choice=${choice:-1}
+                
+                if [[ "$choice" == "2" ]]; then
+                    echo ""
+                    read -r -p "请输入新的子域名 [${unified_subdomain}]: " new_sub
+                    new_sub=${new_sub:-$unified_subdomain}
+                    
+                    # 删除所有统一模式记录
+                    log_msg "INFO" "正在删除所有统一模式记录..."
+                    main_delete_unified "$unified_subdomain"
+                    
+                    # 更新配置
+                    if command -v jq &>/dev/null; then
+                        local temp_file
+                        temp_file=$(mktemp)
+                        jq --arg sd "$new_sub" '.dns.sub_domain = $sd' "$CONFIG_FILE" > "$temp_file"
+                        mv "$temp_file" "$CONFIG_FILE"
+                        chmod 600 "$CONFIG_FILE"
+                    fi
+                    
+                    # 创建单线路记录
+                    log_msg "INFO" "正在创建单线路记录..."
+                    main_single
+                else
+                    # 只删除非默认线路
+                    log_msg "INFO" "正在删除非默认线路记录..."
+                    main_delete_unified_non_default "$unified_subdomain"
+                    
+                    # 使用统一模式的子域名作为单线路子域名
+                    if command -v jq &>/dev/null; then
+                        local temp_file
+                        temp_file=$(mktemp)
+                        jq --arg sd "$unified_subdomain" '.dns.sub_domain = $sd' "$CONFIG_FILE" > "$temp_file"
+                        mv "$temp_file" "$CONFIG_FILE"
+                        chmod 600 "$CONFIG_FILE"
+                    fi
+                    
+                    log_msg "INFO" "单线路将使用子域名: ${unified_subdomain}.${domain}"
+                fi
+            else
+                # 非交互式环境，默认保留默认线路
+                log_msg "INFO" "非交互式环境，保留默认线路记录"
+                main_delete_unified_non_default "$unified_subdomain"
+            fi
+        else
+            log_msg "INFO" "未找到统一模式记录，直接配置单线路"
+        fi
+    else
+        # 分离模式
+        local default_subdomain
+        default_subdomain=$(jq -r '.dns.sub_domains.default // "default"' "$CONFIG_FILE")
+        
+        log_msg "INFO" "分离模式，默认线路子域名: ${default_subdomain}.${domain}"
+        
+        if [[ -t 0 ]]; then
+            echo ""
+            echo -e "${YELLOW}请选择如何处理 DNS 记录：${NC}"
+            echo "  1) 使用默认线路的子域名（推荐）"
+            echo "  2) 使用新的子域名"
+            echo "  3) 取消切换"
+            echo ""
+            read -r -p "请选择 (1/2/3, 默认 1): " choice
+            choice=${choice:-1}
+            
+            case "$choice" in
+                1)
+                    # 删除所有分离模式记录
+                    log_msg "INFO" "正在删除分离模式记录..."
+                    main_delete
+                    
+                    # 使用默认线路子域名
+                    if command -v jq &>/dev/null; then
+                        local temp_file
+                        temp_file=$(mktemp)
+                        jq --arg sd "$default_subdomain" '.dns.sub_domain = $sd' "$CONFIG_FILE" > "$temp_file"
+                        mv "$temp_file" "$CONFIG_FILE"
+                        chmod 600 "$CONFIG_FILE"
+                    fi
+                    
+                    # 创建单线路记录
+                    log_msg "INFO" "正在创建单线路记录..."
+                    main_single
+                    ;;
+                2)
+                    echo ""
+                    read -r -p "请输入新的子域名 [${default_subdomain}]: " new_sub
+                    new_sub=${new_sub:-$default_subdomain}
+                    
+                    # 删除所有分离模式记录
+                    log_msg "INFO" "正在删除分离模式记录..."
+                    main_delete
+                    
+                    # 更新配置
+                    if command -v jq &>/dev/null; then
+                        local temp_file
+                        temp_file=$(mktemp)
+                        jq --arg sd "$new_sub" '.dns.sub_domain = $sd' "$CONFIG_FILE" > "$temp_file"
+                        mv "$temp_file" "$CONFIG_FILE"
+                        chmod 600 "$CONFIG_FILE"
+                    fi
+                    
+                    # 创建单线路记录
+                    log_msg "INFO" "正在创建单线路记录..."
+                    main_single
+                    ;;
+                3)
+                    log_msg "INFO" "已取消模式切换"
+                    return 1
+                    ;;
+                *)
+                    log_msg "ERROR" "无效的选择"
+                    return 1
+                    ;;
+            esac
+        else
+            # 非交互式环境，默认使用默认线路子域名
+            log_msg "INFO" "非交互式环境，使用默认线路子域名"
+            main_delete
+            
+            if command -v jq &>/dev/null; then
+                local temp_file
+                temp_file=$(mktemp)
+                jq --arg sd "$default_subdomain" '.dns.sub_domain = $sd' "$CONFIG_FILE" > "$temp_file"
+                mv "$temp_file" "$CONFIG_FILE"
+                chmod 600 "$CONFIG_FILE"
+            fi
+            
+            main_single
+        fi
+    fi
+}
 
 # 执行主函数
 if [[ "${MODE_TYPE}" = "delete" ]]; then
