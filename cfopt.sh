@@ -428,7 +428,11 @@ download_with_retry() {
         fi
         
         # 使用 curl 进行下载，仅显示进度条
-        if curl -sfL --connect-timeout 10 --max-time 60 --create-dirs -o "${output}" "${url}" 2>/dev/null; then
+        local http_code
+        http_code=$(curl -sfL --connect-timeout 10 --max-time 60 --create-dirs -o "${output}" -w "%{http_code}" "${url}" 2>/dev/null)
+        local curl_exit=$?
+        
+        if [[ ${curl_exit} -eq 0 ]] && [[ "${http_code}" = "200" ]]; then
             # 【增强】多重完整性校验
             
             # 1. 文件非空检查
@@ -446,12 +450,18 @@ download_with_retry() {
                 continue
             fi
             
-            # 3. HTML 错误页检查
+            # 3. HTML 错误页检查（增强版）
             if grep -q "403 Forbidden" "${output}" 2>/dev/null || \
                grep -q "404 Not Found" "${output}" 2>/dev/null || \
-               grep -q "<html" "${output}" 2>/dev/null || \
-               grep -q "<!DOCTYPE" "${output}" 2>/dev/null; then
-                echo -e "${YELLOW}[WARN] 下载到 HTML 错误页，正在重试...${NC}"
+               grep -qi "<html" "${output}" 2>/dev/null || \
+               grep -qi "<!DOCTYPE" "${output}" 2>/dev/null || \
+               grep -qi "rate limit" "${output}" 2>/dev/null || \
+               grep -qi "error" "${output}" 2>/dev/null; then
+                echo -e "${YELLOW}[WARN] 下载到 HTML 错误页或受限内容，正在重试...${NC}"
+                # 显示前50个字符帮助调试
+                local preview
+                preview=$(head -c 50 "${output}" 2>/dev/null | tr -d '\n')
+                echo -e "${GRAY}[DEBUG] 响应预览: ${preview}...${NC}"
                 continue
             fi
             
@@ -482,15 +492,22 @@ download_with_retry() {
                 return 0
             fi
         else
-            local curl_exit_code=$?
-            echo -e "${YELLOW}[WARN] 下载失败 (退出码: ${curl_exit_code})，正在重试...${NC}"
+            local curl_exit_code=${curl_exit}
+            echo -e "${YELLOW}[WARN] 下载失败 (HTTP ${http_code:-N/A}, 退出码: ${curl_exit_code})，正在重试...${NC}"
             if [[ "${curl_exit_code}" -eq 23 ]]; then
                 echo -e "${RED}[ERROR] 写入错误：请检查磁盘空间或目录权限${NC}"
+            elif [[ "${http_code}" = "403" ]]; then
+                echo -e "${YELLOW}[INFO] GitHub 速率限制，请稍后重试${NC}"
+            elif [[ "${http_code}" = "404" ]]; then
+                echo -e "${RED}[ERROR] 文件不存在，请检查 version.txt 配置${NC}"
             fi
         fi
         retry_count=$((retry_count + 1))
         if [[ "${retry_count}" -lt "${max_retries}" ]]; then
-            sleep 2
+            # 指数退避：第1次重试2秒，第2次重试4秒
+            local wait_time=$((2 ** retry_count))
+            echo -e "${CYAN}[INFO] 等待 ${wait_time} 秒后重试...${NC}"
+            sleep ${wait_time}
         fi
     done
     
