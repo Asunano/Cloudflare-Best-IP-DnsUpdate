@@ -770,12 +770,12 @@ system_health_check() {
             echo ""
             log_info "已取消修复"
             echo ""
-            read -r -p "按回车键返回主菜单..."
+            read -r -p "按回车键返回主菜单..." || true
         fi
     else
         echo -e " ${GREEN}[OK] 所有检测项均正常${NC}"
         echo ""
-        read -r -p "按回车键返回主菜单..."
+        read -r -p "按回车键返回主菜单..." || true
     fi
 }
 
