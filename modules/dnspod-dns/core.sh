@@ -69,14 +69,6 @@ acquire_lock() {
 
 acquire_lock
 
-# ==================== 模式切换检测（供 setup.sh 调用） ====================
-if [[ -n "${DNSPOD_MODE_SWITCH:-}" ]]; then
-    # 检测到模式切换请求，执行智能处理
-    log_msg "INFO" "检测到模式切换请求: ${DNSPOD_FROM_MODE} → ${DNSPOD_TO_MODE}"
-    handle_mode_switch "$DNSPOD_FROM_MODE" "$DNSPOD_TO_MODE" "$DNSPOD_STRATEGY"
-    exit $?
-fi
-
 LOG_DIR="${ROOT_DIR}/logs/dnspod-dns"
 mkdir -p "${LOG_DIR}"
 LOG_FILE="${LOG_DIR}/dnspod_$(date +%Y%m%d_%H%M%S).log"
@@ -92,6 +84,14 @@ log_msg() {
     timestamp="$(date +"%Y-%m-%d %H:%M:%S")"
     echo -e "[${timestamp}] [${level}] ${message}" | tee -a "${LOG_FILE}"
 }
+
+# ==================== 模式切换检测（供 setup.sh 调用） ====================
+if [[ -n "${DNSPOD_MODE_SWITCH:-}" ]]; then
+    # 检测到模式切换请求，执行智能处理
+    log_msg "INFO" "检测到模式切换请求: ${DNSPOD_FROM_MODE} → ${DNSPOD_TO_MODE}"
+    handle_mode_switch "$DNSPOD_FROM_MODE" "$DNSPOD_TO_MODE" "$DNSPOD_STRATEGY"
+    exit $?
+fi
 
 if [[ ! -f "${CONFIG_FILE}" ]]; then
     log_msg "ERROR" "找不到配置文件 ${CONFIG_FILE}"
@@ -440,52 +440,8 @@ get_cf_ip_from_file_by_line() {
             ;;
     esac
     
-    if [[ ! -f "${ip_file}" ]]; then
-        log_msg "ERROR" "IP 文件不存在: ${ip_file}"
-        return 1
-    fi
-    
-    # 读取文件内容,支持两种格式:
-    # 1. 每行一个 IP
-    # 2. 逗号分隔的 IP
-    local content
-    content="$(grep -v '^#' "${ip_file}" | sed 's/#.*//g' | tr '\n' ',' | sed 's/,$//' | sed 's/^,//')"
-    
-    if [[ -z "${content}" ]]; then
-        log_msg "WARN" "IP 文件为空: ${ip_file}"
-        return 1
-    fi
-    
-    # 限制 IP 数量
-    if [[ "${MAX_IPS_PER_RECORD}" -gt 0 ]]; then
-        # 将 IP 转换为数组
-        IFS=',' read -ra ip_array <<< "${content}"
-        local total_ips=${#ip_array[@]}
-        
-        # 如果超出限制,只取前 N 个
-        if [[ "${total_ips}" -gt "${MAX_IPS_PER_RECORD}" ]]; then
-            log_msg "WARN" "${line_name}线路 IP 文件包含 ${total_ips} 个 IP,超出限制 ${MAX_IPS_PER_RECORD} 个"
-            log_msg "INFO" "已自动截取前 ${MAX_IPS_PER_RECORD} 个 IP (避免超出套餐限制)"
-            
-            # 取前 N 个 IP
-            local limited_ips=""
-            for ((i=0; i<MAX_IPS_PER_RECORD && i<total_ips; i++)); do
-                if [[ -z "${limited_ips}" ]]; then
-                    limited_ips="${ip_array[$i]}"
-                else
-                    limited_ips="${limited_ips},${ip_array[$i]}"
-                fi
-            done
-            echo "${limited_ips}"
-        else
-            echo "${content}"
-        fi
-    else
-        # 不限制
-        echo "${content}"
-    fi
-    
-    return 0
+    # 调用通用 IP 读取函数
+    read_ips_from_file "$ip_file" "$MAX_IPS_PER_RECORD"
 }
 
 # 获取指定线路的 DNS 记录
@@ -713,47 +669,8 @@ get_cf_ip_from_file() {
         return 1
     fi
     
-    # 读取文件内容,支持两种格式:
-    # 1. 每行一个 IP
-    # 2. 逗号分隔的 IP
-    local content
-    content="$(grep -v '^#' "${IP_FILE}" | sed 's/#.*//g' | tr '\n' ',' | sed 's/,$//' | sed 's/^,//')"
-    
-    if [[ -z "${content}" ]]; then
-        log_msg "WARN" "IP 文件为空: ${IP_FILE}"
-        return 1
-    fi
-    
-    # 限制 IP 数量
-    if [[ "${MAX_IPS_PER_RECORD}" -gt 0 ]]; then
-        # 将 IP 转换为数组
-        IFS=',' read -ra ip_array <<< "${content}"
-        local total_ips=${#ip_array[@]}
-        
-        # 如果超出限制,只取前 N 个
-        if [[ "${total_ips}" -gt "${MAX_IPS_PER_RECORD}" ]]; then
-            log_msg "WARN" "IP 文件包含 ${total_ips} 个 IP,超出限制 ${MAX_IPS_PER_RECORD} 个"
-            log_msg "INFO" "已自动截取前 ${MAX_IPS_PER_RECORD} 个 IP (避免超出套餐限制)"
-            
-            # 取前 N 个 IP
-            local limited_ips=""
-            for ((i=0; i<MAX_IPS_PER_RECORD && i<total_ips; i++)); do
-                if [[ -z "${limited_ips}" ]]; then
-                    limited_ips="${ip_array[$i]}"
-                else
-                    limited_ips="${limited_ips},${ip_array[$i]}"
-                fi
-            done
-            echo "${limited_ips}"
-        else
-            echo "${content}"
-        fi
-    else
-        # 不限制
-        echo "${content}"
-    fi
-    
-    return 0
+    # 调用通用 IP 读取函数
+    read_ips_from_file "$IP_FILE" "$MAX_IPS_PER_RECORD"
 }
 
 # 单线路模式主函数
@@ -1606,6 +1523,84 @@ main_delete_unified_non_default() {
 
 # ==================== 记录管理辅助函数（供 setup.sh 调用） ====================
 
+# 更新配置文件字段（通用函数）
+update_config_field() {
+    local field_path="$1"  # jq 路径，如 .dns.sub_domain
+    local new_value="$2"
+    
+    if ! command -v jq &>/dev/null; then
+        log_msg "ERROR" "jq 未安装，无法更新配置"
+        return 1
+    fi
+    
+    local temp_file
+    temp_file=$(mktemp)
+    
+    if jq --arg val "$new_value" "${field_path} = \$val" "$CONFIG_FILE" > "$temp_file" 2>/dev/null; then
+        mv "$temp_file" "$CONFIG_FILE"
+        chmod 600 "$CONFIG_FILE"
+        log_msg "INFO" "配置已更新: ${field_path} = ${new_value}"
+        return 0
+    else
+        rm -f "$temp_file"
+        log_msg "ERROR" "更新配置失败: ${field_path}"
+        return 1
+    fi
+}
+
+# 通用的 IP 文件读取函数（支持单线路和多线路）
+read_ips_from_file() {
+    local ip_file="$1"
+    local max_ips="${2:-0}"  # 0 表示不限制
+    
+    if [[ ! -f "${ip_file}" ]]; then
+        log_msg "ERROR" "IP 文件不存在: ${ip_file}"
+        return 1
+    fi
+    
+    # 读取文件内容，支持两种格式:
+    # 1. 每行一个 IP
+    # 2. 逗号分隔的 IP
+    local content
+    content="$(grep -v '^#' "${ip_file}" | sed 's/#.*//g' | tr '\n' ',' | sed 's/,$//' | sed 's/^,//')"
+    
+    if [[ -z "${content}" ]]; then
+        log_msg "WARN" "IP 文件为空: ${ip_file}"
+        return 1
+    fi
+    
+    # 限制 IP 数量
+    if [[ "${max_ips}" -gt 0 ]]; then
+        # 将 IP 转换为数组
+        IFS=',' read -ra ip_array <<< "${content}"
+        local total_ips=${#ip_array[@]}
+        
+        # 如果超出限制，只取前 N 个
+        if [[ "${total_ips}" -gt "${max_ips}" ]]; then
+            log_msg "WARN" "IP 文件包含 ${total_ips} 个 IP，超出限制 ${max_ips} 个"
+            log_msg "INFO" "已自动截取前 ${max_ips} 个 IP (避免超出套餐限制)"
+            
+            # 取前 N 个 IP
+            local limited_ips=""
+            for ((i=0; i<max_ips && i<total_ips; i++)); do
+                if [[ -z "${limited_ips}" ]]; then
+                    limited_ips="${ip_array[$i]}"
+                else
+                    limited_ips="${limited_ips},${ip_array[$i]}"
+                fi
+            done
+            echo "${limited_ips}"
+        else
+            echo "${content}"
+        fi
+    else
+        # 不限制
+        echo "${content}"
+    fi
+    
+    return 0
+}
+
 # 检查是否存在 DNS 记录
 check_records_exist() {
     local subdomain="$1"
@@ -1795,13 +1790,8 @@ handle_multi_to_single() {
                     main_delete_unified "$unified_subdomain"
                     
                     # 更新配置
-                    if command -v jq &>/dev/null; then
-                        local temp_file
-                        temp_file=$(mktemp)
-                        jq --arg sd "$new_sub" '.dns.sub_domain = $sd' "$CONFIG_FILE" > "$temp_file"
-                        mv "$temp_file" "$CONFIG_FILE"
-                        chmod 600 "$CONFIG_FILE"
-                    fi
+                    # 更新配置
+                    update_config_field ".dns.sub_domain" "$new_sub"
                     
                     # 创建单线路记录
                     log_msg "INFO" "正在创建单线路记录..."
@@ -1812,13 +1802,8 @@ handle_multi_to_single() {
                     main_delete_unified_non_default "$unified_subdomain"
                     
                     # 使用统一模式的子域名作为单线路子域名
-                    if command -v jq &>/dev/null; then
-                        local temp_file
-                        temp_file=$(mktemp)
-                        jq --arg sd "$unified_subdomain" '.dns.sub_domain = $sd' "$CONFIG_FILE" > "$temp_file"
-                        mv "$temp_file" "$CONFIG_FILE"
-                        chmod 600 "$CONFIG_FILE"
-                    fi
+                    # 更新配置
+                    update_config_field ".dns.sub_domain" "$unified_subdomain"
                     
                     log_msg "INFO" "单线路将使用子域名: ${unified_subdomain}.${domain}"
                 fi
@@ -1854,13 +1839,8 @@ handle_multi_to_single() {
                     main_delete
                     
                     # 使用默认线路子域名
-                    if command -v jq &>/dev/null; then
-                        local temp_file
-                        temp_file=$(mktemp)
-                        jq --arg sd "$default_subdomain" '.dns.sub_domain = $sd' "$CONFIG_FILE" > "$temp_file"
-                        mv "$temp_file" "$CONFIG_FILE"
-                        chmod 600 "$CONFIG_FILE"
-                    fi
+                    # 更新配置
+                    update_config_field ".dns.sub_domain" "$default_subdomain"
                     
                     # 创建单线路记录
                     log_msg "INFO" "正在创建单线路记录..."
@@ -1876,13 +1856,8 @@ handle_multi_to_single() {
                     main_delete
                     
                     # 更新配置
-                    if command -v jq &>/dev/null; then
-                        local temp_file
-                        temp_file=$(mktemp)
-                        jq --arg sd "$new_sub" '.dns.sub_domain = $sd' "$CONFIG_FILE" > "$temp_file"
-                        mv "$temp_file" "$CONFIG_FILE"
-                        chmod 600 "$CONFIG_FILE"
-                    fi
+                    # 更新配置
+                    update_config_field ".dns.sub_domain" "$new_sub"
                     
                     # 创建单线路记录
                     log_msg "INFO" "正在创建单线路记录..."
@@ -1902,13 +1877,8 @@ handle_multi_to_single() {
             log_msg "INFO" "非交互式环境，使用默认线路子域名"
             main_delete
             
-            if command -v jq &>/dev/null; then
-                local temp_file
-                temp_file=$(mktemp)
-                jq --arg sd "$default_subdomain" '.dns.sub_domain = $sd' "$CONFIG_FILE" > "$temp_file"
-                mv "$temp_file" "$CONFIG_FILE"
-                chmod 600 "$CONFIG_FILE"
-            fi
+            # 更新配置
+            update_config_field ".dns.sub_domain" "$default_subdomain"
             
             main_single
         fi
