@@ -502,7 +502,10 @@ configure_simple() {
         configure_multi_line_params
     fi
     
-    generate_config_simple
+    if ! generate_config_simple; then
+        echo -e "${RED}[ERROR] 配置生成失败，请重试${NC}"
+        return 1
+    fi
 }
 
 # ====================== 【函数：高级配置】 ======================
@@ -592,7 +595,7 @@ generate_config_simple() {
     local temp_file
     temp_file=$(mktemp)
     
-    jq -n \
+    if ! jq -n \
         --arg cfst_dir "${CFST_DIR}" \
         --argjson take_ip_num "${TAKE_IP_NUM}" \
         --argjson threads "${CFST_THREADS}" \
@@ -638,7 +641,18 @@ generate_config_simple() {
                 "output_dir": $output_dir,
                 "log_dir": $log_dir
             }
-        }' > "$temp_file" && mv "$temp_file" "$CONFIG_FILE"
+        }' > "$temp_file"; then
+        rm -f "$temp_file" 2>/dev/null
+        echo -e "${RED}[ERROR] 配置文件生成失败！${NC}"
+        echo -e "${YELLOW}[提示] 请检查 jq 是否已安装: sudo apt-get install jq${NC}"
+        return 1
+    fi
+    
+    if ! mv "$temp_file" "$CONFIG_FILE" 2>/dev/null; then
+        rm -f "$temp_file" 2>/dev/null
+        echo -e "${RED}[ERROR] 配置文件保存失败！${NC}"
+        return 1
+    fi
     
     chmod 600 "$CONFIG_FILE"
     
@@ -654,6 +668,7 @@ generate_config_simple() {
     echo ""
     echo -e "${GRAY}配置文件已保存到：${CONFIG_FILE}${NC}"
     echo -e "${GRAY}下次执行测速时将自动使用这些配置${NC}"
+    return 0
 }
 
 # ====================== 【函数：多线路参数配置】 ======================
