@@ -1629,6 +1629,79 @@ main() {
     # 配置文件有效性检测
     check_config_valid
     
+    # 检查是否有多个域名配置，如果有则先让用户选择
+    local config_dir="${ROOT_DIR}/conf/cf-dns"
+    local config_files=()
+    
+    if [[ -d "$config_dir" ]]; then
+        while IFS= read -r -d '' config_file; do
+            config_files+=("$config_file")
+        done < <(find "$config_dir" -name "*.json" -type f -print0 2>/dev/null)
+    fi
+    
+    # 如果有多个域名配置，显示域名选择菜单
+    if [[ ${#config_files[@]} -gt 1 ]]; then
+        clear
+        echo -e "${CYAN}+------------------------------------------------------------+"
+        echo -e " ${YELLOW}Cloudflare DNS 更新器 - 选择域名${NC}"
+        echo -e "${CYAN}+------------------------------------------------------------+"
+        echo ""
+        
+        echo -e "${CYAN}已配置的域名列表：${NC}"
+        echo ""
+        local index=1
+        local domain_array=()
+        for config_file in "${config_files[@]}"; do
+            local domain_name
+            domain_name=$(basename "$config_file" .json)
+            
+            # 读取配置信息
+            local record_name enabled
+            record_name=$(jq -r '.dns.record_name // "@"' "$config_file" 2>/dev/null)
+            enabled=$(jq -r '.enabled // false' "$config_file" 2>/dev/null)
+            
+            # 构建完整域名显示
+            local full_domain
+            if [[ "$record_name" == "@" ]]; then
+                full_domain="$domain_name"
+            else
+                full_domain="${record_name}.${domain_name}"
+            fi
+            
+            # 显示启用状态
+            local status_label
+            if [[ "$enabled" == "true" ]]; then
+                status_label="${GREEN}[启用]${NC}"
+            else
+                status_label="${RED}[禁用]${NC}"
+            fi
+            
+            echo -e " ${GREEN}${index})${NC} ${full_domain} ${status_label}"
+            domain_array+=("$config_file")
+            ((index++))
+        done
+        
+        echo ""
+        echo -e " ${RED}0)${NC} 退出程序"
+        echo ""
+        
+        read -r -p "请选择要操作的域名 [0-$((index-1))]: " choice
+        
+        if [[ "$choice" == "0" ]]; then
+            exit 0
+        fi
+        
+        if [[ "$choice" =~ ^[0-9]+$ ]] && [[ "$choice" -ge 1 ]] && [[ "$choice" -lt "$index" ]]; then
+            # 设置选中的配置文件
+            CONFIG_FILE="${domain_array[$((choice-1))]}"
+        else
+            echo -e "${RED}[ERROR] 无效的选择${NC}"
+            read -r -p "按回车键退出..."
+            exit 1
+        fi
+    fi
+    
+    # 进入主菜单循环
     while true; do
         # 每次显示菜单前重新检测配置文件（支持 quick-deploy 生成的配置）
         auto_detect_config_file || true
