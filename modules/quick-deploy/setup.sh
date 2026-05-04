@@ -520,8 +520,10 @@ main() {
     echo -e "      ${CYAN}- 适合使用 DNSPod 管理 DNS 的用户${NC}"
     echo -e "      ${CYAN}- 支持单线路和多线路模式${NC}"
     echo ""
+    echo -e " ${RED}➤${NC} 0. 返回主菜单"
+    echo ""
     
-    read -r -p "请选择 [1-2, 默认 1]: " dns_choice
+    read -r -p "请选择 [0-2, 默认 1]: " dns_choice
     dns_choice=${dns_choice:-1}
     
     case "$dns_choice" in
@@ -530,6 +532,10 @@ main() {
             ;;
         2)
             choose_dnspod_mode
+            ;;
+        0)
+            # 返回主菜单
+            exit 0
             ;;
         *)
             echo -e "${RED}[ERROR] 无效的选择${NC}"
@@ -685,8 +691,10 @@ choose_dnspod_mode() {
     echo -e "      ${CYAN}- 覆盖三大运营商，访问更快${NC}"
     echo -e "      ${CYAN}- 不同运营商使用不同 IP${NC}"
     echo ""
+    echo -e " ${RED}➤${NC} 0. 返回上一级"
+    echo ""
     
-    read -r -p "请选择 [1-2, 默认 1]: " mode_choice
+    read -r -p "请选择 [0-2, 默认 1]: " mode_choice
     mode_choice=${mode_choice:-1}
     
     case "$mode_choice" in
@@ -695,6 +703,10 @@ choose_dnspod_mode() {
             ;;
         2)
             deploy_dnspod_multi
+            ;;
+        0)
+            # 返回上一级（DNS 服务商选择）
+            choose_dns_provider
             ;;
         *)
             echo -e "${RED}[ERROR] 无效的选择${NC}"
