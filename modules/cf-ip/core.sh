@@ -13,6 +13,7 @@ RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 CYAN='\033[0;36m'
+GRAY='\033[0;90m'
 NC='\033[0m'
 
 # ==================== 入口权限校验 ====================
@@ -196,14 +197,16 @@ if [[ "${CFST_DISABLE_DOWNLOAD}" = "true" ]]; then CMD+=("-dd"); fi
 if [[ "${CFST_ALL_IP}" = "true" ]]; then CMD+=("-allip"); fi
 CMD+=("-o" "${OUTPUT_CSV}")
 
-# 执行并记录日志
+# 执行并记录日志（静默模式，不显示进度条）
 if [[ "${ENABLE_LOG}" = "true" ]]; then
     LOG_FILE="${LOG_DIR}/cfst_$(date +%Y%m%d_%H%M%S).log"
     echo -e "${CYAN}[INFO] 日志已开启: ${LOG_FILE}${NC}"
     # 切换到 cfst 所在目录执行，避免 cfst 寻找当前目录下的 ip.txt
-    cd "$(dirname "$CFST_BIN")" && "${CMD[@]}" 2>&1 | tee "${LOG_FILE}"
+    # 使用 > 重定向而不是 tee，隐藏所有输出到屏幕
+    cd "$(dirname "$CFST_BIN")" && "${CMD[@]}" > "${LOG_FILE}" 2>&1
 else
-    cd "$(dirname "$CFST_BIN")" && "${CMD[@]}"
+    # 即使不开启日志，也重定向输出以避免进度刷屏
+    cd "$(dirname "$CFST_BIN")" && "${CMD[@]}" > /dev/null 2>&1
 fi
 
 EXIT_CODE=$?
@@ -212,11 +215,28 @@ if [[ "${EXIT_CODE}" -eq 0 ]] && [[ -f "${OUTPUT_CSV}" ]]; then
     echo ""
     echo -e "${GREEN}[OK] 测速完成！结果已保存至: ${OUTPUT_CSV}${NC}"
     
-    # 简单展示前 3 个结果
-    echo -e "\n${CYAN}--- 最优 IP 预览 ---${NC}"
-    head -n 4 "${OUTPUT_CSV}" | tail -n 3
-    echo -e "${CYAN}--------------------${NC}"
+    # 展示前 3 个最优 IP（简洁版）
+    total_ips=$(wc -l < "${OUTPUT_CSV}")
+    total_ips=$((total_ips - 1))  # 减去表头
+    
+    echo -e "\n${CYAN}+------------------------------------------------------------+"
+    echo -e " ${YELLOW}测速结果摘要${NC}"
+    echo -e "${CYAN}+------------------------------------------------------------+"
+    echo -e "  ${CYAN}总测试 IP 数:${NC} ${total_ips}"
+    echo -e "  ${CYAN}可用 IP 数:${NC}   $((total_ips > TAKE_IP_NUM ? TAKE_IP_NUM : total_ips))"
+    echo -e "  ${CYAN}保留策略:${NC}   取前 ${TAKE_IP_NUM} 个最优 IP"
+    echo ""
+    echo -e " ${GREEN}Top 3 最优 IP:${NC}"
+    head -n 4 "${OUTPUT_CSV}" | tail -n 3 | while IFS=',' read -r ip sent recv loss delay speed region; do
+        echo -e "  ${GREEN}➤${NC} ${ip}  (延迟: ${delay}ms, 地区: ${region})"
+    done
+    echo -e "${CYAN}+------------------------------------------------------------+"
+    echo ""
+    echo -e "${GRAY}完整结果请查看: ${OUTPUT_CSV}${NC}"
 else
     echo -e "${RED}[ERROR] 测速程序执行失败 (Exit Code: ${EXIT_CODE})${NC}"
+    if [[ "${ENABLE_LOG}" = "true" ]] && [[ -f "${LOG_FILE:-}" ]]; then
+        echo -e "${YELLOW}[提示] 详细错误信息请查看: ${LOG_FILE}${NC}"
+    fi
     exit 1
 fi
