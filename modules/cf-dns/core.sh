@@ -480,6 +480,9 @@ get_cf_ip_from_file() {
 }
 
 # 获取 DNS 记录
+# 返回值格式：
+#   成功: 第一行是记录数量，后续每行是 "record_id|content"
+#   失败: 第一行是 "ERROR"，第二行是错误信息
 get_dns_records() {
     local name="$1"
     
@@ -516,16 +519,17 @@ get_dns_records() {
     
     # 检查是否成功
     if ! echo "$response" | jq -r '.success' 2>/dev/null | grep -q 'true'; then
-        # API 请求失败，输出详细错误信息到 stderr
+        # API 请求失败，返回 ERROR 标记和错误信息
         local error_msg
         error_msg=$(echo "$response" | jq -r '.errors[0].message' 2>/dev/null)
         if [ -n "$error_msg" ] && [ "$error_msg" != "null" ]; then
-            echo "  [ERROR] API 请求失败: ${error_msg}" >&2
+            echo "ERROR"
+            echo "API 请求失败: ${error_msg}"
         else
-            echo "  [ERROR] API 请求失败，响应: ${response:0:200}" >&2
+            echo "ERROR"
+            echo "API 请求失败，响应: ${response:0:200}"
         fi
-        echo "0"
-        return
+        return 1
     fi
     
     # 使用 jq 提取记录数量
@@ -534,7 +538,7 @@ get_dns_records() {
     
     if [ -z "$count" ] || [ "$count" = "null" ] || [ "$count" -eq 0 ]; then
         echo "0"
-        return
+        return 0
     fi
     
     # 输出结果
@@ -772,24 +776,26 @@ main() {
     log "${BLUE}[2/3]${NC} 查询 DNS 记录: $(build_full_domain "$CF_DNS_NAME" "$CF_DOMAIN")"
     
     local records_output
-    records_output=$(get_dns_records "$CF_DNS_NAME" 2>&1)
-    local record_count
-    record_count=$(echo "$records_output" | head -n 1)
+    records_output=$(get_dns_records "$CF_DNS_NAME")
+    local first_line
+    first_line=$(echo "$records_output" | head -n 1)
     
-    # 检查是否有错误信息（从 stderr 捕获）
-    if echo "$records_output" | grep -q '\[ERROR\]'; then
+    # 检查是否 API 请求失败
+    if [ "$first_line" = "ERROR" ]; then
+        local error_detail
+        error_detail=$(echo "$records_output" | sed -n '2p')
         log "  ${RED}[ERROR]${NC} DNS 记录查询失败"
-        echo "$records_output" | grep '\[ERROR\]' | while IFS= read -r line; do
-            log "  ${RED}[详情]${NC} $line"
-        done
+        log "  ${RED}[详情]${NC} $error_detail"
         exit 1
     fi
     
     # 验证 record_count 是有效数字
-    if ! [[ "$record_count" =~ ^[0-9]+$ ]]; then
-        log "${RED}[ERROR]: 获取 DNS 记录失败"
+    if ! [[ "$first_line" =~ ^[0-9]+$ ]]; then
+        log "${RED}[ERROR]: 获取 DNS 记录失败 (无效响应: ${first_line})"
         exit 1
     fi
+    
+    local record_count="$first_line"
     
     local -a record_ids=()
     local -a current_values=()
