@@ -276,10 +276,9 @@ while kill -0 "${CFST_PID}" 2>/dev/null; do
             available_count=$((current_lines - 1))  # 减去表头
             
             # 检测是否进入第二阶段（下载测速）
-            if [[ "${available_count}" -gt "${last_line_count}" ]] && [[ "${stage}" = "ping" ]]; then
-                # 如果 IP 数量稳定了一段时间，可能进入了下载阶段
-                # 通过检查日志文件判断
-                if [[ -f "${LOG_FILE}" ]] && grep -q "开始下载测速" "${LOG_FILE}" 2>/dev/null; then
+            if [[ "${stage}" = "ping" ]] && [[ -f "${LOG_FILE}" ]]; then
+                # 通过检查日志文件判断是否开始下载测速
+                if grep -q "开始下载测速" "${LOG_FILE}" 2>/dev/null; then
                     stage="download"
                     echo -e "\r${CYAN}  [进度] 延迟测速完成，正在进行下载测速...          ${NC}"
                     echo -e "${GRAY}  第二阶段: 下载速度测试${NC}"
