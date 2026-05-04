@@ -1119,6 +1119,7 @@ while true; do
         5) view_logs ;;
         0) 
             # 退出子菜单，返回 cfopt 主菜单
+            echo -e "${CYAN}[INFO] 正在返回主菜单...${NC}"
             break
             ;;
         *)
