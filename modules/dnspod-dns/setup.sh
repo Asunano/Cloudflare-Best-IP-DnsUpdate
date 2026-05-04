@@ -88,6 +88,59 @@ json_get() {
     fi
 }
 
+# ==================== 通用辅助函数（重构优化） ====================
+
+# 触发模式切换（统一调用 core.sh）
+# 用法: trigger_mode_switch "from_mode" "to_mode" "strategy"
+# 返回: 0=成功, 非0=失败
+trigger_mode_switch() {
+    local from_mode="$1"
+    local to_mode="$2"
+    local strategy="$3"
+    
+    # 设置环境变量触发 core.sh 智能处理
+    export DNSPOD_MODE_SWITCH=1
+    export DNSPOD_FROM_MODE="$from_mode"
+    export DNSPOD_TO_MODE="$to_mode"
+    export DNSPOD_STRATEGY="$strategy"
+    
+    # 调用 core.sh
+    bash "$(dirname "$0")/core.sh"
+    local result=$?
+    
+    # 清理环境变量
+    unset DNSPOD_MODE_SWITCH DNSPOD_FROM_MODE DNSPOD_TO_MODE DNSPOD_STRATEGY
+    
+    # 返回结果
+    return $result
+}
+
+# 提示并验证子域名输入
+# 用法: prompt_and_validate_subdomain "线路名称" "默认值" "配置路径"
+# 返回: 通过 stdout 返回验证后的子域名，失败返回空字符串
+prompt_and_validate_subdomain() {
+    local line_name="$1"
+    local default_value="$2"
+    local config_path="$3"
+    
+    read -r -p "${line_name}子域名 [${default_value}]: " subdomain
+    subdomain=${subdomain:-$default_value}
+    
+    # 验证子域名格式（允许字母、数字、连字符、@符号）
+    if ! [[ "$subdomain" =~ ^[a-zA-Z0-9\-@]+$ ]]; then
+        echo -e "${RED}[ERROR] 无效的子域名格式: ${subdomain}"
+        echo ""
+        return 1
+    fi
+    
+    # 更新配置
+    update_config_field "$config_path" "$subdomain"
+    
+    # 返回验证后的子域名
+    echo "$subdomain"
+    return 0
+}
+
 # ==================== 菜单显示函数 ====================
 
 # 显示主配置菜单
