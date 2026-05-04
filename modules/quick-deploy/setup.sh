@@ -955,11 +955,21 @@ deploy_cloudflare_dns() {
     show_header
     echo -e " ${GREEN}[OK] 部署完成！${NC}"
     echo ""
+    
+    # 构建完整域名显示
+    local full_domain
+    if [[ "$record_name" == "@" ]]; then
+        full_domain="$domain"
+    else
+        full_domain="${record_name}.${domain}"
+    fi
+    
     echo -e " ${CYAN}您的配置摘要：${NC}"
     echo -e "   • 工作模式: 单线路"
-    echo -e "   • 域名: ${domain}"
+    echo -e "   • 根域名: ${domain}"
+    echo -e "   • 主机记录: ${record_name}"
+    echo -e "   • 完整域名: ${full_domain}"
     echo -e "   • DNS 服务: Cloudflare DNS"
-    echo -e "   • DNS 记录: ${domain}"
     echo -e "   • 测速节点: ${recommended_colo}"
     echo ""
     echo -e " ${GRAY}后续操作：${NC}"
@@ -1120,11 +1130,21 @@ deploy_dnspod_single() {
     show_header
     echo -e " ${GREEN}[OK] 部署完成！${NC}"
     echo ""
+    
+    # 构建完整域名显示
+    local full_domain
+    if [[ "$record_name" == "@" ]]; then
+        full_domain="$domain"
+    else
+        full_domain="${record_name}.${domain}"
+    fi
+    
     echo -e " ${CYAN}您的配置摘要：${NC}"
     echo -e "   • 工作模式: 单线路"
-    echo -e "   • 域名: ${domain}"
+    echo -e "   • 根域名: ${domain}"
+    echo -e "   • 主机记录: ${record_name}"
+    echo -e "   • 完整域名: ${full_domain}"
     echo -e "   • DNS 服务: DNSPod DNS"
-    echo -e "   • DNS 记录: ${domain}"
     echo -e "   • 测速节点: ${recommended_colo}"
     echo ""
     echo -e " ${GRAY}后续操作：${NC}"
@@ -1257,7 +1277,7 @@ deploy_dnspod_multi() {
     echo ""
     echo -e " ${CYAN}您的配置摘要：${NC}"
     echo -e "   • 工作模式: 多线路"
-    echo -e "   • 域名: ${domain}"
+    echo -e "   • 根域名: ${domain}"
     echo -e "   • DNS 服务: DNSPod DNS"
     echo -e "   • DNS 记录:"
     echo -e "     - ${domain} (默认)"
