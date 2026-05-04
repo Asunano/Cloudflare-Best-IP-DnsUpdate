@@ -303,17 +303,17 @@ show_main_menu() {
     fi
     
     echo -e "${CYAN}+------------------------------------------------------------+"
-    echo -e " ${GREEN}[OK] 1. 修改测速配置     ${CYAN}- 调整地区、线程及筛选策略"
-    echo -e " ${GREEN}[OK] 2. 查看当前配置     ${CYAN}- 浏览 cf-ip.json 内容"
+    echo -e " ${GREEN}➤${NC} 1. 修改测速配置     ${CYAN}- 调整地区、线程及筛选策略${NC}"
+    echo -e " ${GREEN}➤${NC} 2. 查看当前配置     ${CYAN}- 浏览 cf-ip.json 内容${NC}"
     if [[ -f "${CFST_BIN}" ]]; then
-        echo -e " ${GREEN}[OK] 3. 立即执行测速     ${CYAN}- 手动触发一次 IP 优选"
+        echo -e " ${GREEN}➤${NC} 3. 立即执行测速     ${CYAN}- 手动触发一次 IP 优选${NC}"
     else
-        echo -e " ${YELLOW}[WARN] 3. 下载测速程序   ${CYAN}- 自动下载 cfst (必需)"
+        echo -e " ${YELLOW}➤${NC} 3. 下载测速程序   ${CYAN}- 自动下载 cfst (必需)${NC}"
     fi
-    echo -e " ${GREEN}[OK] 4. 管理定时任务     ${CYAN}- 设置自动测速 Cron 计划"
-    echo -e " ${GREEN}[OK] 5. 查看运行日志     ${CYAN}- 追踪测速结果与错误信息"
+    echo -e " ${GREEN}➤${NC} 4. 管理定时任务     ${CYAN}- 设置自动测速 Cron 计划${NC}"
+    echo -e " ${GREEN}➤${NC} 5. 查看运行日志     ${CYAN}- 追踪测速结果与错误信息${NC}"
     echo ""
-    echo -e " ${RED}[BACK] 0. 返回主菜单"
+    echo -e " ${RED}➤${NC} 0. 返回主菜单"
     echo -e "${CYAN}+------------------------------------------------------------+"
     echo ""
 }
