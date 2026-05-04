@@ -1119,9 +1119,13 @@ uninstall_cfopt() {
     echo ""
     echo "此操作将永久删除以下内容："
     echo "  1. 安装目录: ${INSTALL_DIR}"
+    echo "     - modules/ (所有模块文件)"
+    echo "     - conf/ (所有配置文件)"
+    echo "     - assets/ (测速数据和 IP 列表)"
+    echo "     - logs/ (运行日志)"
+    echo "     - backups/ (备份文件)"
     echo "  2. 全局命令: /usr/local/bin/cfopt"
     echo "  3. 定时任务: 所有包含 'cfopt' 的 Crontab 项"
-    echo "  4. 备份文件: ${INSTALL_DIR}/backups/"
     echo ""
     echo -e "${YELLOW}注意:${NC} 此操作不会卸载系统级组件 (如 crontab, wget 等)。"
     echo ""
@@ -1181,16 +1185,47 @@ uninstall_cfopt() {
     # 4. 删除安装目录及所有数据
     log_info "正在删除安装目录及所有数据..."
     if [[ -d "${INSTALL_DIR}" ]]; then
-        # 显示将要删除的大小
+        # 显示将要删除的详细内容
         local dir_size
         dir_size=$(du -sh "${INSTALL_DIR}" 2>/dev/null | cut -f1)
         log_info "即将删除: ${INSTALL_DIR} (${dir_size})"
         
+        # 列出主要子目录
+        if [[ -d "${INSTALL_DIR}/modules" ]]; then
+            local modules_count
+            modules_count=$(find "${INSTALL_DIR}/modules" -type f 2>/dev/null | wc -l)
+            echo -e "  ${CYAN}- modules/${NC} (${modules_count} 个文件)"
+        fi
+        if [[ -d "${INSTALL_DIR}/conf" ]]; then
+            echo -e "  ${CYAN}- conf/${NC} (配置文件)"
+        fi
+        if [[ -d "${INSTALL_DIR}/assets" ]]; then
+            local assets_size
+            assets_size=$(du -sh "${INSTALL_DIR}/assets" 2>/dev/null | cut -f1)
+            echo -e "  ${CYAN}- assets/${NC} (${assets_size})"
+        fi
+        if [[ -d "${INSTALL_DIR}/logs" ]]; then
+            echo -e "  ${CYAN}- logs/${NC} (日志文件)"
+        fi
+        if [[ -d "${INSTALL_DIR}/backups" ]]; then
+            echo -e "  ${CYAN}- backups/${NC} (备份文件)"
+        fi
+        echo ""
+        
+        # 执行删除
         if ! safe_remove_dir "${INSTALL_DIR}" "卸载清理"; then
             log_error "卸载失败，请手动删除: ${INSTALL_DIR}"
             exit 1
         fi
-        log_success "安装目录已删除"
+        
+        # 验证删除是否成功
+        if [[ -d "${INSTALL_DIR}" ]]; then
+            log_error "目录删除失败，可能存在权限问题"
+            log_warning "请手动执行: rm -rf ${INSTALL_DIR}"
+            exit 1
+        else
+            log_success "安装目录已完全删除"
+        fi
     else
         log_info "安装目录不存在，跳过"
     fi
