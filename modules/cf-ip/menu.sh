@@ -943,7 +943,7 @@ view_config() {
     
     enabled="$(jq -r '.enabled // false' "${CONFIG_FILE}")"
     threads="$(jq -r '.cfst.threads // 200' "${CONFIG_FILE}")"
-    colo="$(jq -r '.cfst.colo // \"HKG,NRT\"' "${CONFIG_FILE}")"
+    colo="$(jq -r '.cfst.colo // "HKG,NRT"' "${CONFIG_FILE}")"
     ping_times="$(jq -r '.cfst.ping_times // 4' "${CONFIG_FILE}")"
     download_count="$(jq -r '.cfst.download_count // 10' "${CONFIG_FILE}")"
     latency_max="$(jq -r '.cfst.latency_max // 9999' "${CONFIG_FILE}")"
@@ -990,31 +990,31 @@ view_config() {
     
     # 双栏布局显示
     echo ""
-    printf " ${GREEN}%-20s${NC} ${GREEN}%-20s${NC}\n" "[模块状态]" "[测速参数]"
-    printf "   %-18s   %-18s\n" "启用状态: ${status_enabled}" "并发线程: ${YELLOW}${threads}${NC}"
-    printf "   %-18s   %-18s\n" "" "测速节点: ${YELLOW}${colo}${NC}"
-    printf "   %-18s   %-18s\n" "" "Ping 次数: ${YELLOW}${ping_times}${NC}"
-    printf "   %-18s   %-18s\n" "" "下载测试: ${YELLOW}${download_count} 次${NC}"
+    echo -e " ${GREEN}$(printf '%-20s' '[模块状态]')${NC} ${GREEN}$(printf '%-20s' '[测速参数]')${NC}"
+    echo -e "   $(printf '%-18s' "启用状态: ${status_enabled}")   $(printf '%-18s' "并发线程: ${YELLOW}${threads}${NC}")"
+    echo -e "   $(printf '%-18s' '')   $(printf '%-18s' "测速节点: ${YELLOW}${colo}${NC}")"
+    echo -e "   $(printf '%-18s' '')   $(printf '%-18s' "Ping 次数: ${YELLOW}${ping_times}${NC}")"
+    echo -e "   $(printf '%-18s' '')   $(printf '%-18s' "下载测试: ${YELLOW}${download_count} 次${NC}")"
     
     echo ""
-    printf " ${GREEN}%-20s${NC} ${GREEN}%-20s${NC}\n" "[筛选条件]" "[结果处理]"
-    printf "   %-18s   %-18s\n" "最大延迟: ${YELLOW}${latency_max} ms${NC}" "选取 IP 数: ${YELLOW}${take_ip_num} 个${NC}"
-    printf "   %-18s   %-18s\n" "最大丢包: ${YELLOW}${packet_loss_max}%${NC}" "最大重试: ${YELLOW}${max_retry} 次${NC}"
-    printf "   %-18s   %-18s\n" "最低速度: ${YELLOW}${speed_min} MB/s${NC}" "HTML 报告: ${status_html}"
-    printf "   %-18s   %-18s\n" "显示数量: ${YELLOW}${show_count} 个${NC}" "运行日志: ${status_log}"
+    echo -e " ${GREEN}$(printf '%-20s' '[筛选条件]')${NC} ${GREEN}$(printf '%-20s' '[结果处理]')${NC}"
+    echo -e "   $(printf '%-18s' "最大延迟: ${YELLOW}${latency_max} ms${NC}")   $(printf '%-18s' "选取 IP 数: ${YELLOW}${take_ip_num} 个${NC}")"
+    echo -e "   $(printf '%-18s' "最大丢包: ${YELLOW}${packet_loss_max}%${NC}")   $(printf '%-18s' "最大重试: ${YELLOW}${max_retry} 次${NC}")"
+    echo -e "   $(printf '%-18s' "最低速度: ${YELLOW}${speed_min} MB/s${NC}")   $(printf '%-18s' "HTML 报告: ${status_html}")"
+    echo -e "   $(printf '%-18s' "显示数量: ${YELLOW}${show_count} 个${NC}")   $(printf '%-18s' "运行日志: ${status_log}")"
     
     echo ""
     echo -e " ${GREEN}[多线路支持]${NC}"
-    printf "   状态: %s\n" "${status_multiline}"
+    echo -e "   状态: ${status_multiline}"
     
     if [[ "${multi_line_enabled}" = "true" ]]; then
         local colo_mobile colo_unicom colo_telecom
-        colo_mobile="$(jq -r '.multi_line.colo_mobile // \"\"' "${CONFIG_FILE}")"
-        colo_unicom="$(jq -r '.multi_line.colo_unicom // \"\"' "${CONFIG_FILE}")"
-        colo_telecom="$(jq -r '.multi_line.colo_telecom // \"\"' "${CONFIG_FILE}")"
-        [[ -n "${colo_mobile}" ]] && printf "   %-18s\n" "移动节点: ${YELLOW}${colo_mobile}${NC}"
-        [[ -n "${colo_unicom}" ]] && printf "   %-18s\n" "联通节点: ${YELLOW}${colo_unicom}${NC}"
-        [[ -n "${colo_telecom}" ]] && printf "   %-18s\n" "电信节点: ${YELLOW}${colo_telecom}${NC}"
+        colo_mobile="$(jq -r '.multi_line.colo_mobile // ""' "${CONFIG_FILE}")"
+        colo_unicom="$(jq -r '.multi_line.colo_unicom // ""' "${CONFIG_FILE}")"
+        colo_telecom="$(jq -r '.multi_line.colo_telecom // ""' "${CONFIG_FILE}")"
+        [[ -n "${colo_mobile}" ]] && echo -e "   $(printf '%-18s' "移动节点: ${YELLOW}${colo_mobile}${NC}")"
+        [[ -n "${colo_unicom}" ]] && echo -e "   $(printf '%-18s' "联通节点: ${YELLOW}${colo_unicom}${NC}")"
+        [[ -n "${colo_telecom}" ]] && echo -e "   $(printf '%-18s' "电信节点: ${YELLOW}${colo_telecom}${NC}")"
     fi
     
     echo ""
