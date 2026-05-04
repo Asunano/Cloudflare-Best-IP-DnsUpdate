@@ -526,8 +526,26 @@ main() {
             dns_type=$(echo "$info" | jq -r '.dns_type')
             local mode
             mode=$(echo "$info" | jq -r '.mode')
+            
+            # 从实际配置文件中读取 record_name（优先）
             local record_name
-            record_name=$(echo "$info" | jq -r '.record_name // "@"')
+            if [[ "$dns_type" == "cloudflare" ]]; then
+                local config_file="${ROOT_DIR}/conf/cf-dns/${domain}.json"
+                if [[ -f "$config_file" ]]; then
+                    record_name=$(jq -r '.dns.record_name // "@"' "$config_file" 2>/dev/null)
+                else
+                    record_name=$(echo "$info" | jq -r '.record_name // "@"')
+                fi
+            elif [[ "$dns_type" == "dnspod" ]]; then
+                local config_file="${ROOT_DIR}/conf/dnspod/${domain}.json"
+                if [[ -f "$config_file" ]]; then
+                    record_name=$(jq -r '.dns.record_name // "@"' "$config_file" 2>/dev/null)
+                else
+                    record_name=$(echo "$info" | jq -r '.record_name // "@"')
+                fi
+            else
+                record_name=$(echo "$info" | jq -r '.record_name // "@"')
+            fi
             
             local dns_label
             if [[ "$dns_type" == "cloudflare" ]]; then
@@ -637,8 +655,26 @@ manage_deployed_domains_menu() {
         dns_type=$(echo "$info" | jq -r '.dns_type')
         local mode
         mode=$(echo "$info" | jq -r '.mode')
+        
+        # 从实际配置文件中读取 record_name（优先）
         local record_name
-        record_name=$(echo "$info" | jq -r '.record_name // "@"')
+        if [[ "$dns_type" == "cloudflare" ]]; then
+            local config_file="${ROOT_DIR}/conf/cf-dns/${domain}.json"
+            if [[ -f "$config_file" ]]; then
+                record_name=$(jq -r '.dns.record_name // "@"' "$config_file" 2>/dev/null)
+            else
+                record_name=$(echo "$info" | jq -r '.record_name // "@"')
+            fi
+        elif [[ "$dns_type" == "dnspod" ]]; then
+            local config_file="${ROOT_DIR}/conf/dnspod/${domain}.json"
+            if [[ -f "$config_file" ]]; then
+                record_name=$(jq -r '.dns.record_name // "@"' "$config_file" 2>/dev/null)
+            else
+                record_name=$(echo "$info" | jq -r '.record_name // "@"')
+            fi
+        else
+            record_name=$(echo "$info" | jq -r '.record_name // "@"')
+        fi
         
         local dns_label
         if [[ "$dns_type" == "cloudflare" ]]; then
@@ -704,10 +740,30 @@ manage_single_domain() {
     dns_type=$(echo "$info" | jq -r '.dns_type')
     local mode
     mode=$(echo "$info" | jq -r '.mode')
-    local record_name
-    record_name=$(echo "$info" | jq -r '.record_name // "@"')
     local deploy_time
     deploy_time=$(echo "$info" | jq -r '.deploy_time')
+    
+    # 从实际配置文件中读取 record_name（优先）
+    local record_name
+    if [[ "$dns_type" == "cloudflare" ]]; then
+        local config_file="${ROOT_DIR}/conf/cf-dns/${domain}.json"
+        if [[ -f "$config_file" ]]; then
+            record_name=$(jq -r '.dns.record_name // "@"' "$config_file" 2>/dev/null)
+        else
+            # 如果配置文件不存在，从部署记录中读取
+            record_name=$(echo "$info" | jq -r '.record_name // "@"')
+        fi
+    elif [[ "$dns_type" == "dnspod" ]]; then
+        local config_file="${ROOT_DIR}/conf/dnspod/${domain}.json"
+        if [[ -f "$config_file" ]]; then
+            record_name=$(jq -r '.dns.record_name // "@"' "$config_file" 2>/dev/null)
+        else
+            # 如果配置文件不存在，从部署记录中读取
+            record_name=$(echo "$info" | jq -r '.record_name // "@"')
+        fi
+    else
+        record_name=$(echo "$info" | jq -r '.record_name // "@"')
+    fi
     
     local dns_label
     if [[ "$dns_type" == "cloudflare" ]]; then
