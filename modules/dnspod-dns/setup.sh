@@ -184,7 +184,7 @@ show_menu() {
     echo -e "${CYAN}${MENU_BORDER_MID}"
     echo -e " ${GREEN}➤${NC} 1. 完整配置向导     ${CYAN}- 首次使用或重新配置所有项${NC}"
     echo -e " ${GREEN}➤${NC} 2. 快速运行         ${CYAN}- 使用当前配置立即运行${NC}"
-    echo -e " ${GREEN}➤${NC} 3. 查看当前配置     ${CYAN}- 显示 dnspod.conf 配置${NC}"
+    echo -e " ${GREEN}➤${NC} 3. 查看当前配置     ${CYAN}- 显示 dnspod.json 配置${NC}"
     echo -e " ${GREEN}➤${NC} 4. 启用/禁用模块    ${CYAN}- 控制是否自动同步 IP 及更新 DNS${NC}"
     echo -e " ${GREEN}➤${NC} 5. 手动同步优选 IP   ${CYAN}- 从测速结果中提取最优 IP 到数据文件${NC}"
     echo -e " ${GREEN}➤${NC} 6. 修改 IP 数量限制 ${CYAN}- 每条DNS记录最多几个IP${NC}"
@@ -3833,89 +3833,93 @@ fi
 # 清屏后生成配置
 clear
 echo ""
-echo "正在生成配置文件..."
+echo -e "${CYAN}正在生成配置文件...${NC}"
 
-# 生成配置文件
-cat > "$CONFIG_FILE" << EOF
-# DNSPod DNS 更新器 - 全局配置文件
-# ============================================
-# 生成时间: $(date '+%Y-%m-%d %H:%M:%S')
-# 
-# ===== 启用状态 =====
-ENABLED="true"
+# 确保配置目录存在
+local config_dir
+config_dir=$(dirname "$CONFIG_FILE")
+mkdir -p "$config_dir"
+chmod 755 "$config_dir"
 
-# ===== 基本配置 =====
-DOMAIN="${DOMAIN}"
+# 使用临时文件 + jq 生成 JSON 配置（原子写入）
+local temp_file
+temp_file=$(mktemp "${config_dir}/.tmp.XXXXXX")
 
-# ===== 工作模式配置 =====
-# MODE: 工作模式
-#   single  - 单线路模式 (为域名设置统一的 CF 优选 IP)
-#   multi   - 多线路模式 (为不同运营商设置不同的 CF 优选 IP)
-MODE="${MODE}"
+# 构建基础配置对象
+jq -n \
+    --arg comment "DNSPod DNS 更新器配置" \
+    --arg version "0.1" \
+    --argjson enabled true \
+    --arg domain "$DOMAIN" \
+    --arg secretid "$SECRETID" \
+    --arg secretkey "$SECRETKEY" \
+    --arg mode "$MODE" \
+    --arg subdomain "$SUB_DOMAIN" \
+    --arg strategy "${SUBDOMAIN_STRATEGY:-separate}" \
+    --arg unified_subdomain "${SUB_DOMAIN_UNIFIED:-dns}" \
+    --arg default_subdomain "${SUB_DOMAIN_DEFAULT:-default}" \
+    --arg unicom_subdomain "${SUB_DOMAIN_UNICOM:-unicom}" \
+    --arg mobile_subdomain "${SUB_DOMAIN_MOBILE:-mobile}" \
+    --arg telecom_subdomain "${SUB_DOMAIN_TELECOM:-telecom}" \
+    --arg isp_lines "$ISP_LINES" \
+    --argjson max_ips "$MAX_IPS_PER_RECORD" \
+    '{
+        "_comment": $comment,
+        "_version": $version,
+        "enabled": $enabled,
+        "api": {
+            "id": $secretid,
+            "token": $secretkey,
+            "timeout": 10,
+            "max_retries": 5
+        },
+        "dns": {
+            "domain": $domain,
+            "sub_domain": $subdomain,
+            "record_type": "A",
+            "ttl": 600,
+            "max_ips_per_record": $max_ips,
+            "mode": $mode,
+            "subdomain_strategy": $strategy,
+            "sub_domain_unified": $unified_subdomain,
+            "sub_domains": {
+                "default": $default_subdomain,
+                "unicom": $unicom_subdomain,
+                "mobile": $mobile_subdomain,
+                "telecom": $telecom_subdomain
+            },
+            "isp_lines": $isp_lines
+        },
+        "ip_source": {
+            "file_path": (if $mode == "single" then "./assets/data/dnspod-dns/ip_list.txt" else null end),
+            "files": (if $mode == "multi" then {
+                "default": "./assets/data/dnspod-dns/default.txt",
+                "unicom": "./assets/data/dnspod-dns/unicom.txt",
+                "mobile": "./assets/data/dnspod-dns/mobile.txt",
+                "telecom": "./assets/data/dnspod-dns/telecom.txt"
+            } else null end)
+        },
+        "logging": {
+            "log_dir": "./logs/dnspod-dns",
+            "log_rotation_days": 7,
+            "verbose": false
+        }
+    }' > "$temp_file" 2>/dev/null
 
-# ===== 子域名策略配置 (仅在 MODE=multi 时生效) =====
-# SUBDOMAIN_STRATEGY: 子域名策略
-#   single    - 单线路模式
-#   separate  - 分离模式 (每条线路独立子域名,推荐)
-#   unified   - 统一模式 (所有线路共用同一子域名)
-SUBDOMAIN_STRATEGY="${SUBDOMAIN_STRATEGY:-separate}"
+if [[ $? -ne 0 ]]; then
+    rm -f "$temp_file"
+    echo -e "${RED}[ERROR] 配置文件生成失败${NC}"
+    exit 1
+fi
 
-# 单线路模式的子域名 (MODE=single 时使用)
-SUB_DOMAIN="${SUB_DOMAIN}"
+# 设置安全权限
+chmod 600 "$temp_file"
 
-# 多线路模式 - 统一策略的子域名 (SUBDOMAIN_STRATEGY=unified 时使用)
-SUB_DOMAIN_UNIFIED="${SUB_DOMAIN_UNIFIED:-dns}"
+# 原子移动
+mv "$temp_file" "$CONFIG_FILE"
 
-# 多线路模式 - 分离策略的子域名映射 (SUBDOMAIN_STRATEGY=separate 时使用)
-SUB_DOMAIN_DEFAULT="${SUB_DOMAIN_DEFAULT:-default}"    # 默认线路
-SUB_DOMAIN_UNICOM="${SUB_DOMAIN_UNICOM:-unicom}"        # 联通线路
-SUB_DOMAIN_MOBILE="${SUB_DOMAIN_MOBILE:-mobile}"        # 移动线路
-SUB_DOMAIN_TELECOM="${SUB_DOMAIN_TELECOM:-telecom}"     # 电信线路
-
-SECRETID="${SECRETID}"
-SECRETKEY="${SECRETKEY}"
-
-# ===== 运营商线路配置 (仅在 MODE=multi 时生效) =====
-# 支持的线路: 默认 联通 移动 电信
-# 多个线路用空格分隔
-ISP_LINES="${ISP_LINES}"
-
-# ===== IP 来源配置 =====
-# 单线路模式的 IP 文件 (MODE=single 时使用)
-IP_FILE_SINGLE="${IP_FILE_SINGLE:-$ROOT_DIR/assets/data/dnspod-dns/default.txt}"
-
-# 多线路模式的 IP 文件 (每个线路一个文件, MODE=multi 时使用)
-# 核心线路 (推荐):
-IP_FILE_DEFAULT="$ROOT_DIR/assets/data/dnspod-dns/default.txt"              # 默认线路
-IP_FILE_UNICOM="$ROOT_DIR/assets/data/dnspod-dns/unicom.txt"        # 联通线路
-IP_FILE_MOBILE="$ROOT_DIR/assets/data/dnspod-dns/mobile.txt"        # 移动线路
-IP_FILE_TELECOM="$ROOT_DIR/assets/data/dnspod-dns/telecom.txt"      # 电信线路
-
-# ===== 高级配置 =====
-# TTL 值 (秒),默认 600
-TTL=600
-
-# 最大重试次数,默认 5
-MAX_RETRIES=5
-
-# 请求超时时间 (秒),默认 10
-REQUEST_TIMEOUT=10
-
-# ===== 套餐限制配置 =====
-# DNSPod 不同套餐支持的负载均衡记录数:
-#   - 免费版: 2 条 (默认)
-#   - 专业版: 10 条
-#   - 企业版: 100 条
-#   - 尊享版: 不限制
-# 官方文档: https://cloud.tencent.com/document/product/302/104713
-# 
-# 每条解析记录会读取此数量的 IP
-# 免费版超出限制会导致 API 报错,脚本会自动截取前 N 个 IP
-# 设置为 0 表示不限制 (需要对应套餐支持)
-MAX_IPS_PER_RECORD=${MAX_IPS_PER_RECORD}
-EOF
-
-echo -e "\n${GREEN}[OK] 配置文件已生成: ${CONFIG_FILE}"
+echo -e "${GREEN}[OK] 配置文件已生成: ${CONFIG_FILE#${ROOT_DIR}/}${NC}"
+echo ""
 # 如果是多线路模式,创建 IP 文件模板
 if [ "$MODE" = "multi" ]; then
     echo -e "${CYAN}正在创建 IP 文件模板...${NC}"
