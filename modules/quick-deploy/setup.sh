@@ -136,6 +136,64 @@ has_dnspod_dns_config() {
     jq -r '.enabled // false' "${ROOT_DIR}/conf/dnspod.json" 2>/dev/null | grep -q "true"
 }
 
+# 验证配置一致性（防止 CF-IP 多线路与 DNSPod 单线路冲突）
+validate_config_consistency() {
+    local cf_ip_file="${ROOT_DIR}/conf/cf-ip.json"
+    local dnspod_file="${ROOT_DIR}/conf/dnspod.json"
+    local cf_dns_file="${ROOT_DIR}/conf/cf-dns.json"
+    
+    # 检查 CF-IP 是否开启多线路
+    local cf_multi_enabled=false
+    if [[ -f "$cf_ip_file" ]]; then
+        cf_multi_enabled=$(jq -r '.multi_line.enabled // false' "$cf_ip_file")
+    fi
+    
+    # 检查 DNSPod 模式
+    local dnspod_mode="single"
+    if [[ -f "$dnspod_file" ]]; then
+        dnspod_mode=$(jq -r '.mode // "single"' "$dnspod_file")
+    fi
+    
+    # 检查 Cloudflare DNS 是否启用
+    local cf_dns_enabled=false
+    if [[ -f "$cf_dns_file" ]]; then
+        cf_dns_enabled=$(jq -r '.enabled // false' "$cf_dns_file")
+    fi
+    
+    # 验证逻辑
+    local has_error=false
+    
+    # 1. 如果 CF-IP 开启多线路，DNSPod 也必须是多线路
+    if [[ "$cf_multi_enabled" = "true" ]] && [[ "$dnspod_mode" != "multi" ]]; then
+        echo -e "${RED}[ERROR] 配置不一致！${NC}"
+        echo -e "   CF-IP 已开启多线路测速，但 DNSPod 配置为单线路模式"
+        echo -e "   ${YELLOW}建议：${NC}将 DNSPod 模式改为 multi，或关闭 CF-IP 的多线路功能"
+        has_error=true
+    fi
+    
+    # 2. 如果 DNSPod 是多线路，CF-IP 也必须开启多线路
+    if [[ "$dnspod_mode" = "multi" ]] && [[ "$cf_multi_enabled" != "true" ]]; then
+        echo -e "${RED}[ERROR] 配置不一致！${NC}"
+        echo -e "   DNSPod 配置为多线路模式，但 CF-IP 未开启多线路测速"
+        echo -e "   ${YELLOW}建议：${NC}在 CF-IP 配置中启用 multi_line.enabled"
+        has_error=true
+    fi
+    
+    # 3. Cloudflare DNS 只能是单线路（不支持多线路）
+    if [[ "$cf_dns_enabled" = "true" ]] && [[ "$cf_multi_enabled" = "true" ]]; then
+        echo -e "${YELLOW}[WARN] 配置提示${NC}"
+        echo -e "   Cloudflare DNS 仅支持单线路模式"
+        echo -e "   即使 CF-IP 开启多线路，CF-DNS 也只会使用 default 线路的 IP"
+        echo -e "   ${GRAY}这是正常行为，无需修改${NC}"
+    fi
+    
+    if [[ "$has_error" = true ]]; then
+        return 1
+    else
+        return 0
+    fi
+}
+
 generate_cf_ip_config() {
     local mode="$1"
     local colo_default="$2"
@@ -271,35 +329,42 @@ generate_dnspod_config() {
             --arg mode "multi" \
             '{
                 "_comment": "DNSPod DNS 更新器配置",
-                "_version": "0.1",
+                "_version": "2.0",
                 "enabled": true,
                 "api": {
                     "id": $id,
-                    "token": $token
+                    "token": $token,
+                    "timeout": 10,
+                    "max_retries": 5
                 },
                 "dns": {
                     "domain": $domain,
                     "sub_domain": "dns",
                     "record_type": "A",
                     "ttl": 600,
-                    "max_ips_per_record": 2
-                },
-                "mode": $mode,
-                "lines": ["default", "unicom", "mobile", "telecom"],
-                "subdomain_strategy": "separate",
-                "sub_domains": {
-                    "default": "dns",
-                    "unicom": "unicom",
-                    "mobile": "mobile",
-                    "telecom": "telecom"
+                    "max_ips_per_record": 2,
+                    "mode": $mode,
+                    "subdomain_strategy": "separate",
+                    "sub_domains": {
+                        "default": "default",
+                        "unicom": "unicom",
+                        "mobile": "mobile",
+                        "telecom": "telecom"
+                    }
                 },
                 "ip_source": {
+                    "file_path": "./assets/data/dnspod-dns/ip_list.txt",
                     "files": {
                         "default": "./assets/data/dnspod-dns/ip_list_default.txt",
                         "unicom": "./assets/data/dnspod-dns/ip_list_unicom.txt",
                         "mobile": "./assets/data/dnspod-dns/ip_list_mobile.txt",
                         "telecom": "./assets/data/dnspod-dns/ip_list_telecom.txt"
                     }
+                },
+                "logging": {
+                    "log_dir": "./logs/dnspod-dns",
+                    "log_rotation_days": 7,
+                    "verbose": false
                 }
             }' > "$temp_file"
     else
@@ -310,22 +375,29 @@ generate_dnspod_config() {
             --arg mode "single" \
             '{
                 "_comment": "DNSPod DNS 更新器配置",
-                "_version": "0.1",
+                "_version": "2.0",
                 "enabled": true,
                 "api": {
                     "id": $id,
-                    "token": $token
+                    "token": $token,
+                    "timeout": 10,
+                    "max_retries": 5
                 },
                 "dns": {
                     "domain": $domain,
                     "sub_domain": "dns",
                     "record_type": "A",
                     "ttl": 600,
-                    "max_ips_per_record": 2
+                    "max_ips_per_record": 2,
+                    "mode": $mode
                 },
-                "mode": $mode,
                 "ip_source": {
-                    "file": "./assets/data/dnspod-dns/ip_list.txt"
+                    "file_path": "./assets/data/dnspod-dns/ip_list.txt"
+                },
+                "logging": {
+                    "log_dir": "./logs/dnspod-dns",
+                    "log_rotation_days": 7,
+                    "verbose": false
                 }
             }' > "$temp_file"
     fi
@@ -548,6 +620,14 @@ deploy_cloudflare_dns() {
     deploy_time=$(date '+%Y-%m-%d %H:%M:%S')
     add_deploy_record "$domain" "cloudflare" "single" "$deploy_time"
     
+    # 验证配置一致性
+    echo -e "${CYAN}[INFO] 正在验证配置一致性...${NC}"
+    if validate_config_consistency; then
+        echo -e "${GREEN}[OK] 配置验证通过${NC}"
+    else
+        echo -e "${YELLOW}[WARN] 配置存在问题，请根据上述提示修正${NC}"
+    fi
+    
     # 完成
     show_header
     echo -e " ${GREEN}[OK] 部署完成！${NC}"
@@ -699,6 +779,14 @@ deploy_dnspod_single() {
     deploy_time=$(date '+%Y-%m-%d %H:%M:%S')
     add_deploy_record "$domain" "dnspod" "single" "$deploy_time"
     
+    # 验证配置一致性
+    echo -e "${CYAN}[INFO] 正在验证配置一致性...${NC}"
+    if validate_config_consistency; then
+        echo -e "${GREEN}[OK] 配置验证通过${NC}"
+    else
+        echo -e "${YELLOW}[WARN] 配置存在问题，请根据上述提示修正${NC}"
+    fi
+    
     # 完成
     show_header
     echo -e " ${GREEN}[OK] 部署完成！${NC}"
@@ -825,6 +913,14 @@ deploy_dnspod_multi() {
     local deploy_time
     deploy_time=$(date '+%Y-%m-%d %H:%M:%S')
     add_deploy_record "$domain" "dnspod" "multi" "$deploy_time"
+    
+    # 验证配置一致性
+    echo -e "${CYAN}[INFO] 正在验证配置一致性...${NC}"
+    if validate_config_consistency; then
+        echo -e "${GREEN}[OK] 配置验证通过${NC}"
+    else
+        echo -e "${YELLOW}[WARN] 配置存在问题，请根据上述提示修正${NC}"
+    fi
     
     # 完成
     show_header
