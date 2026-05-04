@@ -169,7 +169,7 @@ safe_remove_dir() {
 }
 
 # --- 全局配置区 ---
-SCRIPT_VERSION="0.1.1"
+SCRIPT_VERSION="0.1"
 
 # 直接使用 GitHub 原始地址，避免缓存导致的更新延迟
 REMOTE_URL="https://raw.githubusercontent.com/Asunano/Cloudflare-Best-IP-DnsUpdate/main"
