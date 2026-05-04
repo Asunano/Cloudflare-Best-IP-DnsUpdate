@@ -22,13 +22,43 @@ NC='\033[0m' # No Color
 SCRIPT_DIR="$( cd -P "$( dirname "${BASH_SOURCE[0]}" )" >/dev/null 2>&1 && pwd )"
 ROOT_DIR="$(cd "$SCRIPT_DIR/../.." && pwd)"
 
+# ==================== 配置加载逻辑（支持多域名） ====================
+# 优先级：
+# 1. 命令行参数指定配置文件: bash core.sh /path/to/config.json
+# 2. 环境变量指定域名: CF_DNS_DOMAIN=example.com bash core.sh
+# 3. 默认配置文件: conf/cf-dns.json
+
+if [[ $# -gt 0 ]] && [[ -f "$1" ]]; then
+    # 方式 1: 命令行参数指定配置文件
+    CONFIG_FILE="$1"
+    DOMAIN_NAME=$(basename "$CONFIG_FILE" .json)
+elif [[ -n "${CF_DNS_DOMAIN:-}" ]]; then
+    # 方式 2: 环境变量指定域名
+    DOMAIN_NAME="${CF_DNS_DOMAIN}"
+    CONFIG_FILE="$ROOT_DIR/conf/cf-dns/${DOMAIN_NAME}.json"
+    if [[ ! -f "$CONFIG_FILE" ]]; then
+        # 如果新路径不存在，尝试旧路径
+        CONFIG_FILE="$ROOT_DIR/conf/cf-dns.json"
+        DOMAIN_NAME="default"
+    fi
+else
+    # 方式 3: 默认配置文件（向后兼容）
+    CONFIG_FILE="$ROOT_DIR/conf/cf-dns.json"
+    DOMAIN_NAME="default"
+fi
+
+# 根据域名生成独立的锁文件
 LOCK_FILE="$ROOT_DIR/modules/cf-dns/.core.lock"
 acquire_lock() {
+    local domain_safe
+    domain_safe=$(echo "${DOMAIN_NAME:-default}" | sed 's/[^a-zA-Z0-9._-]/_/g')
+    LOCK_FILE="$ROOT_DIR/modules/cf-dns/.core_${domain_safe}.lock"
+    
     if [ -f "$LOCK_FILE" ]; then
         local pid
         pid=$(cat "$LOCK_FILE")
         if kill -0 "$pid" 2>/dev/null; then
-            echo "[ERROR] 检测到另一个 CF-DNS 更新进程正在运行 (PID: $pid)"
+            echo "[ERROR] 检测到另一个 CF-DNS 更新进程正在运行 (PID: $pid, Domain: ${DOMAIN_NAME:-default})"
             exit 1
         else
             rm -f "$LOCK_FILE"
@@ -39,8 +69,6 @@ acquire_lock() {
 }
 
 acquire_lock
-
-CONFIG_FILE="$ROOT_DIR/conf/cf-dns.json"
 
 # DNS 记录名称说明:
 #   record_name 配置说明:

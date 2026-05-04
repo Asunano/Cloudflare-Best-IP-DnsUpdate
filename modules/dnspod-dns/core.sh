@@ -21,13 +21,43 @@ NC='\033[0m' # No Color
 SCRIPT_DIR="$( cd -P "$( dirname "${BASH_SOURCE[0]}" )" >/dev/null 2>&1 && pwd )"
 ROOT_DIR="$(cd "$SCRIPT_DIR/../.." && pwd)"
 
+# ==================== 配置加载逻辑（支持多域名） ====================
+# 优先级：
+# 1. 命令行参数指定配置文件: bash core.sh /path/to/config.json
+# 2. 环境变量指定域名: DNSPOD_DOMAIN=example.com bash core.sh
+# 3. 默认配置文件: conf/dnspod.json
+
+if [[ $# -gt 0 ]] && [[ -f "$1" ]]; then
+    # 方式 1: 命令行参数指定配置文件
+    CONFIG_FILE="$1"
+    DOMAIN_NAME=$(basename "$CONFIG_FILE" .json)
+elif [[ -n "${DNSPOD_DOMAIN:-}" ]]; then
+    # 方式 2: 环境变量指定域名
+    DOMAIN_NAME="${DNSPOD_DOMAIN}"
+    CONFIG_FILE="$ROOT_DIR/conf/dnspod/${DOMAIN_NAME}.json"
+    if [[ ! -f "$CONFIG_FILE" ]]; then
+        # 如果新路径不存在，尝试旧路径
+        CONFIG_FILE="$ROOT_DIR/conf/dnspod.json"
+        DOMAIN_NAME="default"
+    fi
+else
+    # 方式 3: 默认配置文件（向后兼容）
+    CONFIG_FILE="$ROOT_DIR/conf/dnspod.json"
+    DOMAIN_NAME="default"
+fi
+
 LOCK_FILE="${ROOT_DIR}/modules/dnspod-dns/.core.lock"
 acquire_lock() {
+    # 根据域名生成独立的锁文件
+    local domain_safe
+    domain_safe=$(echo "${DOMAIN_NAME:-default}" | sed 's/[^a-zA-Z0-9._-]/_/g')
+    LOCK_FILE="${ROOT_DIR}/modules/dnspod-dns/.core_${domain_safe}.lock"
+    
     if [[ -f "${LOCK_FILE}" ]]; then
         local pid
         pid="$(cat "${LOCK_FILE}")"
         if kill -0 "${pid}" 2>/dev/null; then
-            echo "[ERROR] 检测到另一个 DNSPod 更新进程正在运行 (PID: ${pid})"
+            echo "[ERROR] 检测到另一个 DNSPod 更新进程正在运行 (PID: ${pid}, Domain: ${DOMAIN_NAME:-default})"
             exit 1
         else
             rm -f "${LOCK_FILE}"
@@ -38,9 +68,6 @@ acquire_lock() {
 }
 
 acquire_lock
-
-# ==================== 加载配置文件 ====================
-CONFIG_FILE="${ROOT_DIR}/conf/dnspod.json"
 LOG_DIR="${ROOT_DIR}/logs/dnspod-dns"
 mkdir -p "${LOG_DIR}"
 LOG_FILE="${LOG_DIR}/dnspod_$(date +%Y%m%d_%H%M%S).log"

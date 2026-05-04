@@ -317,7 +317,12 @@ generate_dnspod_config() {
     local dnspod_token="$3"
     local mode="$4"
     
-    local config_file="${ROOT_DIR}/conf/dnspod.json"
+    # 创建多域名配置目录
+    local config_dir="${ROOT_DIR}/conf/dnspod"
+    mkdir -p "$config_dir"
+    
+    # 配置文件路径：conf/dnspod/{domain}.json
+    local config_file="${config_dir}/${domain}.json"
     local temp_file
     temp_file=$(mktemp)
     
@@ -404,6 +409,8 @@ generate_dnspod_config() {
     
     mv "$temp_file" "$config_file"
     chmod 600 "$config_file"
+    
+    echo -e "${GREEN}[OK] DNSPod 配置已生成: ${config_file}${NC}"
 }
 
 # 生成 Cloudflare DNS 配置
@@ -412,7 +419,12 @@ generate_cf_dns_config() {
     local cf_token="$2"
     local cf_zone_id="$3"
     
-    local config_file="${ROOT_DIR}/conf/cf-dns.json"
+    # 创建多域名配置目录
+    local config_dir="${ROOT_DIR}/conf/cf-dns"
+    mkdir -p "$config_dir"
+    
+    # 配置文件路径：conf/cf-dns/{domain}.json
+    local config_file="${config_dir}/${domain}.json"
     local temp_file
     temp_file=$(mktemp)
     
@@ -442,6 +454,8 @@ generate_cf_dns_config() {
     
     mv "$temp_file" "$config_file"
     chmod 600 "$config_file"
+    
+    echo -e "${GREEN}[OK] Cloudflare DNS 配置已生成: ${config_file}${NC}"
 }
 
 setup_auto_schedule() {

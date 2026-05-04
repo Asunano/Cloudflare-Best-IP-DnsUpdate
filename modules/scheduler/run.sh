@@ -109,26 +109,34 @@ echo -e "${GREEN}[OK] IP 优选测速执行成功。${NC}"
 # 第二阶段：执行 IP 数据同步（将不同线路的结果分发至对应目录）
 run_task "IP 数据同步" "${ROOT_DIR}/modules/ip-sync/sync.sh" || exit 1
 
-# 第三阶段：Cloudflare DNS 记录更新（解决矛盾：CF 仅使用 default 线路结果）
-if [[ -f "${ROOT_DIR}/conf/cf-dns.json" ]]; then
-    cf_dns_enabled=$(jq -r '.enabled // false' "${ROOT_DIR}/conf/cf-dns.json")
-    if [[ "${cf_dns_enabled}" = "true" ]]; then
-        echo -e "${YELLOW}[INFO] 正在更新 Cloudflare DNS (使用默认线路 IP)...${NC}"
-        run_task "Cloudflare DNS 更新" "${ROOT_DIR}/modules/cf-dns/core.sh" || exit 1
+# 第三阶段：Cloudflare DNS 记录更新（支持多域名批量更新）
+if [[ -d "${ROOT_DIR}/conf/cf-dns" ]] || [[ -f "${ROOT_DIR}/conf/cf-dns.json" ]]; then
+    echo -e "${YELLOW}[INFO] 正在更新 Cloudflare DNS (使用默认线路 IP)...${NC}"
+    
+    # 优先使用批量更新脚本（支持多域名）
+    if [[ -f "${ROOT_DIR}/modules/cf-dns/batch.sh" ]]; then
+        run_task "Cloudflare DNS 批量更新" "${ROOT_DIR}/modules/cf-dns/batch.sh" || exit 1
     else
-        echo -e "${YELLOW}[SKIP] CF-DNS 模块已禁用，跳过更新。${NC}"
+        # 向后兼容：如果没有批量脚本，使用旧的单文件方式
+        run_task "Cloudflare DNS 更新" "${ROOT_DIR}/modules/cf-dns/core.sh" || exit 1
     fi
+else
+    echo -e "${YELLOW}[SKIP] 未找到 CF-DNS 配置文件，跳过更新。${NC}"
 fi
 
-# 第四阶段：DNSPod DNS 记录更新（支持多线路分发）
-if [[ -f "${ROOT_DIR}/conf/dnspod.json" ]]; then
-    dnspod_enabled=$(jq -r '.enabled // false' "${ROOT_DIR}/conf/dnspod.json")
-    if [[ "${dnspod_enabled}" = "true" ]]; then
-        echo -e "${YELLOW}[INFO] 正在更新 DNSPod DNS (根据运营商分发)...${NC}"
-        run_task "DNSPod DNS 更新" "${ROOT_DIR}/modules/dnspod-dns/core.sh" || exit 1
+# 第四阶段：DNSPod DNS 记录更新（支持多域名批量更新和多线路分发）
+if [[ -d "${ROOT_DIR}/conf/dnspod" ]] || [[ -f "${ROOT_DIR}/conf/dnspod.json" ]]; then
+    echo -e "${YELLOW}[INFO] 正在更新 DNSPod DNS (根据运营商分发)...${NC}"
+    
+    # 优先使用批量更新脚本（支持多域名）
+    if [[ -f "${ROOT_DIR}/modules/dnspod-dns/batch.sh" ]]; then
+        run_task "DNSPod DNS 批量更新" "${ROOT_DIR}/modules/dnspod-dns/batch.sh" || exit 1
     else
-        echo -e "${YELLOW}[SKIP] DNSPod 模块已禁用，跳过更新。${NC}"
+        # 向后兼容：如果没有批量脚本，使用旧的单文件方式
+        run_task "DNSPod DNS 更新" "${ROOT_DIR}/modules/dnspod-dns/core.sh" || exit 1
     fi
+else
+    echo -e "${YELLOW}[SKIP] 未找到 DNSPod 配置文件，跳过更新。${NC}"
 fi
 
 echo -e "\n${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
