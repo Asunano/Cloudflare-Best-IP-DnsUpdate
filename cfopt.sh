@@ -171,8 +171,9 @@ safe_remove_dir() {
 # --- 全局配置区 ---
 SCRIPT_VERSION="0.1"
 
-# 直接使用 GitHub 原始地址，避免缓存导致的更新延迟
+# GitHub 原始地址和镜像地址（用于加速国内访问）
 REMOTE_URL="https://raw.githubusercontent.com/Asunano/Cloudflare-Best-IP-DnsUpdate/main"
+REMOTE_URL_MIRROR="https://hk.gh-proxy.org/https://raw.githubusercontent.com/Asunano/Cloudflare-Best-IP-DnsUpdate/main"
 VERSION_FILE_REMOTE="${REMOTE_URL}/version.txt"
 
 # 根据用户权限动态确定安装目录
@@ -320,7 +321,8 @@ install_system_cmd() {
 # 在执行下载前检查网络连通性，快速失败避免长时间等待
 check_network_health() {
     local test_urls=(
-        "https://raw.githubusercontent.com"
+        "${REMOTE_URL_MIRROR}"
+        "${REMOTE_URL}"
         "https://api.github.com"
     )
     
@@ -410,13 +412,21 @@ rollback_on_failure() {
     fi
 }
 
-# --- 辅助函数：带重试的下载与校验 ---
+# --- 辅助函数：带重试的下载与校验（支持镜像回退） ---
 download_with_retry() {
     local url="$1"
     local output="$2"
     local expected_hash="${3:-}"  # 可选参数：预期的 SHA256 哈希值
     local max_retries=3
     local retry_count=0
+    
+    # 判断是否为 GitHub raw 链接，如果是则启用镜像回退
+    local use_mirror=false
+    if [[ "${url}" == *"raw.githubusercontent.com"* ]]; then
+        use_mirror=true
+        # 将原始 URL 转换为镜像 URL
+        local mirror_url="${REMOTE_URL_MIRROR}${url#*main}"
+    fi
     
     while [[ "${retry_count}" -lt "${max_retries}" ]]; do
         # 确保输出文件的父目录存在且可写
@@ -427,9 +437,19 @@ download_with_retry() {
             return 1
         fi
         
+        # 优先使用镜像下载（如果启用），失败后回退到原始 URL
+        local current_url="${url}"
+        if [[ "${use_mirror}" == true ]] && [[ "${retry_count}" -eq 0 ]]; then
+            current_url="${mirror_url}"
+            echo -e "${CYAN}[INFO] 尝试使用镜像加速...${NC}"
+        elif [[ "${use_mirror}" == true ]] && [[ "${retry_count}" -ge 1 ]]; then
+            current_url="${url}"
+            echo -e "${YELLOW}[INFO] 镜像失败，回退到原始地址...${NC}"
+        fi
+        
         # 使用 curl 进行下载，仅显示进度条
         local http_code
-        http_code=$(curl -sfL --connect-timeout 10 --max-time 60 --create-dirs -o "${output}" -w "%{http_code}" "${url}" 2>/dev/null)
+        http_code=$(curl -sfL --connect-timeout 10 --max-time 60 --create-dirs -o "${output}" -w "%{http_code}" "${current_url}" 2>/dev/null)
         local curl_exit=$?
         
         if [[ ${curl_exit} -eq 0 ]] && [[ "${http_code}" = "200" ]]; then
@@ -455,12 +475,11 @@ download_with_retry() {
                grep -q "404 Not Found" "${output}" 2>/dev/null || \
                grep -qi "<html" "${output}" 2>/dev/null || \
                grep -qi "<!DOCTYPE" "${output}" 2>/dev/null || \
-               grep -qi "rate limit" "${output}" 2>/dev/null || \
-               grep -qi "error" "${output}" 2>/dev/null; then
+               grep -qi "rate limit" "${output}" 2>/dev/null; then
                 echo -e "${YELLOW}[WARN] 下载到 HTML 错误页或受限内容，正在重试...${NC}"
-                # 显示前50个字符帮助调试
+                # 显示前100个字符帮助调试
                 local preview
-                preview=$(head -c 50 "${output}" 2>/dev/null | tr -d '\n')
+                preview=$(head -c 100 "${output}" 2>/dev/null | tr -d '\n')
                 echo -e "${GRAY}[DEBUG] 响应预览: ${preview}...${NC}"
                 continue
             fi
