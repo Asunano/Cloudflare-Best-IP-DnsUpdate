@@ -1269,19 +1269,6 @@ check_and_update_components() {
 
 # --- 初始化流程 ---
 init_cfopt() {
-    # 0. 检查并修复全局命令（如果已安装但失效）
-    if [[ -e "${SYSTEM_CMD_PATH}" ]] && ! check_system_cmd; then
-        log_warning "检测到全局命令失效，正在尝试修复..."
-        local current_script
-        current_script="$(readlink -f "$0")"
-        if fix_system_cmd "${current_script}"; then
-            log_success "全局命令已修复"
-        else
-            log_warning "全局命令修复失败，您可以稍后在主菜单中重新安装"
-        fi
-        echo ""
-    fi
-    
     # 1. 环境检测
     check_environment
 
