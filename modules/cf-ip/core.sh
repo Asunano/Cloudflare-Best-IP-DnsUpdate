@@ -382,12 +382,12 @@ if [[ "${EXIT_CODE}" -eq 0 ]] && [[ -f "${OUTPUT_CSV}" ]]; then
     echo ""
     echo -e " ${GREEN}[最佳] 最优 IP:${NC}"
     echo -e "  ${GREEN}➤${NC} ${best_ip}"
-    echo -e "    延迟: ${delay}ms | 地区: ${best_region_name}"
+    echo -e "    延迟: ${delay}ms | 下载: ${speed}MB/s | 地区: ${best_region_name}"
     echo ""
     echo -e " ${GREEN}Top 3 推荐 IP:${NC}"
     head -n 4 "${OUTPUT_CSV}" | tail -n 3 | while IFS=',' read -r ip sent recv loss delay speed region; do
         region_name=$(convert_colo_to_name "${region}")
-        echo -e "  ${GREEN}➤${NC} ${ip}  (延迟: ${delay}ms, 地区: ${region_name})"
+        echo -e "  ${GREEN}➤${NC} ${ip}  (延迟: ${delay}ms, 下载: ${speed}MB/s, 地区: ${region_name})"
     done
     echo -e "${CYAN}+------------------------------------------------------------+"
     echo ""
