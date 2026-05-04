@@ -1507,158 +1507,31 @@ EOF
         echo -e "${GREEN}[OK] 版本索引获取成功！${NC}"
     fi
     
-    declare -A MODULE_MAP
-    MODULE_MAP=(
-        ["QUICK_DEPLOY"]="${INSTALL_DIR}/modules/quick-deploy/setup.sh:modules/quick-deploy/setup.sh:快速部署向导"
-        ["CF_IP_MENU"]="${INSTALL_DIR}/modules/cf-ip/menu.sh:modules/cf-ip/menu.sh:CF-IP 测速管理"
-        ["CF_IP_CORE"]="${INSTALL_DIR}/modules/cf-ip/core.sh:modules/cf-ip/core.sh:CF-IP 核心引擎"
-        ["CF_DNS_CORE"]="${INSTALL_DIR}/modules/cf-dns/core.sh:modules/cf-dns/core.sh:CF DNS 核心"
-        ["CF_DNS_SETUP"]="${INSTALL_DIR}/modules/cf-dns/setup.sh:modules/cf-dns/setup.sh:CF DNS 配置向导"
-        ["DNSPOD_CORE"]="${INSTALL_DIR}/modules/dnspod-dns/core.sh:modules/dnspod-dns/core.sh:DNSPod 核心"
-        ["DNSPOD_SETUP"]="${INSTALL_DIR}/modules/dnspod-dns/setup.sh:modules/dnspod-dns/setup.sh:DNSPod 配置向导"
-        ["SCHEDULER_RUN"]="${INSTALL_DIR}/modules/scheduler/run.sh:modules/scheduler/run.sh:自动化调度器"
-        ["IP_SYNC"]="${INSTALL_DIR}/modules/ip-sync/sync.sh:modules/ip-sync/sync.sh:IP 同步工具"
-        ["CFOPT"]="${INSTALL_DIR}/cfopt.sh:cfopt.sh:主程序入口"  # 【新增】包含 cfopt.sh 自身
-    )
-
-    HAS_UPDATE=false
-    # 计数器：用于显示进度
-    TOTAL_FILES=${#MODULE_MAP[@]}
-    CURRENT_FILE=0
+    # 【简化】直接调用独立的更新模块
+    echo -e "${CYAN}[INFO] 正在检查更新...${NC}"
+    bash "${ROOT_DIR}/modules/updater/update.sh" check
     
-    if [[ -n "${REMOTE_VERSIONS}" ]]; then
-        # 有 version.txt，进行版本对比和哈希校验
-        for KEY in "${!MODULE_MAP[@]}"; do
-            CURRENT_FILE=$((CURRENT_FILE + 1))
-            IFS=':' read -r LOCAL_PATH REMOTE_FILE DISPLAY_NAME <<< "${MODULE_MAP[$KEY]}"
-            REMOTE_INFO="$(echo "${REMOTE_VERSIONS}" | grep "^${KEY}=" | cut -d'=' -f2)"
-            REMOTE_VER="$(echo "${REMOTE_INFO}" | cut -d':' -f1)"
-            REMOTE_HASH="$(echo "${REMOTE_INFO}" | cut -d':' -f2)"
+    local update_available=$?
+    if [[ ${update_available} -eq 0 ]]; then
+        # 有可用更新，询问用户是否执行
+        echo ""
+        read -r -p "${YELLOW}是否立即执行更新？[y/N] (默认 N): ${NC}" confirm_update
+        if [[ "${confirm_update}" =~ ^[Yy]$ ]]; then
+            echo ""
+            bash "${ROOT_DIR}/modules/updater/update.sh" update
             
-            LOCAL_VER="0.0"
-            LOCAL_HASH=""
-            if [[ -f "${LOCAL_PATH}" ]]; then
-                LOCAL_VER="$(grep -m1 "^SCRIPT_VERSION=" "${LOCAL_PATH}" | awk -F'"' '{print $2}')"
-                [[ -z "${LOCAL_VER}" ]] && LOCAL_VER="0.0"
-                # 计算本地文件哈希
-                LOCAL_HASH="$(sha256sum "${LOCAL_PATH}" | awk '{print $1}')"
+            # 如果更新了 cfopt.sh，提示用户重启
+            if [[ -f "${INSTALL_DIR}/cfopt.sh.new" ]]; then
+                echo ""
+                echo -e "${GREEN}[OK] 主程序已更新，请重新运行 ./cfopt.sh 以应用新版本${NC}"
             fi
-
-            # 【修复】判断是否需要下载：文件不存在 OR 版本不同 OR 哈希不同
-            NEED_DOWNLOAD=false
-            if [[ ! -f "${LOCAL_PATH}" ]]; then
-                NEED_DOWNLOAD=true
-                echo -e "${CYAN}[INFO] [${CURRENT_FILE}/${TOTAL_FILES}] 下载 ${DISPLAY_NAME}...${NC}"
-            elif [[ -n "${REMOTE_VER}" ]] && [[ "${REMOTE_VER}" != "${LOCAL_VER}" ]]; then
-                # 版本号不同，需要更新
-                NEED_DOWNLOAD=true
-                echo -e "${CYAN}[INFO] [${CURRENT_FILE}/${TOTAL_FILES}] 更新 ${DISPLAY_NAME} (v${LOCAL_VER} -> v${REMOTE_VER})...${NC}"
-            elif [[ -n "${REMOTE_HASH}" ]] && [[ -n "${LOCAL_HASH}" ]] && [[ "${REMOTE_HASH}" != "${LOCAL_HASH}" ]]; then
-                # 【新增】版本号相同但哈希不同，说明内容已修改
-                NEED_DOWNLOAD=true
-                echo -e "${YELLOW}[INFO] [${CURRENT_FILE}/${TOTAL_FILES}] 更新 ${DISPLAY_NAME} (内容已变更)...${NC}"
-            fi
-
-            if [[ "${NEED_DOWNLOAD}" = true ]]; then
-                # 确保目标目录存在
-                mkdir -p "$(dirname "${LOCAL_PATH}")" 2>/dev/null
-                
-                # 【特殊处理】cfopt.sh 自身：下载到 .new 文件，避免覆盖正在运行的脚本
-                if [[ "${REMOTE_FILE}" = "cfopt.sh" ]]; then
-                    local temp_file="${INSTALL_DIR}/cfopt.sh.new"
-                    if download_with_retry "${REMOTE_URL}/${REMOTE_FILE}" "${temp_file}" "${REMOTE_HASH}"; then
-                        chmod +x "${temp_file}"
-                        HAS_UPDATE=true
-                        log_success "主程序入口已下载（将在重启后生效）"
-                    else
-                        echo -e "${RED}[ERROR] ${KEY} 下载失败，请检查网络或稍后重试。${NC}"
-                        rm -f "${temp_file}" 2>/dev/null
-                    fi
-                else
-                    # 其他文件直接下载到目标位置
-                    if download_with_retry "${REMOTE_URL}/${REMOTE_FILE}" "${LOCAL_PATH}" "${REMOTE_HASH}"; then
-                        HAS_UPDATE=true
-                    else
-                        echo -e "${RED}[ERROR] ${KEY} 下载失败，请检查网络或稍后重试。${NC}"
-                        # 清理可能的残留文件
-                        rm -f "${LOCAL_PATH}" 2>/dev/null
-                    fi
-                fi
-            fi
-        done
+        fi
     else
-        # 无 version.txt，跳过哈希校验直接下载所有文件（首次安装或网络问题）
-        for KEY in "${!MODULE_MAP[@]}"; do
-            CURRENT_FILE=$((CURRENT_FILE + 1))
-            IFS=':' read -r LOCAL_PATH REMOTE_FILE DISPLAY_NAME <<< "${MODULE_MAP[$KEY]}"
-            
-            # 仅下载不存在的文件
-            if [[ ! -f "${LOCAL_PATH}" ]]; then
-                echo -e "${CYAN}[INFO] [${CURRENT_FILE}/${TOTAL_FILES}] 下载 ${KEY}...${NC}"
-                # 确保目标目录存在
-                mkdir -p "$(dirname "${LOCAL_PATH}")" 2>/dev/null
-                
-                # 直接在目标位置下载
-                if download_with_retry "${REMOTE_URL}/${REMOTE_FILE}" "${LOCAL_PATH}" ""; then
-                    HAS_UPDATE=true
-                else
-                    echo -e "${RED}[ERROR] ${KEY} 下载失败，请检查网络连接。${NC}"
-                    # 清理可能的残留文件
-                    rm -f "${LOCAL_PATH}" 2>/dev/null
-                    
-                    # 【新增】下载失败时回滚
-                    echo -e "${YELLOW}[WARN] 检测到组件下载失败，正在执行回滚...${NC}"
-                    rollback_on_failure
-                    exit 1
-                fi
-            fi
-        done
-    fi
-    
-    # 6. 下载配置文件模板（仅在首次安装时执行）
-    if [[ "${HAS_UPDATE}" = true ]] && [[ ! -f "${INSTALL_DIR}/conf/.templates_downloaded" ]]; then
-        echo -e "${CYAN}[INFO] 正在初始化配置文件...${NC}"
-        declare -A CONF_TEMPLATES
-        CONF_TEMPLATES=(
-            ["cf-ip.json"]="conf/templates/cf-ip.json.example"
-            ["cf-dns.json"]="conf/templates/cf-dns.json.example"
-            ["dnspod.json"]="conf/templates/dnspod.json.example"
-            ["global.json"]="conf/templates/global.json.example"
-        )
-        
-        for CONF_NAME in "${!CONF_TEMPLATES[@]}"; do
-            LOCAL_CONF="${INSTALL_DIR}/conf/${CONF_NAME}"
-            REMOTE_TEMPLATE="${CONF_TEMPLATES[$CONF_NAME]}"
-            
-            # 仅在配置文件不存在时下载模板
-            if [[ ! -f "${LOCAL_CONF}" ]]; then
-                mkdir -p "${INSTALL_DIR}/conf" 2>/dev/null
-                
-                # 下载模板文件
-                TEMP_TEMPLATE="$(mktemp)"
-                if download_with_retry "${REMOTE_URL}/${REMOTE_TEMPLATE}" "${TEMP_TEMPLATE}" ""; then
-                    # 重命名为 .json（去掉 .example 后缀）
-                    mv "${TEMP_TEMPLATE}" "${LOCAL_CONF}"
-                    chmod 600 "${LOCAL_CONF}"
-                else
-                    rm -f "${TEMP_TEMPLATE}" 2>/dev/null
-                fi
-            fi
-        done
-        
-        # 标记已下载模板（防止重复下载）
-        touch "${INSTALL_DIR}/conf/.templates_downloaded"
-    fi
-
-    if [[ "${HAS_UPDATE}" = true ]]; then
-        echo -e "${GREEN}[OK] 组件安装完成！${NC}"
-        # 有内容更新时自动清屏，让用户看到最新内容
-        clear
-    else
-        echo -e "${YELLOW}[WARN] 没有可更新的组件。${NC}"
+        echo -e "${RED}[ERROR] 更新检查失败${NC}"
     fi
 
     # 7. 进入主菜单循环
+    clear
     while true; do
         show_main_menu
         # show_main_menu 是递归函数，选择 0 时会 exit
