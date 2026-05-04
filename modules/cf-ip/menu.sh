@@ -15,12 +15,13 @@ SCRIPT_VERSION="0.1"
 # shellcheck disable=SC2329
 cleanup() {
     local exit_code=$?
+    # 清理锁文件
+    rm -f "${LOCK_FILE}" 2>/dev/null || true
     if [[ "${exit_code}" -ne 0 ]]; then
-        echo "[ERROR] 安装脚本异常退出 (Code: ${exit_code})"
+        echo "[ERROR] 脚本异常退出 (Code: ${exit_code})" >&2
     fi
-    exit "${exit_code}"
 }
-trap cleanup EXIT INT TERM HUP
+trap cleanup INT TERM HUP
 
 # ==================== 路径初始化 ====================
 SOURCE="${BASH_SOURCE[0]}"
