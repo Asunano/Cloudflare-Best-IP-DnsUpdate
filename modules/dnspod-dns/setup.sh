@@ -632,7 +632,7 @@ modify_ip_limit() {
     fi
     
     # 更新配置文件 (使用安全方式)
-    update_config_value "MAX_IPS_PER_RECORD" "$new_limit"
+    update_config_field ".dns.max_ips_per_record" "$new_limit"
     
     echo ""
     if [[ "$new_limit" -eq 0 ]]; then
@@ -675,7 +675,7 @@ toggle_module_status() {
         echo ""
         read -r -p "是否禁用此模块? (y/n): " confirm
         if [[ "$confirm" == "y" ]] || [[ "$confirm" == "Y" ]]; then
-            update_config_value "ENABLED" "false"
+            update_config_field ".enabled" "false"
             echo -e "${GREEN}[OK] 模块已禁用"
             echo -e "${CYAN}提示: IP 同步和 DNS 更新将跳过此模块"
         fi
@@ -688,7 +688,7 @@ toggle_module_status() {
         echo ""
         read -r -p "是否启用此模块? (y/n): " confirm
         if [[ "$confirm" == "y" ]] || [[ "$confirm" == "Y" ]]; then
-            update_config_value "ENABLED" "true"
+            update_config_field ".enabled" "true"
             echo -e "${GREEN}[OK] 模块已启用"
             echo -e "${CYAN}提示: 下次测速后将自动同步 IP 并支持 DNS 更新"
         fi
@@ -828,7 +828,7 @@ modify_domain_config() {
             echo -e "${RED}[ERROR] 无效的域名格式，请检查输入。"
             return 0
         fi
-        update_config_value "DOMAIN" "$new_domain"
+        update_config_field ".dns.domain" "$new_domain"
         domain="$new_domain"
     fi
     
@@ -839,7 +839,7 @@ modify_domain_config() {
             echo -e "${RED}[ERROR] 无效的子域名格式。"
             return 0
         fi
-        update_config_value "SUB_DOMAIN" "$new_subdomain"
+        update_config_field ".dns.sub_domain" "$new_subdomain"
         sub_domain="$new_subdomain"
     fi
     
@@ -864,7 +864,7 @@ modify_api_keys() {
             echo -e "${RED}[ERROR] SecretId 包含非法字符，请重新输入。"
             return 0
         fi
-        update_config_value "SECRETID" "$new_secretid"
+        update_config_field ".api.id" "$new_secretid"
         echo -e "${GREEN}[OK] SecretId 已更新"
     fi
     
@@ -875,7 +875,7 @@ modify_api_keys() {
             echo -e "${RED}[ERROR] SecretKey 包含非法字符"
             return 0
         fi
-        update_config_value "SECRETKEY" "$new_secretkey"
+        update_config_field ".api.token" "$new_secretkey"
         echo -e "${GREEN}[OK] SecretKey 已更新"
     fi
     echo ""
@@ -904,300 +904,82 @@ modify_work_mode() {
     read -r -p "请选择新模式 (1/2): " mode_choice
     
     if [[ "$mode_choice" == "1" ]]; then
-        # 切换至单线路解析模式
+        # 切换到单线路模式 - 调用 core.sh 的智能处理
         if [[ "$current_mode" == "multi" ]]; then
-            # 处理从多线路分流模式向单线路模式的迁移逻辑
             echo ""
-            echo -e "${RED}[WARN] 警告：即将从多线路模式切换至单线路模式"
-            echo ""
+            echo -e "${YELLOW}[INFO] 正在从多线路切换到单线路..."
             
-            # 提取当前的子域名策略配置
+            # 获取当前策略
             local current_strategy
             current_strategy=$(json_get ".dns.subdomain_strategy" "separate")
             
-            local unified_subdomain domain
-            unified_subdomain=$(json_get ".dns.sub_domain_unified" "dns")
-            domain=$(json_get ".dns.domain" "")
+            # 调用 core.sh 进行智能模式切换
+            export DNSPOD_MODE_SWITCH=1
+            export DNSPOD_FROM_MODE="multi"
+            export DNSPOD_TO_MODE="single"
+            export DNSPOD_STRATEGY="$current_strategy"
             
-            # 调试输出：显示当前策略
-            echo -e "${CYAN}[调试] 当前 SUBDOMAIN_STRATEGY: ${current_strategy}"
-            echo ""
+            bash "$(dirname "$0")/core.sh"
+            local switch_result=$?
             
-            if [[ "$current_strategy" == "unified" ]]; then
-                echo -e "${YELLOW}检测到当前为统一模式，存在记录：${unified_subdomain}.${domain}"
-                echo ""
-                echo "此操作将会："
-                echo "  1. ${RED}删除${NC} ${unified_subdomain}.${domain} 的联通、移动、电信线路记录"
-                echo ""
-                echo "请选择如何处理默认线路记录："
-                echo "  1) 保留默认线路 (推荐)"
-                echo "     - 保留 ${unified_subdomain}.${domain} 的默认线路记录"
-                echo "     - 单线路将使用该子域名"
-                echo "     - 无需重新创建记录"
-                echo ""
-                echo "  2) 使用新的子域名"
-                echo "     - 将删除 ${unified_subdomain}.${domain} 的所有记录（包括默认）"
-                echo "     - 立即输入新的子域名"
-                echo "     - 自动创建单线路记录"
-                echo ""
-                read -r -p "请选择 (1/2, 默认 1): " handle_default_record
-                handle_default_record=${handle_default_record:-1}
-                
-                if [[ "$handle_default_record" == "2" ]]; then
-                    echo ""
-                    read -r -p "请输入新的子域名 [dns]: " new_subdomain
-                    new_subdomain=${new_subdomain:-dns}
-                    
-                    # 验证子域名格式
-                    if ! [[ "$new_subdomain" =~ ^[a-zA-Z0-9\-@]+$ ]]; then
-                        echo -e "${RED}[ERROR] 无效的子域名格式"
-                        return 0
-                    fi
-                    
-                    # 标记需要删除所有记录并使用新子域名
-                    handle_unified_record="delete_all"
-                    new_single_subdomain="$new_subdomain"
-                else
-                    # 标记只删除非默认线路
-                    handle_unified_record="delete_multi"
-                    new_single_subdomain="$unified_subdomain"
-                fi
-            else
-                # 当前是分离模式，询问如何处理
-                local default_subdomain
-                default_subdomain=$(json_get ".dns.sub_domains.default" "default")
-                
-                echo -e "${YELLOW}检测到当前为分离模式"
-                echo ""
-                echo "请选择如何处理 DNS 记录："
-                echo ""
-                echo "  1) 使用默认线路的子域名 (推荐)"
-                echo "     - 删除所有分离模式的记录"
-                echo "     - 使用默认线路的子域名: ${default_subdomain}.${domain}"
-                echo "     - 自动创建单线路记录"
-                echo ""
-                echo "  2) 使用新的子域名"
-                echo "     - 删除所有分离模式的记录"
-                echo "     - 立即输入新的子域名"
-                echo "     - 自动创建单线路记录"
-                echo ""
-                echo "  3) 取消切换"
-                echo "     - 保持多线路模式"
-                echo ""
-                read -r -p "请选择 (1/2/3, 默认 1): " handle_separate_choice
-                handle_separate_choice=${handle_separate_choice:-1}
-                
-                if [[ "$handle_separate_choice" == "1" ]]; then
-                    # 使用默认线路的子域名
-                    handle_separate_record="use_default"
-                    new_single_subdomain="$default_subdomain"
-                elif [[ "$handle_separate_choice" == "2" ]]; then
-                    echo ""
-                    read -r -p "请输入新的子域名 [${default_subdomain}]: " new_subdomain
-                    new_subdomain=${new_subdomain:-${default_subdomain}}
-                    
-                    # 验证子域名格式
-                    if ! [[ "$new_subdomain" =~ ^[a-zA-Z0-9\-@]+$ ]]; then
-                        echo -e "${RED}[ERROR] 无效的子域名格式"
-                        return 0
-                    fi
-                    
-                    handle_separate_record="use_custom"
-                    new_single_subdomain="$new_subdomain"
-                else
-                    # 取消切换
-                    echo -e "${YELLOW}[INFO] 已取消切换"
-                    echo ""
-                    read -r -p "按回车键继续..."
-                    return 0
-                fi
-            fi
-        fi
-        
-        update_config_value "MODE" "single"
-        echo -e "${GREEN}[OK] 已切换为单线路模式"
-        echo ""
-        
-        # 如果之前是统一模式，处理记录
-        if [[ "$handle_unified_record" == "delete_multi" ]]; then
-            # 只删除非默认线路，保留默认线路
-            pause_unified_non_default_records
+            unset DNSPOD_MODE_SWITCH DNSPOD_FROM_MODE DNSPOD_TO_MODE DNSPOD_STRATEGY
             
-            # 使用统一模式的子域名作为单线路的子域名
-            local unified_subdomain
-            unified_subdomain=$(json_get ".dns.sub_domain_unified" "dns")
-            update_config_value "SUB_DOMAIN" "$unified_subdomain"
-            
-            echo ""
-            echo -e "${GREEN}[OK] 已将单线路子域名设置为: ${unified_subdomain}"
-            echo -e "${CYAN}提示: 完整域名为 ${unified_subdomain}.${domain}"
-            echo ""
-        elif [[ "$handle_unified_record" == "delete_all" ]]; then
-            # 删除所有统一模式记录
-            echo -e "${CYAN}正在删除统一模式的所有记录..."
-            pause_unified_record
-            
-            local delete_result=$?
-            if [[ $delete_result -ne 0 ]]; then
-                echo -e "${RED}[ERROR] 删除失败，但已切换为单线路模式"
-            fi
-            
-            # 设置新的子域名
-            update_config_value "SUB_DOMAIN" "$new_single_subdomain"
-            
-            echo ""
-            echo -e "${GREEN}[OK] 已将单线路子域名设置为: ${new_single_subdomain}"
-            echo -e "${CYAN}提示: 完整域名为 ${new_single_subdomain}.${domain}"
-            echo ""
-            
-            # 自动创建 DNS 记录
-            echo -e "${CYAN}正在创建 DNS 记录..."
-            chmod +x "$(dirname "$0")/core.sh"
-            "$(dirname "$0")/core.sh"
-            
-            local create_result=$?
-            if [ $create_result -eq 0 ]; then
+            if [[ $switch_result -eq 0 ]]; then
                 echo ""
-                echo -e "${GREEN}[OK] DNS 记录创建成功"
+                echo -e "${GREEN}[OK] 模式切换成功"
             else
                 echo ""
-                echo -e "${YELLOW}[WARN] DNS 记录创建失败（退出码: ${create_result}）"
-                echo -e "${CYAN}提示: 可以稍后手动运行 ./core.sh 创建"
-            fi
-            echo ""
-        elif [[ "$handle_separate_record" == "use_default" ]] || [[ "$handle_separate_record" == "use_custom" ]]; then
-            # 删除所有分离模式的记录
-            echo -e "${CYAN}正在删除分离模式的记录..."
-            pause_separate_records
-            
-            local delete_result=$?
-            if [[ $delete_result -ne 0 ]]; then
-                echo -e "${RED}[ERROR] 删除失败，但已切换为单线路模式"
-            fi
-            
-            # 设置子域名
-            update_config_value "SUB_DOMAIN" "$new_single_subdomain"
-            
-            echo ""
-            echo -e "${GREEN}[OK] 已将单线路子域名设置为: ${new_single_subdomain}"
-            echo -e "${CYAN}提示: 完整域名为 ${new_single_subdomain}.${domain}"
-            echo ""
-            
-            # 自动创建 DNS 记录
-            echo -e "${CYAN}正在创建 DNS 记录..."
-            chmod +x "$(dirname "$0")/core.sh"
-            "$(dirname "$0")/core.sh"
-            
-            local create_result=$?
-            if [[ $create_result -eq 0 ]]; then
-                echo ""
-                echo -e "${GREEN}[OK] DNS 记录创建成功"
-            else
-                echo ""
-                echo -e "${YELLOW}[WARN] DNS 记录创建失败（退出码: ${create_result}）"
-                echo -e "${CYAN}提示: 可以稍后手动运行 ./core.sh 创建"
-            fi
-            echo ""
-        fi
-        
-        # 检查单线路必需配置
-        local sub_domain domain
-        sub_domain=$(json_get ".dns.sub_domain" "")
-        domain=$(json_get ".dns.domain" "你的域名")
-        
-        if [[ -z "$sub_domain" ]]; then
-            # SUB_DOMAIN 未配置,需要引导
-            echo -e "${YELLOW}[WARN] 检测到单线路模式但未配置子域名(SUB_DOMAIN)"
-            echo ""
-            echo "单线路模式需要配置一个子域名,例如:"
-            echo "  - 如果你的域名是 drxian.cn"
-            echo "  - 设置 SUB_DOMAIN=dns"
-            echo "  - 最终解析为: dns.drxian.cn"
-            echo ""
-            echo -e "${CYAN}请选择:"
-            echo "  y - 现在立即配置子域名"
-            echo "  n - 取消切换,保持单线路模式"
-            echo ""
-            read -r -p "请输入 (y/n, 默认 y): " config_now
-            config_now=${config_now:-y}
-            
-            if [[ "$config_now" == "y" ]] || [[ "$config_now" == "Y" ]]; then
-                echo ""
-                read -r -p "请输入子域名 [dns]: " input_subdomain
-                input_subdomain=${input_subdomain:-dns}
-                
-                # 验证子域名格式
-                if ! [[ "$input_subdomain" =~ ^[a-zA-Z0-9\-@]+$ ]]; then
-                    echo -e "${RED}[ERROR] 无效的子域名格式"
-                    return 0
-                fi
-                
-                # 检查是否已有 SUB_DOMAIN 配置行
-                if grep -q '^SUB_DOMAIN=' "$CONFIG_FILE"; then
-                    update_config_value "SUB_DOMAIN" "$input_subdomain"
-                else
-                    echo "SUB_DOMAIN=\"${input_subdomain}\"" >> "$CONFIG_FILE"
-                fi
-                
-                echo ""
-                echo -e "${GREEN}[OK] 子域名已配置: ${input_subdomain}"
-                echo -e "${CYAN}提示: 完整域名为 ${input_subdomain}.${domain}"
-            else
-                echo ""
-                echo -e "${YELLOW}[INFO] 已取消切换，保持当前模式"
+                echo -e "${RED}[ERROR] 模式切换失败"
                 return 0
             fi
         else
-            # SUB_DOMAIN 已配置,显示提示
-            echo -e "${GREEN}[OK] 单线路配置检查通过"
-            echo ""
-            echo "当前子域名: ${sub_domain}"
-            echo -e "${CYAN}提示: 完整域名为 ${sub_domain}.${domain}"
-            echo ""
-            echo -e "${CYAN}注意: 请确保 DNSPod 中已存在该子域名的解析记录"
+            # 已经是单线路，无需切换
+            update_config_field ".dns.mode" "single"
+            echo -e "${GREEN}[OK] 已确认为单线路模式"
         fi
         
     elif [[ "$mode_choice" == "2" ]]; then
-        # 切换到多线路模式
+        # 切换到多线路模式 - 调用 core.sh 的智能处理
         if [[ "$current_mode" == "single" ]]; then
             echo ""
-            echo -e "${CYAN}[INFO] 从单线路切换到多线路模式"
+            echo -e "${YELLOW}[INFO] 正在从单线路切换到多线路..."
+            
+            # 获取当前策略（如果有的话）
+            local current_strategy
+            current_strategy=$(json_get ".dns.subdomain_strategy" "separate")
+            
+            # 调用 core.sh 进行智能模式切换
+            export DNSPOD_MODE_SWITCH=1
+            export DNSPOD_FROM_MODE="single"
+            export DNSPOD_TO_MODE="multi"
+            export DNSPOD_STRATEGY="$current_strategy"
+            
+            bash "$(dirname "$0")/core.sh"
+            local switch_result=$?
+            
+            unset DNSPOD_MODE_SWITCH DNSPOD_FROM_MODE DNSPOD_TO_MODE DNSPOD_STRATEGY
+            
+            if [[ $switch_result -eq 0 ]]; then
+                echo ""
+                echo -e "${GREEN}[OK] 模式切换成功"
+            else
+                echo ""
+                echo -e "${RED}[ERROR] 模式切换失败"
+                return 0
+            fi
+        else
+            # 已经是多线路，无需切换
+            update_config_field ".dns.mode" "multi"
+            echo -e "${GREEN}[OK] 已确认为多线路模式"
         fi
-        
-        update_config_value "MODE" "multi"
-        echo -e "${GREEN}[OK] 已切换为多线路模式"
-        echo "  配置文件中的 MODE 已更新为: multi"
-        echo ""
-        
-        # 检查是否已配置多线路所需参数
-        local current_lines current_strategy
-        current_lines=$(json_get ".dns.isp_lines" "")
-        current_strategy=$(json_get ".dns.subdomain_strategy" "")
-        
-        # 判断是否需要引导配置
-        local need_config=false
-        local config_reason=""
-        
-        if [[ -z "$current_lines" ]] || [[ "$current_lines" == "默认" ]]; then
-            need_config=true
-            config_reason="未配置运营商线路"
-        elif [[ -z "$current_strategy" ]]; then
-            need_config=true
-            config_reason="未配置子域名策略"
-        fi
-        
-        if [[ "$need_config" == true ]]; then
-            echo -e "${YELLOW}[WARN] 检测到${config_reason}"
-            echo ""
-            echo "多线路模式需要配置以下内容:"
-            echo "  1. 运营商线路选择 (至少选择一个)"
-            echo "  2. 子域名策略 (分离模式/统一模式)"
-            echo ""
-            echo -e "${CYAN}请选择:"
-            echo "  y - 现在立即配置多线路参数"
-            echo "  n - 取消切换,保持分离模式"
-            echo ""
-            read -r -p "请输入 (y/n, 默认 y): " configure_now
+    else
+        echo -e "${RED}[ERROR] 无效的选择"
+        return 0
+    fi
+    
+    echo ""
+    read -r -p "按回车键继续..."
+}
             configure_now=${configure_now:-y}
             
             if [[ "$configure_now" == "y" ]] || [[ "$configure_now" == "Y" ]]; then
@@ -1266,7 +1048,7 @@ modify_work_mode() {
                     fi
                 else
                     echo -e "${YELLOW}[INFO] 使用默认配置: 默认"
-                    update_config_value "ISP_LINES" "默认"
+                    update_config_field ".dns.isp_lines" "默认"
                 fi
                 
                 echo ""
@@ -1289,7 +1071,7 @@ modify_work_mode() {
                 fi
                 
                 if [[ "$strategy_choice" == "1" ]]; then
-                    update_config_value "SUBDOMAIN_STRATEGY" "separate"
+                    update_config_field ".dns.subdomain_strategy" "separate"
                     echo -e "${GREEN}[OK] 已选择: 分离模式"
                     echo ""
                     echo "各线路子域名前缀 (使用默认值):"
@@ -1301,7 +1083,7 @@ modify_work_mode() {
                     echo -e "${CYAN}提示: 如需自定义,可在配置文件中修改:"
                     echo "  SUB_DOMAIN_DEFAULT, SUB_DOMAIN_UNICOM 等"
                 else
-                    update_config_value "SUBDOMAIN_STRATEGY" "unified"
+                    update_config_field ".dns.subdomain_strategy" "unified"
                     echo -e "${GREEN}[OK] 已选择: 统一模式"
                     echo ""
                     read -r -p "请输入统一子域名 [dns]: " unified_subdomain
@@ -1311,12 +1093,8 @@ modify_work_mode() {
                         echo -e "${RED}[ERROR] 无效的子域名格式"
                         return 0
                     fi
-                    # 检查配置项是否存在
-                    if grep -q '^SUB_DOMAIN_UNIFIED=' "$CONFIG_FILE"; then
-                        update_config_value "SUB_DOMAIN_UNIFIED" "$unified_subdomain"
-                    else
-                        echo "SUB_DOMAIN_UNIFIED=\"${unified_subdomain}\"" >> "$CONFIG_FILE"
-                    fi
+                    # 更新配置
+                    update_config_field ".dns.sub_domain_unified" "$unified_subdomain"
                     echo ""
                     # 获取实际域名
                     local domain
@@ -1405,7 +1183,7 @@ modify_work_mode() {
                     else
                         # 取消切换
                         echo -e "${YELLOW}[INFO] 已取消切换，保持单线路模式"
-                        update_config_value "MODE" "single"
+                        update_config_field ".dns.mode" "single"
                         return 0
                     fi
                 else
@@ -1537,7 +1315,7 @@ modify_subdomain_strategy() {
     if [[ "$strategy_choice" == "1" ]]; then
         # 切换到分离模式
         local old_strategy="$current_strategy"
-        update_config_value "SUBDOMAIN_STRATEGY" "separate"
+        update_config_field ".dns.subdomain_strategy" "separate"
         
         # 如果从统一模式切换过来，询问是否使用统一模式的子域名作为默认线路子域名
         local default_subdomain
@@ -1576,8 +1354,8 @@ modify_subdomain_strategy() {
             default_subdomain="${SUB_DOMAIN_DEFAULT:-default}"
         fi
         
-        update_config_value "SUB_DOMAIN" "$default_subdomain"
-        update_config_value "SUB_DOMAIN_DEFAULT" "$default_subdomain"
+        update_config_field ".dns.sub_domain" "$default_subdomain"
+        update_config_field ".dns.sub_domains.default" "$default_subdomain"
         
         echo -e "\n${GREEN}[OK] 已切换为: 分离模式"
         echo "  主 SUB_DOMAIN 已更新为: ${default_subdomain}"
@@ -1649,7 +1427,7 @@ modify_subdomain_strategy() {
                     echo -e "${RED}[ERROR] 无效的子域名格式"
                     return 0
                 fi
-                update_config_value "SUB_DOMAIN_DEFAULT" "$custom_default"
+                update_config_field ".dns.sub_domains.default" "$custom_default"
                 
                 # 读取联通线路子域名
                 read -r -p "联通线路子域名 [unicom]: " custom_unicom
@@ -1658,7 +1436,7 @@ modify_subdomain_strategy() {
                     echo -e "${RED}[ERROR] 无效的子域名格式"
                     return 0
                 fi
-                update_config_value "SUB_DOMAIN_UNICOM" "$custom_unicom"
+                update_config_field ".dns.sub_domains.unicom" "$custom_unicom"
                 
                 # 读取移动线路子域名
                 read -r -p "移动线路子域名 [mobile]: " custom_mobile
@@ -1667,7 +1445,7 @@ modify_subdomain_strategy() {
                     echo -e "${RED}[ERROR] 无效的子域名格式"
                     return 0
                 fi
-                update_config_value "SUB_DOMAIN_MOBILE" "$custom_mobile"
+                update_config_field ".dns.sub_domains.mobile" "$custom_mobile"
                 
                 # 读取电信线路子域名
                 read -r -p "电信线路子域名 [telecom]: " custom_telecom
@@ -1676,10 +1454,10 @@ modify_subdomain_strategy() {
                     echo -e "${RED}[ERROR] 无效的子域名格式"
                     return 0
                 fi
-                update_config_value "SUB_DOMAIN_TELECOM" "$custom_telecom"
+                update_config_field ".dns.sub_domains.telecom" "$custom_telecom"
                 
                 # 更新 SUB_DOMAIN 为默认线路的子域名
-                update_config_value "SUB_DOMAIN" "$custom_default"
+                update_config_field ".dns.sub_domain" "$custom_default"
                 
                 echo ""
                 echo -e "${GREEN}[OK] 子域名配置完成"
@@ -1696,8 +1474,8 @@ modify_subdomain_strategy() {
                 # 取消切换
                 echo -e "${YELLOW}[INFO] 已取消切换，保持统一模式"
                 # 恢复配置
-                update_config_value "SUBDOMAIN_STRATEGY" "unified"
-                update_config_value "SUB_DOMAIN" "${SUB_DOMAIN_UNIFIED:-dns}"
+                update_config_field ".dns.subdomain_strategy" "unified"
+                update_config_field ".dns.sub_domain" "${SUB_DOMAIN_UNIFIED:-dns}"
                 return 0
             fi
         fi
@@ -1710,7 +1488,7 @@ modify_subdomain_strategy() {
         fi
         
         # 立即更新策略配置，确保后续脚本使用正确的模式
-        update_config_value "SUBDOMAIN_STRATEGY" "unified"
+        update_config_field ".dns.subdomain_strategy" "unified"
         
         echo -e "\n${GREEN}[OK] 已切换为: 统一模式"
         echo ""
@@ -1752,10 +1530,10 @@ modify_subdomain_strategy() {
             echo -e "${RED}[ERROR] 无效的子域名格式"
             return 0
         fi
-        update_config_value "SUB_DOMAIN_UNIFIED" "$unified_subdomain"
+        update_config_field ".dns.sub_domain_unified" "$unified_subdomain"
         
         # 更新 SUB_DOMAIN 为统一子域名（用于单线路脚本）
-        update_config_value "SUB_DOMAIN" "$unified_subdomain"
+        update_config_field ".dns.sub_domain" "$unified_subdomain"
         
         echo ""
         echo -e "${GREEN}[OK] 已切换为: 统一模式"
@@ -1829,8 +1607,8 @@ modify_subdomain_strategy() {
                 # 取消切换
                 echo -e "${YELLOW}[INFO] 已取消切换，保持分离模式"
                 # 恢复配置
-                update_config_value "SUBDOMAIN_STRATEGY" "separate"
-                update_config_value "SUB_DOMAIN" "${SUB_DOMAIN_DEFAULT:-default}"
+                update_config_field ".dns.subdomain_strategy" "separate"
+                update_config_field ".dns.sub_domain" "${SUB_DOMAIN_DEFAULT:-default}"
                 return 0
             fi
         elif [[ "$old_strategy" == "unified" ]]; then
@@ -1906,8 +1684,8 @@ modify_subdomain_strategy() {
                 else
                     # 取消切换
                     echo -e "${YELLOW}[INFO] 已取消切换，恢复为旧子域名"
-                    update_config_value "SUB_DOMAIN_UNIFIED" "$old_unified_subdomain"
-                    update_config_value "SUB_DOMAIN" "$old_unified_subdomain"
+                    update_config_field ".dns.sub_domain_unified" "$old_unified_subdomain"
+                    update_config_field ".dns.sub_domain" "$old_unified_subdomain"
                     return 0
                 fi
             else
@@ -1981,140 +1759,6 @@ sync_records_separate() {
     fi
 }
 
-# 暂停分线路解析记录
-pause_separate_records() {
-    echo ""
-    echo -e "${CYAN}正在删除分线路的 DNS 记录..."
-    echo ""
-    
-    # 读取配置
-    local domain lines
-    domain=$(json_get ".dns.domain" "")
-    lines=$(json_get ".dns.isp_lines" "默认")
-    
-    if [[ -z "$domain" ]]; then
-        echo -e "${RED}[ERROR]: 配置文件不完整"
-        return 1
-    fi
-    
-    # 直接使用配置文件中的 ISP_LINES，不检查各个子域名配置
-    # 因为 get_separate_subdomain_for_line() 已经有默认值
-    local delete_lines="$lines"
-    
-    if [ -z "$delete_lines" ]; then
-        echo -e "${RED}[ERROR]: 未配置运营商线路 (ISP_LINES)"
-        return 1
-    fi
-    
-    echo -e "${CYAN}将删除以下线路的记录: ${delete_lines}"
-    echo ""
-    
-    # 临时保存原 ISP_LINES，然后设置为要删除的线路
-    local original_isp_lines
-    original_isp_lines=$(grep '^ISP_LINES=' "$CONFIG_FILE")
-    if [ -n "$original_isp_lines" ]; then
-        sed -i "s/^ISP_LINES=.*/ISP_LINES=\"${delete_lines}\"/" "$CONFIG_FILE"
-    else
-        echo "ISP_LINES=\"${delete_lines}\"" >> "$CONFIG_FILE"
-    fi
-    
-    # 直接调用删除脚本，并传递线路参数
-    chmod +x "$(dirname "$0")/core.sh"
-    "$(dirname "$0")/core.sh" -d "$delete_lines"
-    
-    local exit_code=$?
-    
-    # 恢复原来的 ISP_LINES 配置
-    if [[ -n "$original_isp_lines" ]]; then
-        # 删除刚添加的行
-        sed -i '/^ISP_LINES=/d' "$CONFIG_FILE"
-        # 添加原来的配置
-        echo "$original_isp_lines" >> "$CONFIG_FILE"
-    else
-        # 如果原来没有，删除刚添加的行
-        sed -i '/^ISP_LINES=/d' "$CONFIG_FILE"
-    fi
-    
-    echo ""
-    
-    if [[ $exit_code -eq 0 ]]; then
-        echo -e "${GREEN}[OK] 分线路记录删除完成"
-    else
-        echo -e "${RED}[ERROR] 删除失败 (退出码: ${exit_code})"
-    fi
-}
-
-# 删除统一模式的记录
-pause_unified_record() {
-    echo ""
-    echo -e "${CYAN}正在删除统一模式的 DNS 记录..."
-    echo ""
-    
-    # 读取配置
-    local domain unified_subdomain secretid secretkey
-    domain=$(json_get ".dns.domain" "")
-    unified_subdomain=$(json_get ".dns.sub_domain_unified" "dns")
-    secretid=$(json_get ".api.id" "")
-    secretkey=$(json_get ".api.token" "")
-    
-    if [[ -z "$domain" ]] || [[ -z "$secretid" ]] || [[ -z "$secretkey" ]]; then
-        echo -e "${RED}[ERROR]: 配置文件不完整"
-        return 1
-    fi
-    
-    echo -e "  将删除: ${unified_subdomain}.${domain} 的所有运营商线路记录"
-    echo ""
-    
-    # 调用 core.sh 删除所有线路的统一模式记录
-    # 传递 --delete-unified 参数
-    chmod +x "$(dirname "$0")/core.sh"
-    "$(dirname "$0")/core.sh" --delete-unified "$unified_subdomain"
-    
-    local exit_code=$?
-    echo ""
-    
-    if [[ $exit_code -eq 0 ]]; then
-        echo -e "${GREEN}[OK] 统一模式记录删除完成"
-    else
-        echo -e "${RED}[ERROR] 删除失败 (退出码: ${exit_code})"
-    fi
-}
-
-# 删除统一模式中的非默认线路记录（保留默认线路供单线路使用）
-pause_unified_non_default_records() {
-    echo ""
-    echo -e "${CYAN}正在删除统一模式的非默认线路记录..."
-    echo ""
-    
-    # 读取配置
-    local domain unified_subdomain secretid secretkey
-    domain=$(json_get ".dns.domain" "")
-    unified_subdomain=$(json_get ".dns.sub_domain_unified" "dns")
-    secretid=$(json_get ".api.id" "")
-    secretkey=$(json_get ".api.token" "")
-    
-    if [[ -z "$domain" ]] || [[ -z "$secretid" ]] || [[ -z "$secretkey" ]]; then
-        echo -e "${RED}[ERROR]: 配置文件不完整"
-        return 1
-    fi
-    
-    echo -e "  将删除: ${unified_subdomain}.${domain} 的联通、移动、电信线路记录"
-    echo -e "  保留: ${unified_subdomain}.${domain} 的默认线路记录"
-    echo ""
-    
-    # 调用 core.sh 删除非默认线路
-    chmod +x "$(dirname "$0")/core.sh"
-    "$(dirname "$0")/core.sh" --delete-unified-non-default "$unified_subdomain"
-    
-    local exit_code=$?
-    echo ""
-    
-    if [[ $exit_code -eq 0 ]]; then
-        echo -e "${GREEN}[OK] 非默认线路记录删除完成"
-    else
-        echo -e "${RED}[ERROR] 删除失败 (退出码: ${exit_code})"
-    fi
-}
 
 # 修改运营商线路
 modify_isp_lines() {
@@ -2168,7 +1812,7 @@ modify_isp_lines() {
         return 1
     fi
     
-    update_config_value "ISP_LINES" "$ISP_LINES"
+    update_config_field ".dns.isp_lines" "$ISP_LINES"
     echo -e "${GREEN}[OK] 运营商线路已更新: ${ISP_LINES}"
     echo ""
     read -r -p "按回车键继续..."
@@ -2201,7 +1845,7 @@ modify_ip_files() {
                 echo -e "${RED}[ERROR] 无效的文件路径格式"
                 return 0
             fi
-            update_config_value "IP_FILE_SINGLE" "$new_ip_file"
+            update_config_field ".ip_source.file_path" "$new_ip_file"
             echo -e "${GREEN}[OK] IP 文件路径已更新: ${new_ip_file}"
         fi
     else
@@ -2240,7 +1884,7 @@ modify_ip_files() {
                         echo -e "${RED}[ERROR] 无效的文件路径格式"
                         return 0
                     fi
-                    update_config_value "IP_FILE_DEFAULT" "$new_path"
+                    update_config_field ".ip_source.files.default" "$new_path"
                     echo -e "${GREEN}[OK] 默认线路 IP 文件已更新: ${new_path}"
                 fi
                 ;;
@@ -2253,7 +1897,7 @@ modify_ip_files() {
                         echo -e "${RED}[ERROR] 无效的文件路径格式"
                         return 0
                     fi
-                    update_config_value "IP_FILE_UNICOM" "$new_path"
+                    update_config_field ".ip_source.files.unicom" "$new_path"
                     echo -e "${GREEN}[OK] 联通线路 IP 文件已更新: ${new_path}"
                 fi
                 ;;
@@ -2266,7 +1910,7 @@ modify_ip_files() {
                         echo -e "${RED}[ERROR] 无效的文件路径格式"
                         return 0
                     fi
-                    update_config_value "IP_FILE_MOBILE" "$new_path"
+                    update_config_field ".ip_source.files.mobile" "$new_path"
                     echo -e "${GREEN}[OK] 移动线路 IP 文件已更新: ${new_path}"
                 fi
                 ;;
@@ -2279,7 +1923,7 @@ modify_ip_files() {
                         echo -e "${RED}[ERROR] 无效的文件路径格式"
                         return 0
                     fi
-                    update_config_value "IP_FILE_TELECOM" "$new_path"
+                    update_config_field ".ip_source.files.telecom" "$new_path"
                     echo -e "${GREEN}[OK] 电信线路 IP 文件已更新: ${new_path}"
                 fi
                 ;;
@@ -2589,7 +2233,7 @@ modify_ttl() {
     
     if [[ -n "$new_ttl" ]]; then
         if [[ "$new_ttl" =~ ^[0-9]+$ ]]; then
-            update_config_value "TTL" "$new_ttl"
+            update_config_field ".dns.ttl" "$new_ttl"
             echo -e "${GREEN}[OK] TTL 值已更新: ${new_ttl} 秒"
         else
             echo -e "${RED}[ERROR] 请输入有效的数字"
@@ -2728,93 +2372,6 @@ manage_logs() {
     
     echo ""
     read -r -p "按回车键继续..."
-}
-
-# 安全更新配置文件函数 (避免 sed 注入)
-# 更新配置值 (JSON 格式)
-# 用法: update_config_value "KEY" "VALUE"
-# KEY 映射:
-#   MODE -> .dns.mode
-#   DOMAIN -> .dns.domain
-#   SUB_DOMAIN -> .dns.sub_domain
-#   SECRETID -> .api.id
-#   SECRETKEY -> .api.token
-#   TTL -> .dns.ttl
-#   MAX_IPS_PER_RECORD -> .dns.max_ips_per_record
-#   ISP_LINES -> .dns.isp_lines
-#   SUBDOMAIN_STRATEGY -> .dns.subdomain_strategy
-#   SUB_DOMAIN_UNIFIED -> .dns.sub_domain_unified
-#   SUB_DOMAIN_DEFAULT -> .dns.sub_domains.default
-#   SUB_DOMAIN_UNICOM -> .dns.sub_domains.unicom
-#   SUB_DOMAIN_MOBILE -> .dns.sub_domains.mobile
-#   SUB_DOMAIN_TELECOM -> .dns.sub_domains.telecom
-#   IP_FILE_SINGLE -> .ip_source.file_path
-#   IP_FILE_DEFAULT -> .ip_source.files.default
-#   IP_FILE_UNICOM -> .ip_source.files.unicom
-#   IP_FILE_MOBILE -> .ip_source.files.mobile
-#   IP_FILE_TELECOM -> .ip_source.files.telecom
-#   ENABLED -> .enabled
-update_config_value() {
-    local key="$1"
-    local value="$2"
-    local json_path=""
-    
-    # 将旧 key 映射到 JSON 路径
-    case "$key" in
-        "MODE") json_path=".dns.mode" ;;
-        "DOMAIN") json_path=".dns.domain" ;;
-        "SUB_DOMAIN") json_path=".dns.sub_domain" ;;
-        "SECRETID") json_path=".api.id" ;;
-        "SECRETKEY") json_path=".api.token" ;;
-        "TTL") json_path=".dns.ttl" ;;
-        "MAX_IPS_PER_RECORD") json_path=".dns.max_ips_per_record" ;;
-        "ISP_LINES") json_path=".dns.isp_lines" ;;
-        "SUBDOMAIN_STRATEGY") json_path=".dns.subdomain_strategy" ;;
-        "SUB_DOMAIN_UNIFIED") json_path=".dns.sub_domain_unified" ;;
-        "SUB_DOMAIN_DEFAULT") json_path=".dns.sub_domains.default" ;;
-        "SUB_DOMAIN_UNICOM") json_path=".dns.sub_domains.unicom" ;;
-        "SUB_DOMAIN_MOBILE") json_path=".dns.sub_domains.mobile" ;;
-        "SUB_DOMAIN_TELECOM") json_path=".dns.sub_domains.telecom" ;;
-        "IP_FILE_SINGLE") json_path=".ip_source.file_path" ;;
-        "IP_FILE_DEFAULT") json_path=".ip_source.files.default" ;;
-        "IP_FILE_UNICOM") json_path=".ip_source.files.unicom" ;;
-        "IP_FILE_MOBILE") json_path=".ip_source.files.mobile" ;;
-        "IP_FILE_TELECOM") json_path=".ip_source.files.telecom" ;;
-        "ENABLED") json_path=".enabled" ;;
-        *)
-            echo -e "${RED}[ERROR] 未知的配置键: ${key}"
-            return 1
-            ;;
-    esac
-    
-    # 使用 jq 更新配置
-    local temp_conf
-    temp_conf=$(mktemp)
-    
-    # 判断值是数字还是字符串
-    if [[ "$value" =~ ^[0-9]+$ ]]; then
-        # 数字类型
-        if jq --argjson val "$value" "${json_path} = \$val" "$CONFIG_FILE" > "$temp_conf" 2>/dev/null; then
-            mv "$temp_conf" "$CONFIG_FILE"
-            chmod 600 "$CONFIG_FILE"
-            return 0
-        else
-            rm -f "$temp_conf"
-            echo -e "${RED}[ERROR] 更新配置失败: ${key}"
-            return 1
-        fi
-    else
-        # 字符串类型
-        if jq --arg val "$value" "${json_path} = \$val" "$CONFIG_FILE" > "$temp_conf" 2>/dev/null; then
-            mv "$temp_conf" "$CONFIG_FILE"
-            chmod 600 "$CONFIG_FILE"
-            return 0
-        else
-            rm -f "$temp_conf"
-            echo -e "${RED}[ERROR] 更新配置失败: ${key}"
-            return 1
-        fi
-    fi
 }
 
 # ==================== 公共 HTTP 和工具函数 ====================
@@ -3104,12 +2661,8 @@ elif [ $config_check_result -eq 2 ]; then
                             done
                             
                             if [ -n "$ISP_LINES" ]; then
-                                # 检查配置项是否存在
-                                if grep -q '^ISP_LINES=' "$CONFIG_FILE"; then
-                                    update_config_value "ISP_LINES" "$ISP_LINES"
-                                else
-                                    echo "ISP_LINES=\"${ISP_LINES}\"" >> "$CONFIG_FILE"
-                                fi
+                                # 更新配置
+                                update_config_field ".dns.isp_lines" "$ISP_LINES"
                                 echo -e "${GREEN}[OK] 线路配置: ${ISP_LINES}"
                             fi
                         fi
@@ -3135,20 +2688,12 @@ elif [ $config_check_result -eq 2 ]; then
                         fi
                         
                         if [ "$strategy_choice" = "1" ]; then
-                            # 检查配置项是否存在
-                            if grep -q '^SUBDOMAIN_STRATEGY=' "$CONFIG_FILE"; then
-                                update_config_value "SUBDOMAIN_STRATEGY" "separate"
-                            else
-                                echo 'SUBDOMAIN_STRATEGY="separate"' >> "$CONFIG_FILE"
-                            fi
+                            # 更新配置
+                            update_config_field ".dns.subdomain_strategy" "separate"
                             echo -e "${GREEN}[OK] 已选择: 分离模式"
                         else
-                            # 检查配置项是否存在
-                            if grep -q '^SUBDOMAIN_STRATEGY=' "$CONFIG_FILE"; then
-                                update_config_value "SUBDOMAIN_STRATEGY" "unified"
-                            else
-                                echo 'SUBDOMAIN_STRATEGY="unified"' >> "$CONFIG_FILE"
-                            fi
+                            # 更新配置
+                            update_config_field ".dns.subdomain_strategy" "unified"
                             echo -e "${GREEN}[OK] 已选择: 统一模式"
                             
                             read -r -p "请输入统一子域名 [dns]: " unified_subdomain
@@ -3158,12 +2703,8 @@ elif [ $config_check_result -eq 2 ]; then
                                 echo -e "${RED}[ERROR] 无效的子域名格式"
                                 return 0
                             fi
-                            # 检查配置项是否存在
-                            if grep -q '^SUB_DOMAIN_UNIFIED=' "$CONFIG_FILE"; then
-                                update_config_value "SUB_DOMAIN_UNIFIED" "$unified_subdomain"
-                            else
-                                echo "SUB_DOMAIN_UNIFIED=\"${unified_subdomain}\"" >> "$CONFIG_FILE"
-                            fi
+                            # 更新配置
+                            update_config_field ".dns.sub_domain_unified" "$unified_subdomain"
                         fi
                         
                         echo ""
@@ -3189,12 +2730,8 @@ elif [ $config_check_result -eq 2 ]; then
                             return 0
                         fi
                         
-                        # 检查是否已有 SUB_DOMAIN 配置行
-                        if grep -q '^SUB_DOMAIN=' "$CONFIG_FILE"; then
-                            update_config_value "SUB_DOMAIN" "$input_subdomain"
-                        else
-                            echo "SUB_DOMAIN=\"${input_subdomain}\"" >> "$CONFIG_FILE"
-                        fi
+                        # 更新配置
+                        update_config_field ".dns.sub_domain" "$input_subdomain"
                         
                         echo -e "${GREEN}[OK] 子域名已配置: ${input_subdomain}"
                         echo ""
@@ -3230,18 +2767,18 @@ else
         echo "   检测到缺少必要的配置项:"
         
         # 检查具体缺少哪些配置
-        has_domain=$(grep -cE '^DOMAIN="[^"]+"' "$CONFIG_FILE")
-        has_secretid=$(grep -cE '^SECRETID="[^"]+"' "$CONFIG_FILE")
-        has_secretkey=$(grep -cE '^SECRETKEY="[^"]+"' "$CONFIG_FILE")
+        has_domain=$(jq -r '.dns.domain // empty' "$CONFIG_FILE" 2>/dev/null)
+        has_secretid=$(jq -r '.api.id // empty' "$CONFIG_FILE" 2>/dev/null)
+        has_secretkey=$(jq -r '.api.token // empty' "$CONFIG_FILE" 2>/dev/null)
         
-        if [ "$has_domain" -eq 0 ]; then
-            echo -e "   ${YELLOW}- DOMAIN (域名)"
+        if [[ -z "$has_domain" ]] || [[ "$has_domain" == "null" ]]; then
+            echo -e "   ${YELLOW}- dns.domain (域名)"
         fi
-        if [ "$has_secretid" -eq 0 ]; then
-            echo -e "   ${YELLOW}- SECRETID (API密钥ID)"
+        if [[ -z "$has_secretid" ]] || [[ "$has_secretid" == "null" ]]; then
+            echo -e "   ${YELLOW}- api.id (API密钥ID)"
         fi
-        if [ "$has_secretkey" -eq 0 ]; then
-            echo -e "   ${YELLOW}- SECRETKEY (API密钥)"
+        if [[ -z "$has_secretkey" ]] || [[ "$has_secretkey" == "null" ]]; then
+            echo -e "   ${YELLOW}- api.token (API密钥)"
         fi
         
         echo ""
