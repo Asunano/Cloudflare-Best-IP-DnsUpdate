@@ -1126,7 +1126,8 @@ check_and_update_components() {
     echo -e "${CYAN}[INFO] 正在连接远程服务器获取版本信息...${NC}"
     echo -e "${GRAY}[DEBUG] URL: ${VERSION_FILE_REMOTE}${NC}"
     
-    REMOTE_VERSIONS="$(curl -sfL --connect-timeout 10 --max-time 30 "${VERSION_FILE_REMOTE}" 2>&1)"
+    # 添加时间戳参数避免 CDN 缓存
+    REMOTE_VERSIONS="$(curl -sfL --connect-timeout 10 --max-time 30 "${VERSION_FILE_REMOTE}?t=$(date +%s)" 2>&1)"
     local curl_exit=$?
     
     if [[ "${curl_exit}" -ne 0 ]]; then
@@ -1385,7 +1386,8 @@ EOF
     
     # 下载 version.txt（增加超时和进度提示）
     echo -e "${CYAN}[INFO] 正在获取版本索引...${NC}"
-    REMOTE_VERSIONS="$(curl -sL --connect-timeout 10 --max-time 30 "${VERSION_FILE_REMOTE}" 2>/dev/null)"
+    # 添加时间戳参数避免 CDN 缓存
+    REMOTE_VERSIONS="$(curl -sL --connect-timeout 10 --max-time 30 "${VERSION_FILE_REMOTE}?t=$(date +%s)" 2>/dev/null)"
     
     if [[ -z "${REMOTE_VERSIONS}" ]]; then
         echo -e "${YELLOW}[WARN] 无法获取 version.txt，将跳过哈希校验直接下载...${NC}"
