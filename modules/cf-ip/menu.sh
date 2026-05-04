@@ -216,9 +216,12 @@ download_cfst() {
         return 1
     fi
     
-    # 检查解压后的文件结构（cfst 可能在子目录中）
+    # 删除 tar.gz 压缩包（节省空间）
+    rm -f "${filename}"
+    
+    # 检查解压后的文件结构
     if [[ -f "cfst" ]]; then
-        # 直接解压出 cfst 文件
+        # 直接解压出 cfst 文件（最常见的情况）
         chmod +x cfst
     elif [[ -d "CloudflareSpeedTest" ]] && [[ -f "CloudflareSpeedTest/cfst" ]]; then
         # 解压到子目录，移动到当前目录
