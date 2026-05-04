@@ -103,36 +103,13 @@ if [[ ! -f "${CONFIG_FILE}" ]]; then
     
     # 检测是否为交互式环境（有终端输入）
     if [[ -t 0 ]]; then
-        echo -e "${CYAN}+------------------------------------------------------------+"
-        echo -e " ${YELLOW}CF-IP 测速模块首次配置向导"
-        echo -e "${CYAN}+------------------------------------------------------------+"
-        echo ""
-        echo -e "${YELLOW}[INFO] 检测到您尚未配置 CF-IP 模块${NC}"
-        echo ""
-        echo -e "${GREEN}我们将帮助您完成以下配置：${NC}"
-        echo "  ✓ cfst 程序路径和参数"
-        echo "  ✓ 测速并发数和超时时间"
-        echo "  ✓ Cloudflare Colo 节点选择"
-        echo "  ✓ 多线路分流策略（可选）"
-        echo ""
-        read -r -p "是否立即启动配置向导？[Y/n] (默认: Y): " choice
-        choice=${choice:-Y}
-        
-        if [[ "$choice" =~ ^[Yy]$ ]] || [[ -z "$choice" ]]; then
-            echo ""
-            echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
-            echo -e "${GREEN}正在启动快速配置向导...${NC}"
-            echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
-            echo ""
-            exec bash "$ROOT_DIR/modules/cf-ip/menu.sh"
-        else
-            echo -e "${YELLOW}已取消操作${NC}"
-            exit 1
-        fi
+        echo -e "${YELLOW}[WARN] 请先通过 cfopt 主菜单进入 CF-IP 模块进行配置${NC}"
+        echo -e "${CYAN}提示: 运行 'cfopt' 命令，然后选择 '2. CF IP 优选管理'${NC}"
+        exit 1
     else
         # 非交互式环境（定时任务等），直接退出
         echo -e "${YELLOW}[WARN] 请先运行配置向导创建配置文件${NC}"
-        echo -e "${YELLOW}[WARN] 命令: bash $ROOT_DIR/modules/cf-ip/menu.sh${NC}"
+        echo -e "${YELLOW}[WARN] 命令: cfopt -> 2. CF IP 优选管理 -> 1. 管理配置${NC}"
         exit 1
     fi
 fi
