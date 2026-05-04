@@ -1041,7 +1041,7 @@ manage_cron() {
     # 显示当前定时任务
     echo ""
     echo "当前定时任务："
-    CRON_LIST=$(crontab -l 2>/dev/null | grep "ip_auto.sh")
+    CRON_LIST=$(crontab -l 2>/dev/null | grep "cf-ip/core.sh")
     if [[ -n "${CRON_LIST}" ]]; then
         echo -e "${GREEN}${CRON_LIST}${NC}"
     else
@@ -1148,7 +1148,7 @@ setup_cron() {
     
     if [[ "${CONFIRM_CRON}" = "y" ]] || [[ "${CONFIRM_CRON}" = "Y" ]]; then
         # 先删除旧的，再添加新的
-        if (crontab -l 2>/dev/null | grep -v "ip_auto.sh"; echo "${CRON_CMD}") | crontab -; then
+        if (crontab -l 2>/dev/null | grep -v "cf-ip/core.sh"; echo "${CRON_CMD}") | crontab -; then
             echo -e "${GREEN}[OK] 定时任务添加成功！${NC}"
         else
             echo -e "${RED}[ERROR] 定时任务添加失败${NC}"
@@ -1159,10 +1159,10 @@ setup_cron() {
 # ====================== 【函数：删除定时任务】 ======================
 remove_cron() {
     echo ""
-    read -r -p "确认删除所有 ip_auto.sh 相关的定时任务？(y/n): " CONFIRM_REMOVE
+    read -r -p "确认删除所有 CF-IP 相关的定时任务？(y/n): " CONFIRM_REMOVE
     
     if [[ "${CONFIRM_REMOVE}" = "y" ]] || [[ "${CONFIRM_REMOVE}" = "Y" ]]; then
-        crontab -l 2>/dev/null | grep -v "ip_auto.sh" | crontab -
+        crontab -l 2>/dev/null | grep -v "cf-ip/core.sh" | crontab -
         echo -e "${GREEN}[OK] 定时任务已删除${NC}"
     fi
 }
