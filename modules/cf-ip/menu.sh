@@ -643,8 +643,7 @@ generate_config_simple() {
             }
         }' > "$temp_file"; then
         rm -f "$temp_file" 2>/dev/null
-        echo -e "${RED}[ERROR] 配置文件生成失败！${NC}"
-        echo -e "${YELLOW}[提示] 请检查 jq 是否已安装: sudo apt-get install jq${NC}"
+        log_error "配置文件生成失败"
         return 1
     fi
     
