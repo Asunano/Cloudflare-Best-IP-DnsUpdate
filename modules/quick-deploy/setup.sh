@@ -1022,6 +1022,10 @@ deploy_cloudflare_dns() {
     echo -e "   • 选择 '5. 自动化调度中心' 手动触发更新"
     echo -e "   • 选择 '6. 检查组件更新' 保持最新版本"
     echo ""
+    echo -e " ${CYAN}配置文件位置：${NC}"
+    echo -e "   • DNS 配置: ${GREEN}${ROOT_DIR}/conf/cf-dns/${domain}.json${NC}"
+    echo -e "   • IP 列表文件: ${GREEN}${ROOT_DIR}/assets/data/cf-dns/ip_list.txt${NC}"
+    echo ""
     
     read -r -p "按回车键返回主菜单..."
 }
@@ -1197,6 +1201,10 @@ deploy_dnspod_single() {
     echo -e "   • 选择 '5. 自动化调度中心' 手动触发更新"
     echo -e "   • 选择 '6. 检查组件更新' 保持最新版本"
     echo ""
+    echo -e " ${CYAN}配置文件位置：${NC}"
+    echo -e "   • DNS 配置: ${GREEN}${ROOT_DIR}/conf/dnspod/${domain}.json${NC}"
+    echo -e "   • IP 列表文件: ${GREEN}${ROOT_DIR}/assets/data/cf-dns/ip_list.txt${NC}"
+    echo ""
     
     read -r -p "按回车键返回主菜单..."
 }
@@ -1334,6 +1342,10 @@ deploy_dnspod_multi() {
     echo -e "   • 运行 'cfopt' 查看和管理配置"
     echo -e "   • 选择 '5. 自动化调度中心' 手动触发更新"
     echo -e "   • 选择 '6. 检查组件更新' 保持最新版本"
+    echo ""
+    echo -e " ${CYAN}配置文件位置：${NC}"
+    echo -e "   • DNS 配置: ${GREEN}${ROOT_DIR}/conf/dnspod/${domain}.json${NC}"
+    echo -e "   • IP 列表文件: ${GREEN}${ROOT_DIR}/assets/data/cf-dns/ip_list.txt${NC}"
     echo ""
     
     read -r -p "按回车键返回主菜单..."
