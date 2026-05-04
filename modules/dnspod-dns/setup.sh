@@ -1390,29 +1390,43 @@ modify_subdomain_strategy() {
             handle_choice=${handle_choice:-1}
             
             if [[ "$handle_choice" == "1" ]]; then
-                # 自动处理 - 使用默认子域名
+                # 自动处理 - 调用 core.sh 智能切换
                 echo ""
-                echo -e "${CYAN}正在删除统一模式记录..."
-                pause_unified_record
+                echo -e "${CYAN}正在切换到分离模式..."
                 
-                local delete_result=$?
-                if [[ $delete_result -ne 0 ]]; then
-                    echo -e "${RED}[ERROR] 删除失败，已取消切换"
+                # 调用 core.sh 进行智能模式切换
+                export DNSPOD_MODE_SWITCH=1
+                export DNSPOD_FROM_MODE="multi"
+                export DNSPOD_TO_MODE="multi"
+                export DNSPOD_STRATEGY="separate"
+                
+                bash "$(dirname "$0")/core.sh"
+                local switch_result=$?
+                
+                unset DNSPOD_MODE_SWITCH DNSPOD_FROM_MODE DNSPOD_TO_MODE DNSPOD_STRATEGY
+                
+                if [[ $switch_result -ne 0 ]]; then
+                    echo -e "${RED}[ERROR] 切换失败"
                     return 0
                 fi
-                
-                echo ""
-                echo -e "${CYAN}正在创建分离模式记录..."
-                sync_records_separate
             elif [[ "$handle_choice" == "2" ]]; then
                 # 自定义子域名 - 让用户立即输入
                 echo ""
-                echo -e "${CYAN}正在删除统一模式记录..."
-                pause_unified_record
+                echo -e "${CYAN}正在切换到分离模式..."
                 
-                local delete_result=$?
-                if [[ $delete_result -ne 0 ]]; then
-                    echo -e "${RED}[ERROR] 删除失败，已取消切换"
+                # 调用 core.sh 进行智能模式切换
+                export DNSPOD_MODE_SWITCH=1
+                export DNSPOD_FROM_MODE="multi"
+                export DNSPOD_TO_MODE="multi"
+                export DNSPOD_STRATEGY="separate"
+                
+                bash "$(dirname "$0")/core.sh"
+                local switch_result=$?
+                
+                unset DNSPOD_MODE_SWITCH DNSPOD_FROM_MODE DNSPOD_TO_MODE DNSPOD_STRATEGY
+                
+                if [[ $switch_result -ne 0 ]]; then
+                    echo -e "${RED}[ERROR] 切换失败"
                     return 0
                 fi
                 
@@ -1562,30 +1576,28 @@ modify_subdomain_strategy() {
             handle_choice=${handle_choice:-1}
             
             if [[ "$handle_choice" == "1" ]]; then
-                # 自动处理 - 删除分线路记录并创建统一模式记录
+                # 自动处理 - 调用 core.sh 智能切换
                 echo ""
-                echo -e "${CYAN}正在删除分线路记录..."
-                pause_separate_records
+                echo -e "${CYAN}正在切换到统一模式..."
                 
-                local delete_result=$?
-                if [[ $delete_result -ne 0 ]]; then
-                    echo -e "${YELLOW}[WARN] 删除失败（退出码: ${delete_result}），但将继续创建统一模式记录"
+                # 调用 core.sh 进行智能模式切换
+                export DNSPOD_MODE_SWITCH=1
+                export DNSPOD_FROM_MODE="multi"
+                export DNSPOD_TO_MODE="multi"
+                export DNSPOD_STRATEGY="unified"
+                
+                bash "$(dirname "$0")/core.sh"
+                local switch_result=$?
+                
+                unset DNSPOD_MODE_SWITCH DNSPOD_FROM_MODE DNSPOD_TO_MODE DNSPOD_STRATEGY
+                
+                if [[ $switch_result -ne 0 ]]; then
+                    echo -e "${RED}[ERROR] 切换失败"
+                    return 0
                 fi
                 
                 echo ""
-                echo -e "${CYAN}正在创建统一模式记录..."
-                chmod +x "$(dirname "$0")/core.sh"
-                "$(dirname "$0")/core.sh" -m
-                
-                local create_result=$?
-                if [[ $create_result -eq 0 ]]; then
-                    echo ""
-                    echo -e "${GREEN}[OK] 统一模式记录创建成功"
-                else
-                    echo ""
-                    echo -e "${YELLOW}[WARN] 统一模式记录创建失败（退出码: ${create_result}）"
-                    echo -e "${CYAN}提示: 可以稍后手动运行 ./core.sh -m 创建"
-                fi
+                echo -e "${GREEN}[OK] 统一模式记录创建成功"
             elif [[ "$handle_choice" == "2" ]]; then
                 # 保留旧记录，只创建新记录
                 echo ""
@@ -1640,30 +1652,28 @@ modify_subdomain_strategy() {
                 handle_unified_change=${handle_unified_change:-1}
                 
                 if [[ "$handle_unified_change" == "1" ]]; then
-                    # 自动处理 - 删除旧记录并创建新记录
+                    # 自动处理 - 调用 core.sh 智能切换
                     echo ""
-                    echo -e "${CYAN}正在删除旧统一模式记录..."
-                    pause_unified_record
-                                    
-                    local delete_result=$?
-                    if [[ $delete_result -ne 0 ]]; then
-                        echo -e "${YELLOW}[WARN] 删除失败（退出码: ${delete_result}），但将继续创建新记录"
+                    echo -e "${CYAN}正在更新统一模式记录..."
+                    
+                    # 调用 core.sh 进行智能模式切换
+                    export DNSPOD_MODE_SWITCH=1
+                    export DNSPOD_FROM_MODE="multi"
+                    export DNSPOD_TO_MODE="multi"
+                    export DNSPOD_STRATEGY="unified"
+                    
+                    bash "$(dirname "$0")/core.sh"
+                    local switch_result=$?
+                    
+                    unset DNSPOD_MODE_SWITCH DNSPOD_FROM_MODE DNSPOD_TO_MODE DNSPOD_STRATEGY
+                    
+                    if [[ $switch_result -ne 0 ]]; then
+                        echo -e "${RED}[ERROR] 更新失败"
+                        return 0
                     fi
-                                    
+                    
                     echo ""
-                    echo -e "${CYAN}正在创建新统一模式记录..."
-                    chmod +x "$(dirname "$0")/core.sh"
-                    "$(dirname "$0")/core.sh" -m
-                                    
-                    local create_result=$?
-                    if [[ $create_result -eq 0 ]]; then
-                        echo ""
-                        echo -e "${GREEN}[OK] 新统一模式记录创建成功"
-                    else
-                        echo ""
-                        echo -e "${YELLOW}[WARN] 新统一模式记录创建失败（退出码: ${create_result}）"
-                        echo -e "${CYAN}提示: 可以稍后手动运行 ./core.sh -m 创建"
-                    fi
+                    echo -e "${GREEN}[OK] 新统一模式记录创建成功"
                 elif [[ "$handle_unified_change" == "2" ]]; then
                     # 保留旧记录，只创建新记录
                     echo ""
