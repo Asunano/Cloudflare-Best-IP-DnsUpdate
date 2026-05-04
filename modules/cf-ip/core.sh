@@ -287,12 +287,14 @@ while kill -0 "${CFST_PID}" 2>/dev/null; do
             
             # 从日志中提取当前进度
             if [[ "${stage}" = "ping" ]]; then
-                # 延迟阶段：提取 "可用: XXXX" 和 "XXXX / XXXX"
-                # 只提取包含"可用"的那一行的进度
+                # 延迟阶段：提取 "可用: XXXX / YYYY" 格式
+                # 只提取最后一行的进度信息
                 ping_line=$(grep '可用:' "${LOG_FILE}" 2>/dev/null | tail -1)
                 if [[ -n "${ping_line}" ]]; then
-                    available_count=$(echo "${ping_line}" | grep -o '可用: *[0-9]*' | grep -o '[0-9]*$' | tr -d '[:space:]')
-                    total_count=$(echo "${ping_line}" | grep -o '[0-9]* / [0-9]*' | awk '{print $3}' | tr -d '[:space:]')
+                    # 使用 sed 提取数字，兼容所有系统
+                    # 匹配格式：可用: 123 / 456 或 可用:123/456
+                    available_count=$(echo "${ping_line}" | sed -n 's/.*可用:\s*\([0-9]*\).*/\1/p' | tr -d '[:space:]')
+                    total_count=$(echo "${ping_line}" | sed -n 's/.*[0-9]\s*\/\s*\([0-9]*\).*/\1/p' | tr -d '[:space:]')
                                     
                     # 验证是否为纯数字
                     if [[ -n "${available_count}" ]] && [[ -n "${total_count}" ]] && [[ "${available_count}" =~ ^[0-9]+$ ]] && [[ "${total_count}" =~ ^[0-9]+$ ]] && [[ "${total_count}" -gt 0 ]]; then
