@@ -1161,7 +1161,7 @@ check_and_update_components() {
         ["DNSPOD_SETUP"]="${INSTALL_DIR}/modules/dnspod-dns/setup.sh:modules/dnspod-dns/setup.sh"
         ["SCHEDULER_RUN"]="${INSTALL_DIR}/modules/scheduler/run.sh:modules/scheduler/run.sh"
         ["IP_SYNC"]="${INSTALL_DIR}/modules/ip-sync/sync.sh:modules/ip-sync/sync.sh"
-        ["CFOPT_ENTRY"]="$0:cfopt.sh"
+        ["CFOPT_ENTRY"]="${INSTALL_DIR}/cfopt.sh:cfopt.sh"
     )
 
     HAS_UPDATE=false
@@ -1175,10 +1175,6 @@ check_and_update_components() {
     for KEY in "${!MODULE_MAP[@]}"; do
         CURRENT_FILE=$((CURRENT_FILE + 1))
         IFS=':' read -r LOCAL_PATH REMOTE_FILE <<< "${MODULE_MAP[$KEY]}"
-        # 特殊处理 cfopt.sh 自身路径
-        if [[ "${REMOTE_FILE}" = "cfopt.sh" ]]; then
-            LOCAL_PATH="$0"
-        fi
         
         REMOTE_INFO="$(echo "${REMOTE_VERSIONS}" | grep "^${KEY}=" | cut -d'=' -f2)"
         REMOTE_VER="$(echo "${REMOTE_INFO}" | cut -d':' -f1)"
@@ -1193,17 +1189,20 @@ check_and_update_components() {
             LOCAL_HASH="$(sha256sum "${LOCAL_PATH}" | awk '{print $1}')"
         fi
 
-        # 【修复】判断是否需要下载：文件不存在 OR 版本不同 OR 哈希不同
+        # 【核心逻辑】判断是否需要下载：
+        # 1. 文件不存在 -> 必须下载
+        # 2. 版本号不同 -> 以云端为准，需要更新
+        # 3. 版本号相同但哈希不同 -> 内容已变更，需要更新
         NEED_DOWNLOAD=false
         if [[ ! -f "${LOCAL_PATH}" ]]; then
             NEED_DOWNLOAD=true
             echo -e "${CYAN}[INFO] [${CURRENT_FILE}/${TOTAL_FILES}] 下载 ${KEY}...${NC}"
         elif [[ -n "${REMOTE_VER}" ]] && [[ "${REMOTE_VER}" != "${LOCAL_VER}" ]]; then
-            # 版本号不同，需要更新
+            # 版本号不同，以云端为准
             NEED_DOWNLOAD=true
             echo -e "${CYAN}[INFO] [${CURRENT_FILE}/${TOTAL_FILES}] 更新 ${KEY} (v${LOCAL_VER} -> v${REMOTE_VER})...${NC}"
         elif [[ -n "${REMOTE_HASH}" ]] && [[ -n "${LOCAL_HASH}" ]] && [[ "${REMOTE_HASH}" != "${LOCAL_HASH}" ]]; then
-            # 【新增】版本号相同但哈希不同，说明内容已修改
+            # 版本号相同但哈希不同，说明内容已修改
             NEED_DOWNLOAD=true
             echo -e "${YELLOW}[INFO] [${CURRENT_FILE}/${TOTAL_FILES}] 更新 ${KEY} (内容已变更)...${NC}"
         fi
@@ -1241,17 +1240,35 @@ check_and_update_components() {
             echo -e " ${YELLOW}正在应用更新...${NC}"
             echo -e "${CYAN}+------------------------------------------------------------+${NC}"
             
+            local CFOPT_UPDATED=false
+            
             for KEY in "${!MODULE_MAP[@]}"; do
                 IFS=':' read -r LOCAL_PATH REMOTE_FILE <<< "${MODULE_MAP[$KEY]}"
                 if [[ -f "${TEMP_DIR}/${REMOTE_FILE}" ]]; then
-                    if ! safe_move "${TEMP_DIR}/${REMOTE_FILE}" "${LOCAL_PATH}" "应用更新: ${KEY}"; then
-                        log_error "更新应用失败: ${KEY}"
-                        HAS_ERROR=true
+                    # 特殊处理 cfopt.sh 自身
+                    if [[ "${REMOTE_FILE}" = "cfopt.sh" ]]; then
+                        # 将新版本的 cfopt.sh 复制到安装目录
+                        cp "${TEMP_DIR}/${REMOTE_FILE}" "${INSTALL_DIR}/cfopt.sh.new" 2>/dev/null
+                        chmod +x "${INSTALL_DIR}/cfopt.sh.new" 2>/dev/null
+                        CFOPT_UPDATED=true
+                        log_success "cfopt.sh 已准备更新（将在重启后生效）"
                     else
-                        chmod +x "${LOCAL_PATH}"
+                        # 其他文件直接替换
+                        if ! safe_move "${TEMP_DIR}/${REMOTE_FILE}" "${LOCAL_PATH}" "应用更新: ${KEY}"; then
+                            log_error "更新应用失败: ${KEY}"
+                            HAS_ERROR=true
+                        else
+                            chmod +x "${LOCAL_PATH}"
+                        fi
                     fi
                 fi
             done
+            
+            echo ""
+            if [[ "${CFOPT_UPDATED}" = true ]]; then
+                echo -e "${YELLOW}[提示] cfopt.sh 主脚本已更新，请重新运行 'cfopt' 以应用最新版本${NC}"
+                echo ""
+            fi
             echo -e "${GREEN}[OK] 更新已应用！${NC}"
         fi
     elif [[ "${HAS_ERROR}" = true ]]; then
@@ -1269,6 +1286,21 @@ check_and_update_components() {
 
 # --- 初始化流程 ---
 init_cfopt() {
+    # 0. 检查是否有待应用的新版本 cfopt.sh
+    if [[ -f "${INSTALL_DIR}/cfopt.sh.new" ]]; then
+        log_info "检测到新版本主脚本，正在应用..."
+        if mv "${INSTALL_DIR}/cfopt.sh.new" "${INSTALL_DIR}/cfopt.sh" 2>/dev/null; then
+            chmod +x "${INSTALL_DIR}/cfopt.sh"
+            log_success "主脚本已更新到最新版本"
+            echo ""
+            # 重新启动以加载新版本
+            exec bash "${INSTALL_DIR}/cfopt.sh"
+        else
+            log_error "应用新版本失败，请手动执行: mv ${INSTALL_DIR}/cfopt.sh.new ${INSTALL_DIR}/cfopt.sh"
+            echo ""
+        fi
+    fi
+    
     # 1. 环境检测
     check_environment
 
