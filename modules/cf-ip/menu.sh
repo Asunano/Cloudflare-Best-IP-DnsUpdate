@@ -319,6 +319,11 @@ show_main_menu() {
 
 # ====================== 【函数：配置管理入口】 ======================
 manage_config() {
+    # 调试：显示当前环境变量状态
+    echo -e "${CYAN}[DEBUG] CF_OPT_ENTRY='${CF_OPT_ENTRY:-空}'${NC}"
+    echo -e "${CYAN}[DEBUG] CONFIG_FILE='${CONFIG_FILE}'${NC}"
+    echo -e "${CYAN}[DEBUG] ROOT_DIR='${ROOT_DIR}'${NC}"
+    
     # 智能检测并下载 cfst（如果不存在）
     if [[ ! -f "${CFST_BIN}" ]]; then
         echo -e "\n${YELLOW}[INFO] 检测到测速程序 cfst 未安装，即将自动下载...${NC}"
@@ -343,8 +348,13 @@ manage_config() {
     read -r -p "请选择 [1-2, 默认 1]: " CONFIG_MODE
     CONFIG_MODE=${CONFIG_MODE:-1}
     
+    echo -e "${CYAN}[DEBUG] 用户选择: CONFIG_MODE='${CONFIG_MODE}'${NC}"
+    
     if [[ "${CONFIG_MODE}" = "1" ]]; then
+        echo -e "${CYAN}[DEBUG] 即将调用 configure_simple...${NC}"
         configure_simple
+        local ret=$?
+        echo -e "${CYAN}[DEBUG] configure_simple 返回值: ${ret}${NC}"
     else
         configure_advanced
     fi
