@@ -812,12 +812,13 @@ show_main_menu() {
     echo -e "   CF DNS 更新: ${cf_dns_status}   |   DNSPod 更新: ${dnspod_status}"
     echo -e "${CYAN}+------------------------------------------------------------+${NC}"
     
-    echo -e " ${GREEN}➤${NC} 1. CF IP 优选管理     ${CYAN}- 测速程序、参数配置、定时任务${NC}"
-    echo -e " ${GREEN}➤${NC} 2. CF DNS 记录更新    ${CYAN}- 将优选 IP 同步到 Cloudflare DNS${NC}"
-    echo -e " ${GREEN}➤${NC} 3. DNSPod DNS 更新    ${CYAN}- 腾讯云 DNSPod 分线路解析管理${NC}"
-    echo -e " ${GREEN}➤${NC} 4. 自动化调度中心    ${CYAN}- 一键执行全链路测速、同步与更新${NC}"
-    echo -e " ${GREEN}➤${NC} 5. 检查组件更新       ${CYAN}- 同步远程最新版本${NC}"
-    echo -e " ${GREEN}➤${NC} 6. 系统健康检测       ${CYAN}- 检测并修复系统问题${NC}"
+    echo -e " ${GREEN}➤${NC} 1. 快速部署向导     ${CYAN}- 5分钟完成 CF-IP + DNS 配置${NC}"
+    echo -e " ${GREEN}➤${NC} 2. CF IP 优选管理     ${CYAN}- 测速程序、参数配置、定时任务${NC}"
+    echo -e " ${GREEN}➤${NC} 3. CF DNS 记录更新    ${CYAN}- 将优选 IP 同步到 Cloudflare DNS${NC}"
+    echo -e " ${GREEN}➤${NC} 4. DNSPod DNS 更新    ${CYAN}- 腾讯云 DNSPod 分线路解析管理${NC}"
+    echo -e " ${GREEN}➤${NC} 5. 自动化调度中心    ${CYAN}- 一键执行全链路测速、同步与更新${NC}"
+    echo -e " ${GREEN}➤${NC} 6. 检查组件更新       ${CYAN}- 同步远程最新版本${NC}"
+    echo -e " ${GREEN}➤${NC} 7. 系统健康检测       ${CYAN}- 检测并修复系统问题${NC}"
     echo ""
     echo -e " ${RED}➤${NC} 9. 一键跑路         ${CYAN}- 删除脚本及相关配置${NC}"
     echo -e " ${RED}➤${NC} 0. 退出程序"
@@ -830,28 +831,32 @@ show_main_menu() {
         input_device="/dev/stdin"
     fi
 
-    read -r -p "请选择功能 [0-6, 9]: " choice < "${input_device}"
+    read -r -p "请选择功能 [0-7, 9]: " choice < "${input_device}"
 
     case "${choice}" in
         1)
             export CF_OPT_ENTRY="main_menu"
-            bash "${INSTALL_DIR}/modules/cf-ip/menu.sh" || true
+            bash "${INSTALL_DIR}/modules/quick-deploy/setup.sh" || true
             ;;
         2)
             export CF_OPT_ENTRY="main_menu"
-            bash "${INSTALL_DIR}/modules/cf-dns/setup.sh" || true
+            bash "${INSTALL_DIR}/modules/cf-ip/menu.sh" || true
             ;;
         3)
             export CF_OPT_ENTRY="main_menu"
-            bash "${INSTALL_DIR}/modules/dnspod-dns/setup.sh" || true
+            bash "${INSTALL_DIR}/modules/cf-dns/setup.sh" || true
             ;;
         4)
-            manage_scheduler
+            export CF_OPT_ENTRY="main_menu"
+            bash "${INSTALL_DIR}/modules/dnspod-dns/setup.sh" || true
             ;;
         5)
-            check_and_update_components
+            manage_scheduler
             ;;
         6)
+            check_and_update_components
+            ;;
+        7)
             system_health_check
             ;;
         9)
