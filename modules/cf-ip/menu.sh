@@ -342,9 +342,12 @@ manage_config() {
         echo ""
     fi
     
-    echo -e "\n${CYAN}━━ 请选择配置模式 ━━"
-    echo "  1) 简单模式 - 快速调整关键参数（地区、线程数）"
-    echo "  2) 高级模式 - 精细控制所有测速选项"
+    echo -e "\n${CYAN}+------------------------------------------------------------+"
+    echo -e " ${YELLOW}请选择配置模式"
+    echo -e "${CYAN}+------------------------------------------------------------+"
+    echo -e " ${GREEN}➤${NC} 1. 简单模式 ${CYAN}- 快速调整关键参数（地区、线程数）${NC}"
+    echo -e " ${GREEN}➤${NC} 2. 高级模式 ${CYAN}- 精细控制所有测速选项${NC}"
+    echo -e "${CYAN}+------------------------------------------------------------+"
     echo ""
     read -r -p "请选择 [1-2, 默认 1]: " CONFIG_MODE
     CONFIG_MODE=${CONFIG_MODE:-1}
@@ -889,12 +892,15 @@ manage_cron() {
     fi
     
     echo ""
-    echo "请选择操作："
-    echo "  1) 添加/修改定时任务"
-    echo "  2) 删除定时任务"
-    echo "  3) 返回"
+    echo -e "${CYAN}+------------------------------------------------------------+"
+    echo -e " ${YELLOW}请选择操作"
+    echo -e "${CYAN}+------------------------------------------------------------+"
+    echo -e " ${GREEN}➤${NC} 1. 添加/修改定时任务"
+    echo -e " ${GREEN}➤${NC} 2. 删除定时任务"
+    echo -e " ${RED}➤${NC} 3. 返回"
+    echo -e "${CYAN}+------------------------------------------------------------+"
     echo ""
-    read -r -p "请选择（1-3）: " CRON_ACTION
+    read -r -p "请选择 [1-3]: " CRON_ACTION
     
     case ${CRON_ACTION} in
         1)
@@ -914,14 +920,17 @@ manage_cron() {
 # ====================== 【函数：设置定时任务】 ======================
 setup_cron() {
     echo ""
-    echo "请选择执行频率："
-    echo "  1) 每小时执行一次"
-    echo "  2) 每6小时执行一次"
-    echo "  3) 每天执行一次（推荐）"
-    echo "  4) 每周执行一次"
-    echo "  5) 自定义cron表达式"
+    echo -e "${CYAN}+------------------------------------------------------------+"
+    echo -e " ${YELLOW}请选择执行频率"
+    echo -e "${CYAN}+------------------------------------------------------------+"
+    echo -e " ${GREEN}➤${NC} 1. 每小时执行一次"
+    echo -e " ${GREEN}➤${NC} 2. 每6小时执行一次"
+    echo -e " ${GREEN}➤${NC} 3. 每天执行一次 ${GRAY}(推荐)${NC}"
+    echo -e " ${GREEN}➤${NC} 4. 每周执行一次"
+    echo -e " ${GREEN}➤${NC} 5. 自定义cron表达式"
+    echo -e "${CYAN}+------------------------------------------------------------+"
     echo ""
-    read -r -p "请选择（1-5，默认3）: " CRON_OPTION
+    read -r -p "请选择 [1-5, 默认 3]: " CRON_OPTION
     CRON_OPTION=${CRON_OPTION:-3}
     
     case ${CRON_OPTION} in
@@ -1042,12 +1051,15 @@ view_logs() {
     LOG_FILE="${LOG_DIR}/cfst_auto.log"
     CRON_LOG="${LOG_DIR}/cron.log"
     
-    echo "请选择要查看的日志："
-    echo "  1) 运行日志 (cfst_auto.log)"
-    echo "  2) 定时任务日志 (cron.log)"
-    echo "  3) 返回"
+    echo -e "${CYAN}+------------------------------------------------------------+"
+    echo -e " ${YELLOW}请选择要查看的日志"
+    echo -e "${CYAN}+------------------------------------------------------------+"
+    echo -e " ${GREEN}➤${NC} 1. 运行日志 (cfst_auto.log)"
+    echo -e " ${GREEN}➤${NC} 2. 定时任务日志 (cron.log)"
+    echo -e " ${RED}➤${NC} 3. 返回"
+    echo -e "${CYAN}+------------------------------------------------------------+"
     echo ""
-    read -r -p "请选择（1-3）: " LOG_CHOICE
+    read -r -p "请选择 [1-3]: " LOG_CHOICE
     
     case ${LOG_CHOICE} in
         1)
