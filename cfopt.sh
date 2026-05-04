@@ -1212,184 +1212,12 @@ uninstall_cfopt() {
     exit 0
 }
 
-# --- 组件更新逻辑 ---
+# --- 组件更新逻辑（委托给 updater 模块）---
 check_and_update_components() {
     clear
-    echo -e "${CYAN}+------------------------------------------------------------+${NC}"
-    echo -e " ${YELLOW}正在检查组件更新...${NC}"
-    echo -e "${CYAN}+------------------------------------------------------------+${NC}"
-    
-    echo -e "${CYAN}[INFO] 正在连接远程服务器获取版本信息...${NC}"
-    echo -e "${GRAY}[DEBUG] URL: ${VERSION_FILE_REMOTE}${NC}"
-    
-    # 添加时间戳参数避免 CDN 缓存
-    REMOTE_VERSIONS="$(curl -sfL --connect-timeout 10 --max-time 30 "${VERSION_FILE_REMOTE}?t=$(date +%s)" 2>&1)"
-    local curl_exit=$?
-    
-    if [[ "${curl_exit}" -ne 0 ]]; then
-        echo -e "${RED}[ERROR] 连接远程服务器失败 (退出码: ${curl_exit})${NC}"
-        echo -e "${YELLOW}[DEBUG] 请检查网络连接或防火墙设置${NC}"
-        echo ""
-        read -r -p "按回车键返回主菜单..."
-        show_main_menu
-        return
-    fi
-    
-    if [[ -z "${REMOTE_VERSIONS}" ]]; then
-        echo -e "${RED}[ERROR] 远程服务器返回空数据${NC}"
-        echo ""
-        read -r -p "按回车键返回主菜单..."
-        show_main_menu
-        return
-    fi
-    
-    echo -e "${GREEN}[OK] 版本信息获取成功${NC}"
-    echo ""
-
-    # 定义模块映射: [KEY]="本地路径:远程文件:显示名称"
-    declare -A MODULE_MAP
-    MODULE_MAP=(
-        ["QUICK_DEPLOY"]="${INSTALL_DIR}/modules/quick-deploy/setup.sh:modules/quick-deploy/setup.sh:快速部署向导"
-        ["CF_IP_MENU"]="${INSTALL_DIR}/modules/cf-ip/menu.sh:modules/cf-ip/menu.sh:CF-IP 测速管理"
-        ["CF_IP_CORE"]="${INSTALL_DIR}/modules/cf-ip/core.sh:modules/cf-ip/core.sh:CF-IP 核心引擎"
-        ["CF_DNS_CORE"]="${INSTALL_DIR}/modules/cf-dns/core.sh:modules/cf-dns/core.sh:CF DNS 核心"
-        ["CF_DNS_SETUP"]="${INSTALL_DIR}/modules/cf-dns/setup.sh:modules/cf-dns/setup.sh:CF DNS 配置向导"
-        ["DNSPOD_CORE"]="${INSTALL_DIR}/modules/dnspod-dns/core.sh:modules/dnspod-dns/core.sh:DNSPod 核心"
-        ["DNSPOD_SETUP"]="${INSTALL_DIR}/modules/dnspod-dns/setup.sh:modules/dnspod-dns/setup.sh:DNSPod 配置向导"
-        ["SCHEDULER_RUN"]="${INSTALL_DIR}/modules/scheduler/run.sh:modules/scheduler/run.sh:自动化调度器"
-        ["IP_SYNC"]="${INSTALL_DIR}/modules/ip-sync/sync.sh:modules/ip-sync/sync.sh:IP 同步工具"
-        ["CFOPT"]="${INSTALL_DIR}/cfopt.sh:cfopt.sh:主程序入口"  # 【修复】使用 CFOPT 而非 CFOPT_ENTRY
-    )
-
-    HAS_UPDATE=false
-    HAS_ERROR=false
-    TEMP_DIR="$(mktemp -d)"
-    
-    # 计数器：用于显示进度
-    TOTAL_FILES=${#MODULE_MAP[@]}
-    CURRENT_FILE=0
-    
-    for KEY in "${!MODULE_MAP[@]}"; do
-        CURRENT_FILE=$((CURRENT_FILE + 1))
-        IFS=':' read -r LOCAL_PATH REMOTE_FILE DISPLAY_NAME <<< "${MODULE_MAP[$KEY]}"
-        
-        REMOTE_INFO="$(echo "${REMOTE_VERSIONS}" | grep "^${KEY}=" | cut -d'=' -f2)"
-        REMOTE_VER="$(echo "${REMOTE_INFO}" | cut -d':' -f1)"
-        REMOTE_HASH="$(echo "${REMOTE_INFO}" | cut -d':' -f2)"
-        
-        LOCAL_VER="0.0"
-        LOCAL_HASH=""
-        if [[ -f "${LOCAL_PATH}" ]]; then
-            LOCAL_VER="$(grep -m1 "^SCRIPT_VERSION=" "${LOCAL_PATH}" | awk -F'"' '{print $2}')"
-            [[ -z "${LOCAL_VER}" ]] && LOCAL_VER="0.0"
-            # 计算本地文件哈希
-            LOCAL_HASH="$(sha256sum "${LOCAL_PATH}" | awk '{print $1}')"
-        fi
-
-        # 【核心逻辑】判断是否需要下载：
-        # 1. 文件不存在 -> 必须下载
-        # 2. 版本号不同 -> 以云端为准，需要更新
-        # 3. 版本号相同但哈希不同 -> 内容已变更，需要更新
-        NEED_DOWNLOAD=false
-        if [[ ! -f "${LOCAL_PATH}" ]]; then
-            NEED_DOWNLOAD=true
-            echo -e "${CYAN}[INFO] [${CURRENT_FILE}/${TOTAL_FILES}] 下载 ${DISPLAY_NAME}...${NC}"
-        elif [[ -n "${REMOTE_VER}" ]] && [[ "${REMOTE_VER}" != "${LOCAL_VER}" ]]; then
-            # 版本号不同，以云端为准
-            NEED_DOWNLOAD=true
-            echo -e "${CYAN}[INFO] [${CURRENT_FILE}/${TOTAL_FILES}] 更新 ${DISPLAY_NAME} (v${LOCAL_VER} -> v${REMOTE_VER})...${NC}"
-        elif [[ -n "${REMOTE_HASH}" ]] && [[ -n "${LOCAL_HASH}" ]] && [[ "${REMOTE_HASH}" != "${LOCAL_HASH}" ]]; then
-            # 版本号相同但哈希不同，说明内容已修改
-            NEED_DOWNLOAD=true
-            echo -e "${YELLOW}[INFO] [${CURRENT_FILE}/${TOTAL_FILES}] 更新 ${DISPLAY_NAME} (内容已变更)...${NC}"
-        fi
-
-        if [[ "${NEED_DOWNLOAD}" = true ]]; then
-            # 确保目标目录存在
-            mkdir -p "$(dirname "${LOCAL_PATH}")" 2>/dev/null
-                        
-            # 特殊处理 cfopt.sh 自身：下载到临时目录
-            if [[ "${REMOTE_FILE}" = "cfopt.sh" ]]; then
-                local temp_file="${TEMP_DIR}/${REMOTE_FILE}"
-                if download_with_retry "${REMOTE_URL}/${REMOTE_FILE}" "${temp_file}" "${REMOTE_HASH}"; then
-                    HAS_UPDATE=true
-                    log_success "主程序入口已下载（将在重启后生效）"
-                else
-                    HAS_ERROR=true
-                    echo -e "  ${RED}[FAIL]${NC}   ${DISPLAY_NAME} 更新失败 (请检查 version.txt 哈希值或网络)"
-                    rm -f "${temp_file}" 2>/dev/null
-                fi
-            else
-                # 其他文件直接下载到目标位置
-                if download_with_retry "${REMOTE_URL}/${REMOTE_FILE}" "${LOCAL_PATH}" "${REMOTE_HASH}"; then
-                    HAS_UPDATE=true
-                else
-                    HAS_ERROR=true
-                    echo -e "  ${RED}[FAIL]${NC}   ${DISPLAY_NAME} 更新失败 (请检查 version.txt 哈希值或网络)"
-                fi
-            fi
-        else
-            echo -e "  ${GREEN}[OK]${NC}      ${DISPLAY_NAME}: ${LOCAL_VER} (最新)"
-        fi
-    done
-
-    echo ""
-    if [[ "${HAS_UPDATE}" = true ]]; then
-        read -r -p "是否立即应用已下载的更新？(y/n，默认y): " APPLY_UPDATE
-        APPLY_UPDATE="${APPLY_UPDATE:-y}"
-        
-        if [[ "${APPLY_UPDATE}" =~ ^[Yy]$ ]]; then
-            # 应用更新前先清屏，让用户看到最新内容
-            clear
-            echo -e "${CYAN}+------------------------------------------------------------+${NC}"
-            echo -e " ${YELLOW}正在应用更新...${NC}"
-            echo -e "${CYAN}+------------------------------------------------------------+${NC}"
-            
-            local CFOPT_UPDATED=false
-            
-            for KEY in "${!MODULE_MAP[@]}"; do
-                IFS=':' read -r LOCAL_PATH REMOTE_FILE DISPLAY_NAME <<< "${MODULE_MAP[$KEY]}"
-                if [[ -f "${TEMP_DIR}/${REMOTE_FILE}" ]]; then
-                    # 特殊处理 cfopt.sh 自身
-                    if [[ "${REMOTE_FILE}" = "cfopt.sh" ]]; then
-                        # 将新版本的 cfopt.sh 复制到安装目录（使用 .new 标记）
-                        if cp "${TEMP_DIR}/${REMOTE_FILE}" "${INSTALL_DIR}/cfopt.sh.new" 2>/dev/null && \
-                           chmod +x "${INSTALL_DIR}/cfopt.sh.new" 2>/dev/null; then
-                            CFOPT_UPDATED=true
-                            log_success "主程序入口已准备更新（将在重启后生效）"
-                        else
-                            log_error "主程序入口更新准备失败"
-                            HAS_ERROR=true
-                        fi
-                    else
-                        # 其他文件直接替换
-                        if ! safe_move "${TEMP_DIR}/${REMOTE_FILE}" "${LOCAL_PATH}" "应用更新: ${DISPLAY_NAME}"; then
-                            log_error "更新应用失败: ${DISPLAY_NAME}"
-                            HAS_ERROR=true
-                        else
-                            chmod +x "${LOCAL_PATH}"
-                        fi
-                    fi
-                fi
-            done
-            
-            echo ""
-            if [[ "${CFOPT_UPDATED}" = true ]]; then
-                echo -e "${YELLOW}[提示] cfopt.sh 主脚本已更新，请重新运行 'cfopt' 以应用最新版本${NC}"
-                echo ""
-            fi
-            echo -e "${GREEN}[OK] 更新已应用！${NC}"
-        fi
-    elif [[ "${HAS_ERROR}" = true ]]; then
-        echo -e "${YELLOW}[WARN] 部分组件更新失败，请检查网络连接或远程文件完整性。${NC}"
-    else
-        echo -e "${GREEN}[OK] 所有组件已是最新版本。${NC}"
-    fi
-    
-    rm -rf "${TEMP_DIR}"
+    bash "${INSTALL_DIR}/modules/updater/update.sh" update
     echo ""
     read -r -p "按回车键返回主菜单..."
-    # 【修复】返回主菜单而不是退出
     show_main_menu
 }
 
@@ -1488,28 +1316,9 @@ EOF
         fi
     fi
 
-    # 5. 静默版本检测与更新
-    echo -e "${CYAN}[INFO] 正在下载组件文件...${NC}"
-    
-    # 【修复】仅在已安装的情况下才执行备份（通过检查核心模块是否存在判断）
-    if [[ -d "${INSTALL_DIR}/modules/cf-ip" ]] || [[ -d "${INSTALL_DIR}/modules/scheduler" ]]; then
-        backup_current_version
-    fi
-    
-    # 下载 version.txt（增加超时和进度提示）
-    echo -e "${CYAN}[INFO] 正在获取版本索引...${NC}"
-    # 添加时间戳参数避免 CDN 缓存
-    REMOTE_VERSIONS="$(curl -sL --connect-timeout 10 --max-time 30 "${VERSION_FILE_REMOTE}?t=$(date +%s)" 2>/dev/null)"
-    
-    if [[ -z "${REMOTE_VERSIONS}" ]]; then
-        echo -e "${YELLOW}[WARN] 无法获取 version.txt，将跳过哈希校验直接下载...${NC}"
-    else
-        echo -e "${GREEN}[OK] 版本索引获取成功！${NC}"
-    fi
-    
-    # 【简化】直接调用独立的更新模块
-    echo -e "${CYAN}[INFO] 正在检查更新...${NC}"
-    bash "${ROOT_DIR}/modules/updater/update.sh" check
+    # 5. 静默版本检测与更新（委托给 updater 模块）
+    echo -e "${CYAN}[INFO] 正在检查组件更新...${NC}"
+    bash "${INSTALL_DIR}/modules/updater/update.sh" check
     
     local update_available=$?
     if [[ ${update_available} -eq 0 ]]; then
@@ -1518,10 +1327,10 @@ EOF
         read -r -p "${YELLOW}是否立即执行更新？[y/N] (默认 N): ${NC}" confirm_update
         if [[ "${confirm_update}" =~ ^[Yy]$ ]]; then
             echo ""
-            bash "${ROOT_DIR}/modules/updater/update.sh" update
+            bash "${INSTALL_DIR}/modules/updater/update.sh" update
             
-            # 如果更新了 cfopt.sh，提示用户重启
-            if [[ -f "${INSTALL_DIR}/cfopt.sh.new" ]]; then
+            # 如果更新了 cfopt.sh 或 updater.sh，提示用户重启
+            if [[ -f "${INSTALL_DIR}/cfopt.sh.new" ]] || [[ -f "${INSTALL_DIR}/modules/updater/update.sh.new" ]]; then
                 echo ""
                 echo -e "${GREEN}[OK] 主程序已更新，请重新运行 ./cfopt.sh 以应用新版本${NC}"
             fi
