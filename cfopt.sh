@@ -169,7 +169,7 @@ safe_remove_dir() {
 }
 
 # --- 全局配置区 ---
-SCRIPT_VERSION="0.1"
+SCRIPT_VERSION="0.1.1"
 
 # 【优化】默认使用镜像源，提高国内访问速度
 GITHUB_MIRROR="https://gh-proxy.org/https://raw.githubusercontent.com/Asunano/Cloudflare-Best-IP-DnsUpdate/main"
@@ -584,6 +584,215 @@ get_module_status() {
     else
         echo -e "${RED}[未配置]${NC}"
     fi
+}
+
+# ====================== 【系统健康检测】 ======================
+
+# 全面的系统检测函数
+run_system_diagnostics() {
+    local has_issues=false
+    
+    echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+    echo -e " ${YELLOW}系统健康检测${NC}"
+    echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+    echo ""
+    
+    # 1. 检查全局命令
+    echo -n "[1/5] 检查全局命令... "
+    if check_system_cmd; then
+        local target
+        target="$(readlink -f "${SYSTEM_CMD_PATH}" 2>/dev/null)"
+        echo -e "${GREEN}正常${NC} (${SYSTEM_CMD_PATH} -> ${target})"
+    else
+        if [[ -e "${SYSTEM_CMD_PATH}" ]]; then
+            echo -e "${RED}失效${NC} (文件存在但不可用)"
+            has_issues=true
+        else
+            echo -e "${YELLOW}未安装${NC}"
+        fi
+    fi
+    
+    # 2. 检查核心模块
+    echo -n "[2/5] 检查核心模块... "
+    local missing_modules=()
+    local required_modules=("cf-ip/menu.sh" "cf-dns/setup.sh" "dnspod-dns/setup.sh" "scheduler/run.sh")
+    
+    for module in "${required_modules[@]}"; do
+        if [[ ! -f "${INSTALL_DIR}/modules/${module}" ]]; then
+            missing_modules+=("${module}")
+        fi
+    done
+    
+    if [[ ${#missing_modules[@]} -eq 0 ]]; then
+        echo -e "${GREEN}正常${NC} (${#required_modules[@]} 个模块)"
+    else
+        echo -e "${RED}缺失${NC}"
+        for mod in "${missing_modules[@]}"; do
+            echo -e "       ${RED}- modules/${mod}${NC}"
+        done
+        has_issues=true
+    fi
+    
+    # 3. 检查配置文件
+    echo -n "[3/5] 检查配置文件... "
+    local missing_configs=()
+    local required_configs=("cf-ip.json" "cf-dns.json" "dnspod.json" "global.json")
+    
+    for config in "${required_configs[@]}"; do
+        if [[ ! -f "${INSTALL_DIR}/conf/${config}" ]]; then
+            missing_configs+=("${config}")
+        fi
+    done
+    
+    if [[ ${#missing_configs[@]} -eq 0 ]]; then
+        echo -e "${GREEN}正常${NC} (${#required_configs[@]} 个配置)"
+    else
+        echo -e "${YELLOW}部分缺失${NC}"
+        for cfg in "${missing_configs[@]}"; do
+            echo -e "       ${YELLOW}- conf/${cfg}${NC}"
+        done
+    fi
+    
+    # 4. 检查依赖工具
+    echo -n "[4/5] 检查依赖工具... "
+    local missing_tools=()
+    local required_tools=("curl" "jq" "openssl" "grep" "sed" "awk")
+    
+    for tool in "${required_tools[@]}"; do
+        if ! command -v "${tool}" &>/dev/null; then
+            missing_tools+=("${tool}")
+        fi
+    done
+    
+    if [[ ${#missing_tools[@]} -eq 0 ]]; then
+        echo -e "${GREEN}正常${NC} (${#required_tools[@]} 个工具)"
+    else
+        echo -e "${RED}缺失${NC}"
+        for tool in "${missing_tools[@]}"; do
+            echo -e "       ${RED}- ${tool}${NC}"
+        done
+        has_issues=true
+    fi
+    
+    # 5. 检查目录权限
+    echo -n "[5/5] 检查目录权限... "
+    local permission_issues=()
+    local check_dirs=("${INSTALL_DIR}" "${INSTALL_DIR}/conf" "${INSTALL_DIR}/modules" "${INSTALL_DIR}/logs")
+    
+    for dir in "${check_dirs[@]}"; do
+        if [[ -d "${dir}" ]] && [[ ! -w "${dir}" ]]; then
+            permission_issues+=("${dir}")
+        fi
+    done
+    
+    if [[ ${#permission_issues[@]} -eq 0 ]]; then
+        echo -e "${GREEN}正常${NC}"
+    else
+        echo -e "${RED}权限问题${NC}"
+        for dir in "${permission_issues[@]}"; do
+            echo -e "       ${RED}- ${dir} (不可写)${NC}"
+        done
+        has_issues=true
+    fi
+    
+    echo ""
+    echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+    
+    # 显示检测结果
+    if [[ "${has_issues}" = true ]]; then
+        echo -e " ${RED}⚠ 检测到问题，建议修复${NC}"
+        echo ""
+        
+        # 提供修复选项
+        echo -e "${YELLOW}可用的修复操作：${NC}"
+        
+        # 修复全局命令
+        if [[ -e "${SYSTEM_CMD_PATH}" ]] && ! check_system_cmd; then
+            echo -e "  ${GREEN}1) 修复全局命令${NC} - 重新创建符号链接"
+        fi
+        
+        # 修复缺失模块
+        if [[ ${#missing_modules[@]} -gt 0 ]]; then
+            echo -e "  ${GREEN}2) 重新下载模块${NC} - 从 GitHub 获取最新版本"
+        fi
+        
+        # 修复缺失配置
+        if [[ ${#missing_configs[@]} -gt 0 ]]; then
+            echo -e "  ${GREEN}3) 初始化配置${NC} - 生成默认配置文件"
+        fi
+        
+        # 修复依赖
+        if [[ ${#missing_tools[@]} -gt 0 ]]; then
+            echo -e "  ${GREEN}4) 安装依赖工具${NC} - 自动安装缺失的工具"
+        fi
+        
+        echo ""
+        read -r -p "是否立即修复？(y/n，默认n): " FIX_CHOICE
+        if [[ "${FIX_CHOICE}" =~ ^[Yy]$ ]]; then
+            echo ""
+            
+            # 执行修复
+            local fixed_count=0
+            
+            # 修复全局命令
+            if [[ -e "${SYSTEM_CMD_PATH}" ]] && ! check_system_cmd; then
+                echo -n "正在修复全局命令... "
+                if fix_system_cmd "$(readlink -f "$0")"; then
+                    echo -e "${GREEN}成功${NC}"
+                    ((fixed_count++))
+                else
+                    echo -e "${RED}失败${NC}"
+                fi
+            fi
+            
+            # 修复缺失模块（通过更新功能）
+            if [[ ${#missing_modules[@]} -gt 0 ]]; then
+                echo -e "${CYAN}[INFO] 请使用主菜单的 '5. 检查组件更新' 来下载缺失的模块${NC}"
+            fi
+            
+            # 修复缺失配置
+            if [[ ${#missing_configs[@]} -gt 0 ]]; then
+                echo -e "${CYAN}[INFO] 请使用各模块的配置向导来生成配置文件${NC}"
+            fi
+            
+            # 修复依赖
+            if [[ ${#missing_tools[@]} -gt 0 ]]; then
+                echo -n "正在安装依赖工具... "
+                local install_cmd=""
+                if command -v apt-get &>/dev/null; then
+                    install_cmd="apt-get install -y"
+                elif command -v yum &>/dev/null; then
+                    install_cmd="yum install -y"
+                elif command -v apk &>/dev/null; then
+                    install_cmd="apk add"
+                fi
+                
+                if [[ -n "${install_cmd}" ]]; then
+                    if sudo bash -c "${install_cmd} ${missing_tools[*]}" &>/dev/null; then
+                        echo -e "${GREEN}成功${NC}"
+                        ((fixed_count++))
+                    else
+                        echo -e "${RED}失败${NC} (请手动安装)"
+                    fi
+                else
+                    echo -e "${YELLOW}跳过${NC} (无法识别包管理器)"
+                fi
+            fi
+            
+            echo ""
+            if [[ ${fixed_count} -gt 0 ]]; then
+                log_success "已完成 ${fixed_count} 项修复"
+            else
+                log_warning "没有执行任何修复操作"
+            fi
+        fi
+    else
+        echo -e " ${GREEN}✓ 所有检测项均正常${NC}"
+    fi
+    
+    echo ""
+    read -r -p "按回车键继续..."
+    echo ""
 }
 
 # --- 主菜单逻辑 ---
@@ -1095,6 +1304,8 @@ init_cfopt() {
        grep -q '^INSTALL_CHECKED="true"' "${STATUS_CONF}" && \
        [[ -d "${INSTALL_DIR}/modules/cf-ip" ]] && \
        [[ -d "${INSTALL_DIR}/modules/scheduler" ]]; then
+        # 运行系统健康检测
+        run_system_diagnostics
         show_main_menu
         return
     fi
