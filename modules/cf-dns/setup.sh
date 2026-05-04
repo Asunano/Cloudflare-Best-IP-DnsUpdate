@@ -59,6 +59,7 @@ fi
 
 # 配置文件路径（必须在 ROOT_DIR 定义之后）
 # 支持多域名配置：优先使用 conf/cf-dns/{domain}.json，否则使用 conf/cf-dns.json
+# 注意：此变量仅在菜单显示时使用，实际运行时由 core.sh 动态加载
 CONFIG_FILE="$ROOT_DIR/conf/cf-dns.json"
 LOCK_FILE="$ROOT_DIR/modules/cf-dns/.setup_cfdns.lock"
 
@@ -1544,13 +1545,32 @@ main() {
                 full_config_wizard
                 ;;
             2)
-                # 快速运行 - 增强配置检测
-                if [ ! -f "$CONFIG_FILE" ]; then
-                    echo -e "${RED}[ERROR] 配置文件不存在${NC}"
+                # 快速运行 - 支持多域名配置
+                echo -e "${GREEN}正在检测 Cloudflare DNS 配置...${NC}"
+                
+                # 检查新格式的多域名配置目录
+                local config_dir="${ROOT_DIR}/conf/cf-dns"
+                local default_config="${ROOT_DIR}/conf/cf-dns.json"
+                local config_files=()
+                
+                if [[ -d "$config_dir" ]]; then
+                    while IFS= read -r -d '' config_file; do
+                        config_files+=("$config_file")
+                    done < <(find "$config_dir" -name "*.json" -type f -print0 2>/dev/null)
+                fi
+                
+                # 如果没有找到新格式的配置，检查旧的默认配置
+                if [[ ${#config_files[@]} -eq 0 ]] && [[ -f "$default_config" ]]; then
+                    config_files+=("$default_config")
+                fi
+                
+                # 如果仍然没有配置，提示用户
+                if [[ ${#config_files[@]} -eq 0 ]]; then
+                    echo -e "${RED}[ERROR] 未找到任何 Cloudflare DNS 配置文件${NC}"
                     echo ""
                     echo -e "${YELLOW}请先完成配置:${NC}"
                     echo "  1. 选择 '1) 完整配置向导' 进行配置"
-                    echo "  2. 或手动创建 cf-dns.json 文件"
+                    echo "  2. 或通过快速部署向导配置域名"
                     echo ""
                     read -r -p "是否现在运行配置向导? (y/n): " confirm
                     if [ "$confirm" = "y" ] || [ "$confirm" = "Y" ]; then
@@ -1559,44 +1579,62 @@ main() {
                     continue
                 fi
                 
-                # 检测配置是否完整
-                local cf_api_token cf_zone_id cf_dns_name
-                cf_api_token=$(jq -r '.api.token // empty' "$CONFIG_FILE")
-                cf_zone_id=$(jq -r '.api.zone_id // empty' "$CONFIG_FILE")
-                cf_dns_name=$(jq -r '.dns.record_name // empty' "$CONFIG_FILE")
+                echo -e "${GREEN}[OK] 找到 ${#config_files[@]} 个域名配置${NC}"
+                echo ""
                 
-                local config_ok=true
-                
-                if [ -z "$cf_api_token" ] || [ "$cf_api_token" = "your_api_token_here" ]; then
-                    echo -e "${RED}[ERROR] CF_API_TOKEN 未配置${NC}"
-                    config_ok=false
-                fi
-                
-                if [ -z "$cf_zone_id" ] || [ "$cf_zone_id" = "your_zone_id_here" ]; then
-                    echo -e "${RED}[ERROR] CF_ZONE_ID 未配置${NC}"
-                    config_ok=false
-                fi
-                
-                if [ -z "$cf_dns_name" ] || [ "$cf_dns_name" = "your_dns_name_here" ]; then
-                    echo -e "${RED}[ERROR] CF_DNS_NAME 未配置${NC}"
-                    config_ok=false
-                fi
-                
-                if [ "$config_ok" = false ]; then
-                    echo ""
-                    echo -e "${YELLOW}请先完成所有必需配置项${NC}"
-                    echo ""
-                    read -r -p "是否现在运行配置向导? (y/n): " confirm
-                    if [ "$confirm" = "y" ] || [ "$confirm" = "Y" ]; then
-                        full_config_wizard
+                # 根据配置数量选择执行方式
+                if [[ ${#config_files[@]} -gt 1 ]]; then
+                    # 多个域名配置，使用批量更新器
+                    echo -e "${CYAN}检测到多个域名配置，使用批量更新模式...${NC}"
+                    sleep 1
+                    chmod +x "$ROOT_DIR/modules/cf-dns/batch.sh"
+                    bash "$ROOT_DIR/modules/cf-dns/batch.sh"
+                else
+                    # 单个域名配置，直接运行
+                    local single_config="${config_files[0]}"
+                    local domain_name
+                    domain_name=$(basename "$single_config" .json)
+                    
+                    # 检测配置是否完整
+                    local cf_api_token cf_zone_id cf_dns_name
+                    cf_api_token=$(jq -r '.api.token // empty' "$single_config")
+                    cf_zone_id=$(jq -r '.api.zone_id // empty' "$single_config")
+                    cf_dns_name=$(jq -r '.dns.record_name // empty' "$single_config")
+                    
+                    local config_ok=true
+                    
+                    if [ -z "$cf_api_token" ] || [ "$cf_api_token" = "your_api_token_here" ]; then
+                        echo -e "${RED}[ERROR] CF_API_TOKEN 未配置${NC}"
+                        config_ok=false
                     fi
-                    continue
+                    
+                    if [ -z "$cf_zone_id" ] || [ "$cf_zone_id" = "your_zone_id_here" ]; then
+                        echo -e "${RED}[ERROR] CF_ZONE_ID 未配置${NC}"
+                        config_ok=false
+                    fi
+                    
+                    if [ -z "$cf_dns_name" ] || [ "$cf_dns_name" = "your_dns_name_here" ]; then
+                        echo -e "${RED}[ERROR] CF_DNS_NAME 未配置${NC}"
+                        config_ok=false
+                    fi
+                    
+                    if [ "$config_ok" = false ]; then
+                        echo ""
+                        echo -e "${YELLOW}请先完成所有必需配置项${NC}"
+                        echo ""
+                        read -r -p "是否现在运行配置向导? (y/n): " confirm
+                        if [ "$confirm" = "y" ] || [ "$confirm" = "Y" ]; then
+                            full_config_wizard
+                        fi
+                        continue
+                    fi
+                    
+                    echo -e "${CYAN}正在运行 Cloudflare DNS 更新器 (${domain_name})...${NC}"
+                    sleep 1
+                    chmod +x "$ROOT_DIR/modules/cf-dns/core.sh"
+                    CF_DNS_DOMAIN="$domain_name" bash "$ROOT_DIR/modules/cf-dns/core.sh" "$single_config"
                 fi
                 
-                echo -e "${GREEN}正在运行 Cloudflare DNS 更新器...${NC}"
-                sleep 1
-                chmod +x "$ROOT_DIR/modules/cf-dns/core.sh"
-                bash "$ROOT_DIR/modules/cf-dns/core.sh"
                 echo ""
                 read -r -p "按回车键继续..."
                 ;;
