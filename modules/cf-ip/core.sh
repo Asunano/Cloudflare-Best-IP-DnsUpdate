@@ -265,36 +265,45 @@ cd "$(dirname "$CFST_BIN")" || exit 1
 "${CMD[@]}" > "${LOG_FILE}" 2>&1 &
 CFST_PID=$!
 
-# 实时显示进度
-last_line_count=0
+# 实时显示进度（通过监控日志文件）
 stage="ping"
+last_log_size=0
 while kill -0 "${CFST_PID}" 2>/dev/null; do
-    # 检查是否有新的结果生成
-    if [[ -f "${OUTPUT_CSV}" ]]; then
-        current_lines=$(wc -l < "${OUTPUT_CSV}" 2>/dev/null || echo "0")
-        if [[ "${current_lines}" -gt 1 ]]; then
-            available_count=$((current_lines - 1))  # 减去表头
+    # 检查日志文件是否有新内容
+    if [[ -f "${LOG_FILE}" ]]; then
+        current_log_size=$(wc -c < "${LOG_FILE}" 2>/dev/null || echo "0")
+        
+        if [[ "${current_log_size}" -gt "${last_log_size}" ]]; then
+            last_log_size=${current_log_size}
             
             # 检测是否进入第二阶段（下载测速）
-            if [[ "${stage}" = "ping" ]] && [[ -f "${LOG_FILE}" ]]; then
-                # 通过检查日志文件判断是否开始下载测速
-                if grep -q "开始下载测速" "${LOG_FILE}" 2>/dev/null; then
-                    stage="download"
-                    echo -e "\r${CYAN}  [进度] 延迟测速完成，正在进行下载测速...          ${NC}"
-                    echo -e "${GRAY}  第二阶段: 下载速度测试${NC}"
-                fi
+            if [[ "${stage}" = "ping" ]] && grep -q "开始下载测速" "${LOG_FILE}" 2>/dev/null; then
+                stage="download"
+                echo -e "\r${CYAN}  [进度] 延迟测速完成，正在进行下载测速...          ${NC}"
+                echo -e "${GRAY}  第二阶段: 下载速度测试${NC}"
             fi
             
-            last_line_count=${available_count}
-            # 每 2 秒刷新一次显示
+            # 从日志中提取当前进度
             if [[ "${stage}" = "ping" ]]; then
-                echo -ne "\r${CYAN}  [进度] 已发现 ${available_count} 个可用 IP...${NC}   "
+                # 提取 "可用: XXXX" 的数字
+                available_count=$(grep -oP '可用:\s*\K[0-9]+' "${LOG_FILE}" 2>/dev/null | tail -1)
+                if [[ -n "${available_count}" ]]; then
+                    echo -ne "\r${CYAN}  [进度] 已发现 ${available_count} 个可用 IP...${NC}   "
+                else
+                    echo -ne "\r${CYAN}  [进度] 正在测速中...${NC}   "
+                fi
             else
-                echo -ne "\r${CYAN}  [进度] 正在测试下载速度 (${available_count} 个 IP)...${NC}   "
+                # 下载阶段，显示下载进度
+                download_progress=$(grep -oP '[0-9]+\s*/\s*[0-9]+' "${LOG_FILE}" 2>/dev/null | tail -1)
+                if [[ -n "${download_progress}" ]]; then
+                    echo -ne "\r${CYAN}  [进度] 正在测试下载速度 (${download_progress})...${NC}   "
+                else
+                    echo -ne "\r${CYAN}  [进度] 正在测试下载速度...${NC}   "
+                fi
             fi
         fi
     fi
-    sleep 2
+    sleep 1
 done
 
 # 等待进程结束
