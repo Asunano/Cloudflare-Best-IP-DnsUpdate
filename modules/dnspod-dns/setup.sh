@@ -2146,60 +2146,6 @@ log_message() {
     esac
 }
 
-# 处理命令行参数
-if [ $# -gt 0 ]; then
-    case "$1" in
-        --quick-single|-s)
-            quick_run "single"
-            exit $?
-            ;;
-        --quick-multi|-m)
-            quick_run "multi"
-            exit $?
-            ;;
-        --view|-v)
-            view_config
-            exit $?
-            ;;
-        --edit|-e)
-            edit_config
-            exit $?
-            ;;
-        --modify)
-            modify_config_menu
-            exit $?
-            ;;
-        --ip-limit|-i)
-            modify_ip_limit
-            exit $?
-            ;;
-        --help|-h)
-            echo "DNSPod DNS 更新器 - 快速参考"
-            echo ""
-            echo "用法:"
-            echo "  ./setup.sh              # 交互菜单模式"
-            echo "  ./setup.sh -s           # 快速运行单线路模式"
-            echo "  ./setup.sh -m           # 快速运行多线路模式"
-            echo "  ./setup.sh -v           # 查看当前配置"
-            echo "  ./setup.sh -i           # 快速修改 IP 数量限制"
-            echo "  ./setup.sh -e           # 编辑配置文件 (文本编辑器)"
-            echo "  ./setup.sh --modify     # 修改配置 (二级菜单)"
-            echo ""
-            echo "其他命令:"
-            echo "  ./core.sh             # 直接运行单线路脚本"
-            echo "  ./core.sh -m          # 直接运行多线路脚本"
-            echo ""
-            exit 0
-            ;;
-        *)
-            echo -e "${RED}[ERROR] 未知参数: $1"
-            echo ""
-            echo "使用 --help 查看帮助"
-            exit 1
-            ;;
-    esac
-fi
-
 # 检查配置并决定是否进入菜单或向导
 config_check_result=0
 check_config_valid
