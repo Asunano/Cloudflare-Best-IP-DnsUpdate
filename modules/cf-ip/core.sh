@@ -16,6 +16,55 @@ CYAN='\033[0;36m'
 GRAY='\033[0;90m'
 NC='\033[0m'
 
+# ==================== 地区码转换函数 ====================
+# 将 Cloudflare Colo 代码转换为中文名称
+convert_colo_to_name() {
+    local colo_code="$1"
+    case "${colo_code}" in
+        HKG) echo "香港" ;;
+        NRT|TYO) echo "东京" ;;
+        SIN) echo "新加坡" ;;
+        LAX) echo "洛杉矶" ;;
+        SJC) echo "圣何塞" ;;
+        SEA) echo "西雅图" ;;
+        LON) echo "伦敦" ;;
+        FRA) echo "法兰克福" ;;
+        AMS) echo "阿姆斯特丹" ;;
+        CDG) echo "巴黎" ;;
+        MAD) echo "马德里" ;;
+        MXP) echo "米兰" ;;
+        ZRH) echo "苏黎世" ;;
+        VIE) echo "维也纳" ;;
+        WAW) echo "华沙" ;;
+        PRG) echo "布拉格" ;;
+        BUD) echo "布达佩斯" ;;
+        IST) echo "伊斯坦布尔" ;;
+        DXB) echo "迪拜" ;;
+        BOM) echo "孟买" ;;
+        DEL) echo "德里" ;;
+        SYD) echo "悉尼" ;;
+        MEL) echo "墨尔本" ;;
+        AKL) echo "奥克兰" ;;
+        GRU) echo "圣保罗" ;;
+        GIG) echo "里约热内卢" ;;
+        EZE) echo "布宜诺斯艾利斯" ;;
+        SCL) echo "圣地亚哥" ;;
+        BOG) echo "波哥大" ;;
+        LIM) echo "利马" ;;
+        QRO) echo "克雷塔罗" ;;
+        MEX) echo "墨西哥城" ;;
+        YYZ) echo "多伦多" ;;
+        YUL) echo "蒙特利尔" ;;
+        YVR) echo "温哥华" ;;
+        IAD) echo "华盛顿" ;;
+        ORD) echo "芝加哥" ;;
+        DFW) echo "达拉斯" ;;
+        ATL) echo "亚特兰大" ;;
+        MIA) echo "迈阿密" ;;
+        *   ) echo "${colo_code}" ;;  # 未知代码，返回原值
+    esac
+}
+
 # ==================== 入口权限校验 ====================
 # 允许以下场景调用：
 # 1. CF_OPT_ENTRY=1 - 从 menu.sh 手动触发
@@ -215,20 +264,36 @@ if [[ "${EXIT_CODE}" -eq 0 ]] && [[ -f "${OUTPUT_CSV}" ]]; then
     echo ""
     echo -e "${GREEN}[OK] 测速完成！结果已保存至: ${OUTPUT_CSV}${NC}"
     
-    # 展示前 3 个最优 IP（简洁版）
+    # 展示测速结果摘要（从配置文件读取）
     total_ips=$(wc -l < "${OUTPUT_CSV}")
     total_ips=$((total_ips - 1))  # 减去表头
+    available_ips=$((total_ips > TAKE_IP_NUM ? TAKE_IP_NUM : total_ips))
+    
+    # 转换 Colo 代码为中文
+    colo_names=""
+    IFS=',' read -ra COLO_ARRAY <<< "${TARGET_COLO}"
+    for colo in "${COLO_ARRAY[@]}"; do
+        colo_name=$(convert_colo_to_name "${colo}")
+        if [[ -n "${colo_names}" ]]; then
+            colo_names="${colo_names}, ${colo_name}"
+        else
+            colo_names="${colo_name}"
+        fi
+    done
     
     echo -e "\n${CYAN}+------------------------------------------------------------+"
     echo -e " ${YELLOW}测速结果摘要${NC}"
     echo -e "${CYAN}+------------------------------------------------------------+"
-    echo -e "  ${CYAN}总测试 IP 数:${NC} ${total_ips}"
-    echo -e "  ${CYAN}可用 IP 数:${NC}   $((total_ips > TAKE_IP_NUM ? TAKE_IP_NUM : total_ips))"
+    echo -e "  ${CYAN}测速节点:${NC}   ${colo_names} (${TARGET_COLO})"
+    echo -e "  ${CYAN}线程数量:${NC}   ${CFST_THREADS}"
+    echo -e "  ${CYAN}总测试 IP:${NC}  ${total_ips}"
+    echo -e "  ${CYAN}可用 IP 数:${NC}  ${available_ips}"
     echo -e "  ${CYAN}保留策略:${NC}   取前 ${TAKE_IP_NUM} 个最优 IP"
     echo ""
     echo -e " ${GREEN}Top 3 最优 IP:${NC}"
     head -n 4 "${OUTPUT_CSV}" | tail -n 3 | while IFS=',' read -r ip sent recv loss delay speed region; do
-        echo -e "  ${GREEN}➤${NC} ${ip}  (延迟: ${delay}ms, 地区: ${region})"
+        region_name=$(convert_colo_to_name "${region}")
+        echo -e "  ${GREEN}➤${NC} ${ip}  (延迟: ${delay}ms, 地区: ${region_name})"
     done
     echo -e "${CYAN}+------------------------------------------------------------+"
     echo ""
