@@ -542,11 +542,6 @@ main() {
             echo -e "   • ${domain} (${dns_label}, ${mode_label})"
         done <<< "$deployed_domains"
         echo ""
-        
-        # 如果有已部署的域名，显示管理选项
-        echo -e " ${YELLOW}[管理]${NC}"
-        echo -e "   输入域名可直接管理该域名的配置（删除、重新部署等）"
-        echo ""
     fi
     
     echo -e " ${CYAN}请选择 DNS 服务商：${NC}"
@@ -558,38 +553,20 @@ main() {
     echo -e " ${GREEN}➤${NC} 2. DNSPod DNS (腾讯云)"
     echo -e "      ${CYAN}- 适合使用 DNSPod 管理 DNS 的用户${NC}"
     echo -e "      ${CYAN}- 支持单线路和多线路模式${NC}"
+    
+    # 如果有已部署的域名，显示管理选项
+    if [[ -n "$deployed_domains" ]]; then
+        echo ""
+        echo -e " ${YELLOW}➤${NC} 3. 管理已部署域名"
+        echo -e "      ${CYAN}- 查看、编辑或删除已配置的域名${NC}"
+    fi
+    
     echo ""
     echo -e " ${RED}➤${NC} 0. 返回主菜单"
     echo ""
     
-    read -r -p "请选择 [0-2, 默认 1] 或输入域名: " dns_choice
+    read -r -p "请选择 [0-3, 默认 1]: " dns_choice
     dns_choice=${dns_choice:-1}
-    
-    # 检查是否输入了域名
-    if [[ "$dns_choice" =~ ^[a-zA-Z0-9][a-zA-Z0-9.-]*\.[a-zA-Z]{2,}$ ]]; then
-        # 用户输入了域名，检查是否已部署
-        if is_domain_deployed "$dns_choice"; then
-            manage_deployed_domain "$dns_choice"
-        else
-            echo -e "${YELLOW}[WARN] 该域名尚未部署${NC}"
-            read -r -p "是否立即部署？[y/N] (默认 N): " confirm
-            if [[ "$confirm" =~ ^[Yy]$ ]]; then
-                # 询问使用哪个 DNS 服务商
-                echo ""
-                echo -e " ${CYAN}请选择 DNS 服务商：${NC}"
-                echo -e " ${GREEN}➤${NC} 1. Cloudflare DNS"
-                echo -e " ${GREEN}➤${NC} 2. DNSPod DNS"
-                echo ""
-                read -r -p "请选择 [1-2]: " new_dns_choice
-                case "$new_dns_choice" in
-                    1) deploy_cloudflare_dns ;;
-                    2) choose_dnspod_mode ;;
-                    *) echo -e "${RED}[ERROR] 无效的选择${NC}" ;;
-                esac
-            fi
-        fi
-        return
-    fi
     
     case "$dns_choice" in
         1)
@@ -597,6 +574,15 @@ main() {
             ;;
         2)
             choose_dnspod_mode
+            ;;
+        3)
+            # 管理已部署域名
+            if [[ -n "$deployed_domains" ]]; then
+                manage_deployed_domains_menu
+            else
+                echo -e "${YELLOW}[WARN] 当前没有已部署的域名${NC}"
+                read -r -p "按回车键返回..."
+            fi
             ;;
         0)
             # 返回主菜单
@@ -609,8 +595,74 @@ main() {
     esac
 }
 
-# 管理已部署的域名
-manage_deployed_domain() {
+# 管理已部署域名菜单
+manage_deployed_domains_menu() {
+    local deployed_domains
+    deployed_domains=$(list_deployed_domains)
+    
+    if [[ -z "$deployed_domains" ]]; then
+        echo -e "${YELLOW}[WARN] 当前没有已部署的域名${NC}"
+        read -r -p "按回车键返回..."
+        return
+    fi
+    
+    show_header
+    echo -e "${GREEN}管理已部署域名${NC}"
+    echo ""
+    
+    # 显示域名列表
+    echo -e "${CYAN}已部署的域名列表：${NC}"
+    echo ""
+    local index=1
+    local domain_array=()
+    while IFS= read -r domain; do
+        local info
+        info=$(get_domain_info "$domain")
+        local dns_type
+        dns_type=$(echo "$info" | jq -r '.dns_type')
+        local mode
+        mode=$(echo "$info" | jq -r '.mode')
+        
+        local dns_label
+        if [[ "$dns_type" == "cloudflare" ]]; then
+            dns_label="Cloudflare DNS"
+        else
+            dns_label="DNSPod DNS"
+        fi
+        
+        local mode_label
+        if [[ "$mode" == "multi" ]]; then
+            mode_label="多线路"
+        else
+            mode_label="单线路"
+        fi
+        
+        echo -e " ${GREEN}${index})${NC} ${domain} (${dns_label}, ${mode_label})"
+        domain_array+=("$domain")
+        ((index++))
+    done <<< "$deployed_domains"
+    
+    echo ""
+    echo -e " ${RED}0)${NC} 返回上一级"
+    echo ""
+    
+    read -r -p "请选择要管理的域名 [0-$((index-1))]: " choice
+    
+    if [[ "$choice" == "0" ]]; then
+        return
+    fi
+    
+    if [[ "$choice" =~ ^[0-9]+$ ]] && [[ "$choice" -ge 1 ]] && [[ "$choice" -lt "$index" ]]; then
+        local selected_domain="${domain_array[$((choice-1))]}"
+        manage_single_domain "$selected_domain"
+    else
+        echo -e "${RED}[ERROR] 无效的选择${NC}"
+        read -r -p "按回车键返回..."
+    fi
+}
+
+# 管理单个域名
+manage_single_domain() {
     local domain="$1"
     
     show_header
