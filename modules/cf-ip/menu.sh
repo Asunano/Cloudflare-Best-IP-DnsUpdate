@@ -459,7 +459,12 @@ configure_simple() {
     echo ""
     
     # 第一步：选择测速策略（最重要）
-    echo -e "${YELLOW}【步骤 1/3】选择测速节点地区${NC}"
+    clear
+    echo -e "${CYAN}+------------------------------------------------------------+"
+    echo -e " ${YELLOW}CF-IP 优选配置向导 - 简单模式"
+    echo -e "${CYAN}+------------------------------------------------------------+"
+    echo ""
+    echo -e "${GREEN}【步骤 1/3】选择测速节点地区${NC}"
     echo -e "${GRAY}系统将根据您的选择自动测试对应地区的 Cloudflare 节点${NC}"
     echo ""
     echo -e "  ${GREEN}1) 国内通用推荐${NC}     - 综合优化，适合大多数用户 (HKG, NRT)"
@@ -543,12 +548,20 @@ configure_simple() {
     esac
     
     echo ""
+    read -r -p "按回车键继续..."
+    
     # 第二步：测速线程数
-    echo -e "${YELLOW}【步骤 2/3】设置测速线程数${NC}"
+    clear
+    echo -e "${CYAN}+------------------------------------------------------------+"
+    echo -e " ${YELLOW}CF-IP 优选配置向导 - 简单模式"
+    echo -e "${CYAN}+------------------------------------------------------------+"
+    echo ""
+    echo -e "${GREEN}【步骤 2/3】设置测速线程数${NC}"
     echo -e "${GRAY}线程数越高测速越快，但会占用更多系统资源${NC}"
-    echo -e "  - 推荐范围：100-200"
-    echo -e "  - 低配置服务器：建议使用 100"
-    echo -e "  - 高配置服务器：可使用 200 或更高"
+    echo ""
+    echo -e "  ${CYAN}推荐范围：${NC}100-200"
+    echo -e "  ${CYAN}低配置服务器：${NC}建议使用 100"
+    echo -e "  ${CYAN}高配置服务器：${NC}可使用 200 或更高"
     echo ""
     read -r -p "请输入线程数 [默认 200]: " CFST_THREADS
     CFST_THREADS=${CFST_THREADS:-200}
@@ -560,11 +573,19 @@ configure_simple() {
     fi
     
     echo ""
+    read -r -p "按回车键继续..."
+    
     # 第三步：提取 IP 数量
-    echo -e "${YELLOW}【步骤 3/3】设置保留的优质 IP 数量${NC}"
+    clear
+    echo -e "${CYAN}+------------------------------------------------------------+"
+    echo -e " ${YELLOW}CF-IP 优选配置向导 - 简单模式"
+    echo -e "${CYAN}+------------------------------------------------------------+"
+    echo ""
+    echo -e "${GREEN}【步骤 3/3】设置保留的优质 IP 数量${NC}"
     echo -e "${GRAY}测速完成后，系统将保留速度最快的前 N 个 IP${NC}"
-    echo -e "  - 推荐：3-10 个"
-    echo -e "  - 数量越多，DNS 轮询效果越好，但可能包含次优 IP"
+    echo ""
+    echo -e "  ${CYAN}推荐：${NC}3-10 个"
+    echo -e "  ${CYAN}说明：${NC}数量越多，DNS 轮询效果越好，但可能包含次优 IP"
     echo ""
     read -r -p "请输入 IP 数量 [默认 5]: " TAKE_IP_NUM
     TAKE_IP_NUM=${TAKE_IP_NUM:-5}
@@ -575,9 +596,16 @@ configure_simple() {
         TAKE_IP_NUM=5
     fi
     
-    # 询问是否启用日志
     echo ""
-    echo -e "${YELLOW}【可选配置】${NC}"
+    read -r -p "按回车键继续..."
+    
+    # 询问是否启用日志
+    clear
+    echo -e "${CYAN}+------------------------------------------------------------+"
+    echo -e " ${YELLOW}CF-IP 优选配置向导 - 简单模式"
+    echo -e "${CYAN}+------------------------------------------------------------+"
+    echo ""
+    echo -e "${GREEN}【可选配置】${NC}"
     read -r -p "是否启用详细日志记录？(y/n，默认 n): " ENABLE_LOG_INPUT
     if [[ "${ENABLE_LOG_INPUT}" = "y" ]] || [[ "${ENABLE_LOG_INPUT}" = "Y" ]]; then
         ENABLE_LOG="true"
