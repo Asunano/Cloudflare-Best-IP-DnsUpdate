@@ -295,21 +295,33 @@ show_main_menu() {
         echo -e " ${RED}[NONE] 配置文件: 未找到 (请先运行 cfopt 安装)"
     fi
     
-    # 检查测速程序
+    # 检查测速程序并自动下载
     if [[ -f "${CFST_BIN}" ]]; then
         echo -e " ${GREEN}[OK] 测速程序: cfst 已就绪"
     else
         echo -e " ${RED}[NONE] 测速程序: cfst 缺失"
+        echo -e "${CYAN}+------------------------------------------------------------+"
+        echo -e " ${YELLOW}[INFO] 检测到测速程序缺失，正在自动下载...${NC}"
+        echo -e "${CYAN}+------------------------------------------------------------+"
+        if download_cfst; then
+            echo -e "${GREEN}[OK] cfst 下载成功！${NC}"
+            echo ""
+            # 短暂延迟让用户看到成功信息
+            sleep 1
+        else
+            echo -e "${RED}[ERROR] cfst 下载失败，请检查网络连接后重试。${NC}"
+            echo ""
+            read -r -p "按回车键继续..." || true
+        fi
+        # 重新显示菜单（现在 cfst 应该已存在）
+        show_main_menu
+        return
     fi
     
     echo -e "${CYAN}+------------------------------------------------------------+"
     echo -e " ${GREEN}➤${NC} 1. 修改测速配置     ${CYAN}- 调整地区、线程及筛选策略${NC}"
     echo -e " ${GREEN}➤${NC} 2. 查看当前配置     ${CYAN}- 浏览 cf-ip.json 内容${NC}"
-    if [[ -f "${CFST_BIN}" ]]; then
-        echo -e " ${GREEN}➤${NC} 3. 立即执行测速     ${CYAN}- 手动触发一次 IP 优选${NC}"
-    else
-        echo -e " ${YELLOW}➤${NC} 3. 下载测速程序   ${CYAN}- 自动下载 cfst (必需)${NC}"
-    fi
+    echo -e " ${GREEN}➤${NC} 3. 立即执行测速     ${CYAN}- 手动触发一次 IP 优选${NC}"
     echo -e " ${GREEN}➤${NC} 4. 管理定时任务     ${CYAN}- 设置自动测速 Cron 计划${NC}"
     echo -e " ${GREEN}➤${NC} 5. 查看运行日志     ${CYAN}- 追踪测速结果与错误信息${NC}"
     echo ""
