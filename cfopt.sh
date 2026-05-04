@@ -1155,19 +1155,19 @@ check_and_update_components() {
     echo -e "${GREEN}[OK] 版本信息获取成功${NC}"
     echo ""
 
-    # 定义模块映射: [KEY]="本地路径:远程文件"
+    # 定义模块映射: [KEY]="本地路径:远程文件:显示名称"
     declare -A MODULE_MAP
     MODULE_MAP=(
-        ["QUICK_DEPLOY"]="${INSTALL_DIR}/modules/quick-deploy/setup.sh:modules/quick-deploy/setup.sh"
-        ["CF_IP_MENU"]="${INSTALL_DIR}/modules/cf-ip/menu.sh:modules/cf-ip/menu.sh"
-        ["CF_IP_CORE"]="${INSTALL_DIR}/modules/cf-ip/core.sh:modules/cf-ip/core.sh"
-        ["CF_DNS_CORE"]="${INSTALL_DIR}/modules/cf-dns/core.sh:modules/cf-dns/core.sh"
-        ["CF_DNS_SETUP"]="${INSTALL_DIR}/modules/cf-dns/setup.sh:modules/cf-dns/setup.sh"
-        ["DNSPOD_CORE"]="${INSTALL_DIR}/modules/dnspod-dns/core.sh:modules/dnspod-dns/core.sh"
-        ["DNSPOD_SETUP"]="${INSTALL_DIR}/modules/dnspod-dns/setup.sh:modules/dnspod-dns/setup.sh"
-        ["SCHEDULER_RUN"]="${INSTALL_DIR}/modules/scheduler/run.sh:modules/scheduler/run.sh"
-        ["IP_SYNC"]="${INSTALL_DIR}/modules/ip-sync/sync.sh:modules/ip-sync/sync.sh"
-        ["CFOPT_ENTRY"]="${INSTALL_DIR}/cfopt.sh:cfopt.sh"
+        ["QUICK_DEPLOY"]="${INSTALL_DIR}/modules/quick-deploy/setup.sh:modules/quick-deploy/setup.sh:快速部署向导"
+        ["CF_IP_MENU"]="${INSTALL_DIR}/modules/cf-ip/menu.sh:modules/cf-ip/menu.sh:CF-IP 测速管理"
+        ["CF_IP_CORE"]="${INSTALL_DIR}/modules/cf-ip/core.sh:modules/cf-ip/core.sh:CF-IP 核心引擎"
+        ["CF_DNS_CORE"]="${INSTALL_DIR}/modules/cf-dns/core.sh:modules/cf-dns/core.sh:CF DNS 核心"
+        ["CF_DNS_SETUP"]="${INSTALL_DIR}/modules/cf-dns/setup.sh:modules/cf-dns/setup.sh:CF DNS 配置向导"
+        ["DNSPOD_CORE"]="${INSTALL_DIR}/modules/dnspod-dns/core.sh:modules/dnspod-dns/core.sh:DNSPod 核心"
+        ["DNSPOD_SETUP"]="${INSTALL_DIR}/modules/dnspod-dns/setup.sh:modules/dnspod-dns/setup.sh:DNSPod 配置向导"
+        ["SCHEDULER_RUN"]="${INSTALL_DIR}/modules/scheduler/run.sh:modules/scheduler/run.sh:自动化调度器"
+        ["IP_SYNC"]="${INSTALL_DIR}/modules/ip-sync/sync.sh:modules/ip-sync/sync.sh:IP 同步工具"
+        ["CFOPT_ENTRY"]="${INSTALL_DIR}/cfopt.sh:cfopt.sh:主程序入口"
     )
 
     HAS_UPDATE=false
@@ -1180,7 +1180,7 @@ check_and_update_components() {
     
     for KEY in "${!MODULE_MAP[@]}"; do
         CURRENT_FILE=$((CURRENT_FILE + 1))
-        IFS=':' read -r LOCAL_PATH REMOTE_FILE <<< "${MODULE_MAP[$KEY]}"
+        IFS=':' read -r LOCAL_PATH REMOTE_FILE DISPLAY_NAME <<< "${MODULE_MAP[$KEY]}"
         
         REMOTE_INFO="$(echo "${REMOTE_VERSIONS}" | grep "^${KEY}=" | cut -d'=' -f2)"
         REMOTE_VER="$(echo "${REMOTE_INFO}" | cut -d':' -f1)"
@@ -1202,15 +1202,15 @@ check_and_update_components() {
         NEED_DOWNLOAD=false
         if [[ ! -f "${LOCAL_PATH}" ]]; then
             NEED_DOWNLOAD=true
-            echo -e "${CYAN}[INFO] [${CURRENT_FILE}/${TOTAL_FILES}] 下载 ${KEY}...${NC}"
+            echo -e "${CYAN}[INFO] [${CURRENT_FILE}/${TOTAL_FILES}] 下载 ${DISPLAY_NAME}...${NC}"
         elif [[ -n "${REMOTE_VER}" ]] && [[ "${REMOTE_VER}" != "${LOCAL_VER}" ]]; then
             # 版本号不同，以云端为准
             NEED_DOWNLOAD=true
-            echo -e "${CYAN}[INFO] [${CURRENT_FILE}/${TOTAL_FILES}] 更新 ${KEY} (v${LOCAL_VER} -> v${REMOTE_VER})...${NC}"
+            echo -e "${CYAN}[INFO] [${CURRENT_FILE}/${TOTAL_FILES}] 更新 ${DISPLAY_NAME} (v${LOCAL_VER} -> v${REMOTE_VER})...${NC}"
         elif [[ -n "${REMOTE_HASH}" ]] && [[ -n "${LOCAL_HASH}" ]] && [[ "${REMOTE_HASH}" != "${LOCAL_HASH}" ]]; then
             # 版本号相同但哈希不同，说明内容已修改
             NEED_DOWNLOAD=true
-            echo -e "${YELLOW}[INFO] [${CURRENT_FILE}/${TOTAL_FILES}] 更新 ${KEY} (内容已变更)...${NC}"
+            echo -e "${YELLOW}[INFO] [${CURRENT_FILE}/${TOTAL_FILES}] 更新 ${DISPLAY_NAME} (内容已变更)...${NC}"
         fi
 
         if [[ "${NEED_DOWNLOAD}" = true ]]; then
@@ -1226,11 +1226,11 @@ check_and_update_components() {
                 # 验证通过后，标记为待应用
             else
                 HAS_ERROR=true
-                echo -e "  ${RED}[FAIL]${NC}   ${KEY} 更新失败 (请检查 version.txt 哈希值或网络)"
+                echo -e "  ${RED}[FAIL]${NC}   ${DISPLAY_NAME} 更新失败 (请检查 version.txt 哈希值或网络)"
                 rm -f "${temp_file}" 2>/dev/null
             fi
         else
-            echo -e "  ${GREEN}[OK]${NC}      ${KEY}: ${LOCAL_VER} (最新)"
+            echo -e "  ${GREEN}[OK]${NC}      ${DISPLAY_NAME}: ${LOCAL_VER} (最新)"
         fi
     done
 
@@ -1249,19 +1249,23 @@ check_and_update_components() {
             local CFOPT_UPDATED=false
             
             for KEY in "${!MODULE_MAP[@]}"; do
-                IFS=':' read -r LOCAL_PATH REMOTE_FILE <<< "${MODULE_MAP[$KEY]}"
+                IFS=':' read -r LOCAL_PATH REMOTE_FILE DISPLAY_NAME <<< "${MODULE_MAP[$KEY]}"
                 if [[ -f "${TEMP_DIR}/${REMOTE_FILE}" ]]; then
                     # 特殊处理 cfopt.sh 自身
                     if [[ "${REMOTE_FILE}" = "cfopt.sh" ]]; then
-                        # 将新版本的 cfopt.sh 复制到安装目录
-                        cp "${TEMP_DIR}/${REMOTE_FILE}" "${INSTALL_DIR}/cfopt.sh.new" 2>/dev/null
-                        chmod +x "${INSTALL_DIR}/cfopt.sh.new" 2>/dev/null
-                        CFOPT_UPDATED=true
-                        log_success "cfopt.sh 已准备更新（将在重启后生效）"
+                        # 将新版本的 cfopt.sh 复制到安装目录（使用 .new 标记）
+                        if cp "${TEMP_DIR}/${REMOTE_FILE}" "${INSTALL_DIR}/cfopt.sh.new" 2>/dev/null && \
+                           chmod +x "${INSTALL_DIR}/cfopt.sh.new" 2>/dev/null; then
+                            CFOPT_UPDATED=true
+                            log_success "主程序入口已准备更新（将在重启后生效）"
+                        else
+                            log_error "主程序入口更新准备失败"
+                            HAS_ERROR=true
+                        fi
                     else
                         # 其他文件直接替换
-                        if ! safe_move "${TEMP_DIR}/${REMOTE_FILE}" "${LOCAL_PATH}" "应用更新: ${KEY}"; then
-                            log_error "更新应用失败: ${KEY}"
+                        if ! safe_move "${TEMP_DIR}/${REMOTE_FILE}" "${LOCAL_PATH}" "应用更新: ${DISPLAY_NAME}"; then
+                            log_error "更新应用失败: ${DISPLAY_NAME}"
                             HAS_ERROR=true
                         else
                             chmod +x "${LOCAL_PATH}"
@@ -1406,15 +1410,15 @@ EOF
     
     declare -A MODULE_MAP
     MODULE_MAP=(
-        ["QUICK_DEPLOY"]="${INSTALL_DIR}/modules/quick-deploy/setup.sh:modules/quick-deploy/setup.sh"
-        ["CF_IP_MENU"]="${INSTALL_DIR}/modules/cf-ip/menu.sh:modules/cf-ip/menu.sh"
-        ["CF_IP_CORE"]="${INSTALL_DIR}/modules/cf-ip/core.sh:modules/cf-ip/core.sh"
-        ["CF_DNS_CORE"]="${INSTALL_DIR}/modules/cf-dns/core.sh:modules/cf-dns/core.sh"
-        ["CF_DNS_SETUP"]="${INSTALL_DIR}/modules/cf-dns/setup.sh:modules/cf-dns/setup.sh"
-        ["DNSPOD_CORE"]="${INSTALL_DIR}/modules/dnspod-dns/core.sh:modules/dnspod-dns/core.sh"
-        ["DNSPOD_SETUP"]="${INSTALL_DIR}/modules/dnspod-dns/setup.sh:modules/dnspod-dns/setup.sh"
-        ["SCHEDULER_RUN"]="${INSTALL_DIR}/modules/scheduler/run.sh:modules/scheduler/run.sh"
-        ["IP_SYNC"]="${INSTALL_DIR}/modules/ip-sync/sync.sh:modules/ip-sync/sync.sh"
+        ["QUICK_DEPLOY"]="${INSTALL_DIR}/modules/quick-deploy/setup.sh:modules/quick-deploy/setup.sh:快速部署向导"
+        ["CF_IP_MENU"]="${INSTALL_DIR}/modules/cf-ip/menu.sh:modules/cf-ip/menu.sh:CF-IP 测速管理"
+        ["CF_IP_CORE"]="${INSTALL_DIR}/modules/cf-ip/core.sh:modules/cf-ip/core.sh:CF-IP 核心引擎"
+        ["CF_DNS_CORE"]="${INSTALL_DIR}/modules/cf-dns/core.sh:modules/cf-dns/core.sh:CF DNS 核心"
+        ["CF_DNS_SETUP"]="${INSTALL_DIR}/modules/cf-dns/setup.sh:modules/cf-dns/setup.sh:CF DNS 配置向导"
+        ["DNSPOD_CORE"]="${INSTALL_DIR}/modules/dnspod-dns/core.sh:modules/dnspod-dns/core.sh:DNSPod 核心"
+        ["DNSPOD_SETUP"]="${INSTALL_DIR}/modules/dnspod-dns/setup.sh:modules/dnspod-dns/setup.sh:DNSPod 配置向导"
+        ["SCHEDULER_RUN"]="${INSTALL_DIR}/modules/scheduler/run.sh:modules/scheduler/run.sh:自动化调度器"
+        ["IP_SYNC"]="${INSTALL_DIR}/modules/ip-sync/sync.sh:modules/ip-sync/sync.sh:IP 同步工具"
     )
 
     HAS_UPDATE=false
@@ -1426,7 +1430,7 @@ EOF
         # 有 version.txt，进行版本对比和哈希校验
         for KEY in "${!MODULE_MAP[@]}"; do
             CURRENT_FILE=$((CURRENT_FILE + 1))
-            IFS=':' read -r LOCAL_PATH REMOTE_FILE <<< "${MODULE_MAP[$KEY]}"
+            IFS=':' read -r LOCAL_PATH REMOTE_FILE DISPLAY_NAME <<< "${MODULE_MAP[$KEY]}"
             REMOTE_INFO="$(echo "${REMOTE_VERSIONS}" | grep "^${KEY}=" | cut -d'=' -f2)"
             REMOTE_VER="$(echo "${REMOTE_INFO}" | cut -d':' -f1)"
             REMOTE_HASH="$(echo "${REMOTE_INFO}" | cut -d':' -f2)"
@@ -1444,15 +1448,15 @@ EOF
             NEED_DOWNLOAD=false
             if [[ ! -f "${LOCAL_PATH}" ]]; then
                 NEED_DOWNLOAD=true
-                echo -e "${CYAN}[INFO] [${CURRENT_FILE}/${TOTAL_FILES}] 下载 ${KEY}...${NC}"
+                echo -e "${CYAN}[INFO] [${CURRENT_FILE}/${TOTAL_FILES}] 下载 ${DISPLAY_NAME}...${NC}"
             elif [[ -n "${REMOTE_VER}" ]] && [[ "${REMOTE_VER}" != "${LOCAL_VER}" ]]; then
                 # 版本号不同，需要更新
                 NEED_DOWNLOAD=true
-                echo -e "${CYAN}[INFO] [${CURRENT_FILE}/${TOTAL_FILES}] 更新 ${KEY} (v${LOCAL_VER} -> v${REMOTE_VER})...${NC}"
+                echo -e "${CYAN}[INFO] [${CURRENT_FILE}/${TOTAL_FILES}] 更新 ${DISPLAY_NAME} (v${LOCAL_VER} -> v${REMOTE_VER})...${NC}"
             elif [[ -n "${REMOTE_HASH}" ]] && [[ -n "${LOCAL_HASH}" ]] && [[ "${REMOTE_HASH}" != "${LOCAL_HASH}" ]]; then
                 # 【新增】版本号相同但哈希不同，说明内容已修改
                 NEED_DOWNLOAD=true
-                echo -e "${YELLOW}[INFO] [${CURRENT_FILE}/${TOTAL_FILES}] 更新 ${KEY} (内容已变更)...${NC}"
+                echo -e "${YELLOW}[INFO] [${CURRENT_FILE}/${TOTAL_FILES}] 更新 ${DISPLAY_NAME} (内容已变更)...${NC}"
             fi
 
             if [[ "${NEED_DOWNLOAD}" = true ]]; then
@@ -1473,7 +1477,7 @@ EOF
         # 无 version.txt，跳过哈希校验直接下载所有文件（首次安装或网络问题）
         for KEY in "${!MODULE_MAP[@]}"; do
             CURRENT_FILE=$((CURRENT_FILE + 1))
-            IFS=':' read -r LOCAL_PATH REMOTE_FILE <<< "${MODULE_MAP[$KEY]}"
+            IFS=':' read -r LOCAL_PATH REMOTE_FILE DISPLAY_NAME <<< "${MODULE_MAP[$KEY]}"
             
             # 仅下载不存在的文件
             if [[ ! -f "${LOCAL_PATH}" ]]; then
