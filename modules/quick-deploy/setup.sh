@@ -94,7 +94,8 @@ add_deploy_record() {
     local domain="$1"
     local dns_type="$2"      # "cloudflare" 或 "dnspod"
     local mode="$3"          # "single" 或 "multi"
-    local deploy_time="$4"
+    local record_name="$4"   # 主机记录（如 @、cf、www）
+    local deploy_time="$5"
     
     init_deploy_record
     
@@ -104,8 +105,9 @@ add_deploy_record() {
     jq --arg d "$domain" \
        --arg t "$dns_type" \
        --arg m "$mode" \
+       --arg r "$record_name" \
        --arg time "$deploy_time" \
-       '.domains += [{"domain": $d, "dns_type": $t, "mode": $m, "deploy_time": $time}]' \
+       '.domains += [{"domain": $d, "dns_type": $t, "mode": $m, "record_name": $r, "deploy_time": $time}]' \
        "${DEPLOY_RECORD_FILE}" > "$temp_file"
     
     mv "$temp_file" "${DEPLOY_RECORD_FILE}"
@@ -524,6 +526,8 @@ main() {
             dns_type=$(echo "$info" | jq -r '.dns_type')
             local mode
             mode=$(echo "$info" | jq -r '.mode')
+            local record_name
+            record_name=$(echo "$info" | jq -r '.record_name // "@"')
             
             local dns_label
             if [[ "$dns_type" == "cloudflare" ]]; then
@@ -539,7 +543,18 @@ main() {
                 mode_label="单线路"
             fi
             
-            echo -e "   • ${domain} (${dns_label}, ${mode_label})"
+            # 构建完整域名显示
+            local full_domain
+            if [[ "$mode" == "multi" ]]; then
+                # 多线路模式显示多个主机记录
+                full_domain="${domain} (@, unicom, mobile, telecom)"
+            elif [[ "$record_name" == "@" ]]; then
+                full_domain="$domain"
+            else
+                full_domain="${record_name}.${domain}"
+            fi
+            
+            echo -e "   • ${full_domain} (${dns_label}, ${mode_label})"
         done <<< "$deployed_domains"
         echo ""
     fi
@@ -622,6 +637,8 @@ manage_deployed_domains_menu() {
         dns_type=$(echo "$info" | jq -r '.dns_type')
         local mode
         mode=$(echo "$info" | jq -r '.mode')
+        local record_name
+        record_name=$(echo "$info" | jq -r '.record_name // "@"')
         
         local dns_label
         if [[ "$dns_type" == "cloudflare" ]]; then
@@ -637,7 +654,18 @@ manage_deployed_domains_menu() {
             mode_label="单线路"
         fi
         
-        echo -e " ${GREEN}${index})${NC} ${domain} (${dns_label}, ${mode_label})"
+        # 构建完整域名显示
+        local full_domain
+        if [[ "$mode" == "multi" ]]; then
+            # 多线路模式显示多个主机记录
+            full_domain="${domain} (@, unicom, mobile, telecom)"
+        elif [[ "$record_name" == "@" ]]; then
+            full_domain="$domain"
+        else
+            full_domain="${record_name}.${domain}"
+        fi
+        
+        echo -e " ${GREEN}${index})${NC} ${full_domain} (${dns_label}, ${mode_label})"
         domain_array+=("$domain")
         ((index++))
     done <<< "$deployed_domains"
@@ -676,6 +704,8 @@ manage_single_domain() {
     dns_type=$(echo "$info" | jq -r '.dns_type')
     local mode
     mode=$(echo "$info" | jq -r '.mode')
+    local record_name
+    record_name=$(echo "$info" | jq -r '.record_name // "@"')
     local deploy_time
     deploy_time=$(echo "$info" | jq -r '.deploy_time')
     
@@ -693,9 +723,24 @@ manage_single_domain() {
         mode_label="单线路"
     fi
     
+    # 构建完整域名显示
+    local full_domain
+    if [[ "$mode" == "multi" ]]; then
+        full_domain="${domain} (@, unicom, mobile, telecom)"
+    elif [[ "$record_name" == "@" ]]; then
+        full_domain="$domain"
+    else
+        full_domain="${record_name}.${domain}"
+    fi
+    
     echo -e "${CYAN}当前配置：${NC}"
     echo -e "  • DNS 服务商: ${dns_label}"
     echo -e "  • 工作模式: ${mode_label}"
+    echo -e "  • 根域名: ${domain}"
+    if [[ "$mode" != "multi" ]]; then
+        echo -e "  • 主机记录: ${record_name}"
+        echo -e "  • 完整域名: ${full_domain}"
+    fi
     echo -e "  • 部署时间: ${deploy_time}"
     echo ""
     
@@ -941,7 +986,7 @@ deploy_cloudflare_dns() {
     # 记录部署信息
     local deploy_time
     deploy_time=$(date '+%Y-%m-%d %H:%M:%S')
-    add_deploy_record "$domain" "cloudflare" "single" "$deploy_time"
+    add_deploy_record "$domain" "cloudflare" "single" "$record_name" "$deploy_time"
     
     # 验证配置一致性
     echo -e "${CYAN}[INFO] 正在验证配置一致性...${NC}"
@@ -1116,7 +1161,7 @@ deploy_dnspod_single() {
     # 记录部署信息
     local deploy_time
     deploy_time=$(date '+%Y-%m-%d %H:%M:%S')
-    add_deploy_record "$domain" "dnspod" "single" "$deploy_time"
+    add_deploy_record "$domain" "dnspod" "single" "$record_name" "$deploy_time"
     
     # 验证配置一致性
     echo -e "${CYAN}[INFO] 正在验证配置一致性...${NC}"
@@ -1261,7 +1306,7 @@ deploy_dnspod_multi() {
     # 记录部署信息
     local deploy_time
     deploy_time=$(date '+%Y-%m-%d %H:%M:%S')
-    add_deploy_record "$domain" "dnspod" "multi" "$deploy_time"
+    add_deploy_record "$domain" "dnspod" "multi" "@,unicom,mobile,telecom" "$deploy_time"
     
     # 验证配置一致性
     echo -e "${CYAN}[INFO] 正在验证配置一致性...${NC}"
