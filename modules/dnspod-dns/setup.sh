@@ -42,7 +42,7 @@ MENU_BORDER_BOTTOM="+-----------------------------------------------------------
 # shellcheck disable=SC2034
 SMALL_BORDER="+--------------------------------------------------+"
 
-CONFIG_FILE="$ROOT_DIR/conf/dnspod.json"
+CONFIG_FILE="$ROOT_DIR/conf/dnspod.json"  # 仅在菜单显示时使用，实际运行时由 core.sh 动态加载
 LOCK_FILE="$ROOT_DIR/modules/dnspod-dns/.setup.lock"
 
 # ==================== 进程锁管理 ====================
