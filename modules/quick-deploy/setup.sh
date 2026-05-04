@@ -120,6 +120,38 @@ list_deployed_domains() {
     jq -r '.domains[].domain' "${DEPLOY_RECORD_FILE}" 2>/dev/null
 }
 
+# 根据域名和主机记录获取配置文件路径
+get_cf_dns_config_file() {
+    local domain="$1"
+    local record_name="$2"
+    
+    local full_domain
+    if [[ "$record_name" == "@" ]]; then
+        full_domain="$domain"
+    else
+        full_domain="${record_name}.${domain}"
+    fi
+    
+    echo "${ROOT_DIR}/conf/cf-dns/${full_domain}.json"
+}
+
+get_dnspod_config_file() {
+    local domain="$1"
+    local record_name="$2"
+    local mode="${3:-single}"
+    
+    local full_domain
+    if [[ "$mode" == "multi" ]]; then
+        full_domain="$domain"
+    elif [[ "$record_name" == "@" ]]; then
+        full_domain="$domain"
+    else
+        full_domain="${record_name}.${domain}"
+    fi
+    
+    echo "${ROOT_DIR}/conf/dnspod/${full_domain}.json"
+}
+
 # 删除域名配置
 delete_domain_config() {
     local domain="$1"
@@ -356,8 +388,19 @@ generate_dnspod_config() {
     local config_dir="${ROOT_DIR}/conf/dnspod"
     mkdir -p "$config_dir"
     
-    # 配置文件路径：conf/dnspod/{domain}.json
-    local config_file="${config_dir}/${domain}.json"
+    # 配置文件路径：conf/dnspod/{record_name}.{domain}.json
+    # 这样可以支持同一域名的多个不同主机记录
+    local full_domain
+    if [[ "$mode" == "multi" ]]; then
+        # 多线路模式使用根域名
+        full_domain="$domain"
+    elif [[ "$record_name" == "@" ]]; then
+        full_domain="$domain"
+    else
+        full_domain="${record_name}.${domain}"
+    fi
+    
+    local config_file="${config_dir}/${full_domain}.json"
     local temp_file
     temp_file=$(mktemp)
     
@@ -466,8 +509,16 @@ generate_cf_dns_config() {
     local config_dir="${ROOT_DIR}/conf/cf-dns"
     mkdir -p "$config_dir"
     
-    # 配置文件路径：conf/cf-dns/{domain}.json
-    local config_file="${config_dir}/${domain}.json"
+    # 配置文件路径：conf/cf-dns/{record_name}.{domain}.json
+    # 这样可以支持同一域名的多个不同主机记录
+    local full_domain
+    if [[ "$record_name" == "@" ]]; then
+        full_domain="$domain"
+    else
+        full_domain="${record_name}.${domain}"
+    fi
+    
+    local config_file="${config_dir}/${full_domain}.json"
     local temp_file
     temp_file=$(mktemp)
     
