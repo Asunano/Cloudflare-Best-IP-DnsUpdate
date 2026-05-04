@@ -311,18 +311,54 @@ show_main_menu() {
     else
         echo -e " ${RED}[NONE] 测速程序: cfst 缺失"
         echo -e "${CYAN}+------------------------------------------------------------+"
-        echo -e " ${YELLOW}[INFO] 检测到测速程序缺失，正在自动下载...${NC}"
+        echo -e " ${YELLOW}正在自动下载测速程序 cfst...${NC}"
         echo -e "${CYAN}+------------------------------------------------------------+"
-        if download_cfst; then
-            echo -e "${GREEN}[OK] cfst 下载成功！${NC}"
+        echo ""
+        
+        # 显示下载提示和动画效果（在后台运行）
+        local spinner_pid
+        (
+            while true; do
+                for i in '⠋' '⠙' '⠹' '⠸' '⠼' '⠴' '⠦' '⠧' '⠇' '⠏'; do
+                    printf "\r   ${CYAN}%s 正在从 GitHub 下载 cfst...${NC}" "$i"
+                    sleep 0.1
+                done
+            done
+        ) &
+        spinner_pid=$!
+        
+        # 执行下载（禁用 download_cfst 内部的输出，避免冲突）
+        if download_cfst > /dev/null 2>&1; then
+            # 停止动画
+            kill $spinner_pid 2>/dev/null || true
+            wait $spinner_pid 2>/dev/null || true
+            
+            echo -e "\r   ${GREEN}✓ 下载完成！cfst 已成功安装${NC}"
             echo ""
-            # 短暂延迟让用户看到成功信息
-            sleep 1
+            echo -e "   ${GRAY}安装位置: ${CFST_BIN}${NC}"
+            echo -e "   ${GRAY}版本信息: $(bash "${CFST_BIN}" --version 2>/dev/null | head -1 || echo '未知')${NC}"
+            echo ""
+            echo -e "   ${GREEN}即将返回主菜单...${NC}"
+            sleep 1.5
         else
-            echo -e "${RED}[ERROR] cfst 下载失败，请检查网络连接后重试。${NC}"
+            # 停止动画
+            kill $spinner_pid 2>/dev/null || true
+            wait $spinner_pid 2>/dev/null || true
+            
+            echo -e "\r   ${RED}✗ 下载失败${NC}"
             echo ""
-            read -r -p "按回车键继续..." || true
+            echo -e "   ${YELLOW}可能的原因：${NC}"
+            echo -e "   • 网络连接不稳定或无法访问 GitHub"
+            echo -e "   • 系统架构不支持 (${ARCH})"
+            echo -e "   • 防火墙或代理设置问题"
+            echo ""
+            echo -e "   ${CYAN}建议操作：${NC}"
+            echo -e "   • 检查网络连接后重试"
+            echo -e "   • 手动下载: https://github.com/XIU2/CloudflareSpeedTest/releases"
+            echo ""
+            read -r -p "   按回车键继续..." || true
         fi
+        
         # 重新显示菜单（现在 cfst 应该已存在）
         show_main_menu
         return
