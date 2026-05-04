@@ -288,13 +288,14 @@ while kill -0 "${CFST_PID}" 2>/dev/null; do
             # 从日志中提取当前进度
             if [[ "${stage}" = "ping" ]]; then
                 # 延迟阶段：提取 "可用: XXXX" 和 "XXXX / XXXX"
-                # 只提取包含“可用”的那一行的进度
+                # 只提取包含"可用"的那一行的进度
                 ping_line=$(grep '可用:' "${LOG_FILE}" 2>/dev/null | tail -1)
                 if [[ -n "${ping_line}" ]]; then
-                    available_count=$(echo "${ping_line}" | grep -o '可用: *[0-9]*' | grep -o '[0-9]*$')
-                    total_count=$(echo "${ping_line}" | grep -o '[0-9]* / [0-9]*' | awk '{print $3}')
-                    
-                    if [[ -n "${available_count}" ]] && [[ -n "${total_count}" ]]; then
+                    available_count=$(echo "${ping_line}" | grep -o '可用: *[0-9]*' | grep -o '[0-9]*$' | tr -d '[:space:]')
+                    total_count=$(echo "${ping_line}" | grep -o '[0-9]* / [0-9]*' | awk '{print $3}' | tr -d '[:space:]')
+                                    
+                    # 验证是否为纯数字
+                    if [[ -n "${available_count}" ]] && [[ -n "${total_count}" ]] && [[ "${available_count}" =~ ^[0-9]+$ ]] && [[ "${total_count}" =~ ^[0-9]+$ ]] && [[ "${total_count}" -gt 0 ]]; then
                         # 计算进度百分比
                         progress=$((available_count * 100 / total_count))
                         filled=$((progress * progress_bar_width / 100))
@@ -317,10 +318,11 @@ while kill -0 "${CFST_PID}" 2>/dev/null; do
                 # 只提取“开始下载测速”之后的行
                 download_line=$(grep -A 100 "开始下载测速" "${LOG_FILE}" 2>/dev/null | grep -E '^[0-9]+ / [0-9]+' | tail -1)
                 if [[ -n "${download_line}" ]]; then
-                    download_current=$(echo "${download_line}" | awk '{print $1}')
-                    download_total=$(echo "${download_line}" | awk '{print $3}')
+                    download_current=$(echo "${download_line}" | awk '{print $1}' | tr -d '[:space:]')
+                    download_total=$(echo "${download_line}" | awk '{print $3}' | tr -d '[:space:]')
                     
-                    if [[ -n "${download_current}" ]] && [[ -n "${download_total}" ]]; then
+                    # 验证是否为纯数字
+                    if [[ -n "${download_current}" ]] && [[ -n "${download_total}" ]] && [[ "${download_current}" =~ ^[0-9]+$ ]] && [[ "${download_total}" =~ ^[0-9]+$ ]] && [[ "${download_total}" -gt 0 ]]; then
                         progress=$((download_current * 100 / download_total))
                         filled=$((progress * progress_bar_width / 100))
                         empty=$((progress_bar_width - filled))
