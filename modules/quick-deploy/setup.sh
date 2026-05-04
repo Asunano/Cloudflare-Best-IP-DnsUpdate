@@ -442,13 +442,13 @@ generate_cf_dns_config() {
             },
             "dns": {
                 "domain": $domain,
-                "sub_domain": "@",
+                "record_name": "@",
                 "record_type": "A",
                 "ttl": 600,
                 "max_ips_per_record": 2
             },
             "ip_source": {
-                "file": "./assets/data/cf-dns/ip_list.txt"
+                "file_path": "./assets/data/cf-dns/ip_list.txt"
             }
         }' > "$temp_file"
     

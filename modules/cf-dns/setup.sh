@@ -58,8 +58,41 @@ if [ -z "$ROOT_DIR" ]; then
 fi
 
 # 配置文件路径（必须在 ROOT_DIR 定义之后）
+# 支持多域名配置：优先使用 conf/cf-dns/{domain}.json，否则使用 conf/cf-dns.json
 CONFIG_FILE="$ROOT_DIR/conf/cf-dns.json"
 LOCK_FILE="$ROOT_DIR/modules/cf-dns/.setup_cfdns.lock"
+
+# 自动检测配置文件（支持多域名）
+auto_detect_config_file() {
+    local cf_dns_dir="${ROOT_DIR}/conf/cf-dns"
+    
+    # 如果存在多域名配置目录
+    if [[ -d "${cf_dns_dir}" ]]; then
+        # 查找所有 .json 文件
+        local json_files
+        json_files=$(find "${cf_dns_dir}" -maxdepth 1 -name "*.json" -type f 2>/dev/null)
+        
+        if [[ -n "${json_files}" ]]; then
+            # 如果有多个文件，使用第一个
+            local first_file
+            first_file=$(echo "${json_files}" | head -n 1)
+            CONFIG_FILE="${first_file}"
+            return 0
+        fi
+    fi
+    
+    # 如果没有多域名配置，检查单文件配置
+    if [[ -f "${ROOT_DIR}/conf/cf-dns.json" ]]; then
+        CONFIG_FILE="${ROOT_DIR}/conf/cf-dns.json"
+        return 0
+    fi
+    
+    # 没有找到任何配置文件
+    return 1
+}
+
+# 启动时自动检测配置文件
+auto_detect_config_file || true
 
 # 显示主菜单
 show_menu() {
@@ -1426,6 +1459,8 @@ main() {
     check_config_valid
     
     while true; do
+        # 每次显示菜单前重新检测配置文件（支持 quick-deploy 生成的配置）
+        auto_detect_config_file || true
         show_menu
         
         read -r -p "请选择 (0-8): " choice
