@@ -11,6 +11,15 @@ IFS=$'\n\t'
 # shellcheck disable=SC2034
 SCRIPT_VERSION="0.1"
 
+# ==================== 颜色定义（必须最先定义） ====================
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+BLUE='\033[0;34m'
+CYAN='\033[0;36m'
+GRAY='\033[0;90m'
+NC='\033[0m' # No Color
+
 # ==================== 信号捕获与资源清理 ====================
 # shellcheck disable=SC2329
 cleanup() {
@@ -66,15 +75,6 @@ CONFIG_FILE="${ROOT_DIR}/conf/cf-ip.json"
 IP_AUTO_SCRIPT="${ROOT_DIR}/modules/cf-ip/core.sh"
 CFST_DIR="${ROOT_DIR}/assets/cfst"
 CFST_BIN="${CFST_DIR}/cfst"
-
-# 颜色定义
-RED='\033[0;31m'
-GREEN='\033[0;32m'
-YELLOW='\033[1;33m'
-BLUE='\033[0;34m'
-CYAN='\033[0;36m'
-GRAY='\033[0;90m'
-NC='\033[0m' # No Color
 
 # ====================== 【函数：显示欢迎信息】 ======================
 # shellcheck disable=SC2329
