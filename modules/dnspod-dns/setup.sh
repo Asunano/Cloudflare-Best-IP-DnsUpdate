@@ -141,6 +141,16 @@ prompt_and_validate_subdomain() {
     return 0
 }
 
+# 执行 core.sh 命令（自动设置权限）
+# 用法: run_core_command [参数]
+# 返回: core.sh 的退出码
+run_core_command() {
+    local core_script="$(dirname "$0")/core.sh"
+    chmod +x "$core_script" 2>/dev/null
+    bash "$core_script" "$@"
+    return $?
+}
+
 # ==================== 菜单显示函数 ====================
 
 # 显示主配置菜单
@@ -1298,17 +1308,13 @@ modify_subdomain_strategy() {
                 # 保留旧记录，只创建新记录
                 echo ""
                 echo -e "${CYAN}正在创建统一模式记录..."
-                chmod +x "$(dirname "$0")/core.sh"
-                "$(dirname "$0")/core.sh" -m
-                
-                local create_result=$?
-                if [[ $create_result -eq 0 ]]; then
+                if run_core_command -m; then
                     echo ""
                     echo -e "${GREEN}[OK] 统一模式记录创建成功"
                     echo -e "${YELLOW}[WARN] 注意: 分离模式记录仍然保留"
                 else
                     echo ""
-                    echo -e "${YELLOW}[WARN] 统一模式记录创建失败（退出码: ${create_result}）"
+                    echo -e "${YELLOW}[WARN] 统一模式记录创建失败"
                     echo -e "${CYAN}提示: 可以稍后手动运行 ./core.sh -m 创建"
                 fi
             elif [[ "$handle_choice" == "3" ]]; then
@@ -1363,17 +1369,13 @@ modify_subdomain_strategy() {
                     # 保留旧记录，只创建新记录
                     echo ""
                     echo -e "${CYAN}正在创建新统一模式记录..."
-                    chmod +x "$(dirname "$0")/core.sh"
-                    "$(dirname "$0")/core.sh" -m
-                                    
-                    local create_result=$?
-                    if [[ $create_result -eq 0 ]]; then
+                    if run_core_command -m; then
                         echo ""
                         echo -e "${GREEN}[OK] 新统一模式记录创建成功"
                         echo -e "${YELLOW}[WARN] 注意: 旧记录 ${old_unified_subdomain}.${domain} 仍然保留"
                     else
                         echo ""
-                        echo -e "${YELLOW}[WARN] 新统一模式记录创建失败（退出码: ${create_result}）"
+                        echo -e "${YELLOW}[WARN] 新统一模式记录创建失败"
                         echo -e "${CYAN}提示: 可以稍后手动运行 ./core.sh -m 创建"
                     fi
                 else
@@ -1387,16 +1389,12 @@ modify_subdomain_strategy() {
                 # 子域名相同，直接创建记录
                 echo ""
                 echo -e "${CYAN}正在创建统一模式记录..."
-                chmod +x "$(dirname "$0")/core.sh"
-                "$(dirname "$0")/core.sh" -m
-                
-                local create_result=$?
-                if [[ $create_result -eq 0 ]]; then
+                if run_core_command -m; then
                     echo ""
                     echo -e "${GREEN}[OK] 统一模式记录创建成功"
                 else
                     echo ""
-                    echo -e "${YELLOW}[WARN] 统一模式记录创建失败（退出码: ${create_result}）"
+                    echo -e "${YELLOW}[WARN] 统一模式记录创建失败"
                     echo -e "${CYAN}提示: 可以稍后手动运行 ./core.sh -m 创建"
                 fi
             fi
@@ -1404,16 +1402,12 @@ modify_subdomain_strategy() {
             # 从其他模式（如单线路）切换到统一模式，直接创建记录
             echo ""
             echo -e "${CYAN}正在创建统一模式记录..."
-            chmod +x "$(dirname "$0")/core.sh"
-            "$(dirname "$0")/core.sh" -m
-            
-            local create_result=$?
-            if [[ $create_result -eq 0 ]]; then
+            if run_core_command -m; then
                 echo ""
                 echo -e "${GREEN}[OK] 统一模式记录创建成功"
             else
                 echo ""
-                echo -e "${YELLOW}[WARN] 统一模式记录创建失败（退出码: ${create_result}）"
+                echo -e "${YELLOW}[WARN] 统一模式记录创建失败"
                 echo -e "${CYAN}提示: 可以稍后手动运行 ./core.sh -m 创建"
             fi
         fi
@@ -1437,13 +1431,8 @@ sync_records_separate() {
     echo ""
     
     # 直接调用多线路更新脚本
-    chmod +x "$(dirname "$0")/core.sh"
-    "$(dirname "$0")/core.sh" -m
-    
-    local exit_code=$?
-    echo ""
-    
-    if [[ $exit_code -eq 0 ]]; then
+    if run_core_command -m; then
+        echo ""
         echo -e "${GREEN}[OK] DNS 记录同步完成"
         echo ""
         echo -e "${CYAN}提示: 各线路已自动创建解析记录"
