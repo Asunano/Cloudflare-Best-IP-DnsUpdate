@@ -29,3 +29,8 @@ assets/cfst/cfst
 # 系统文件
 .DS_Store
 Thumbs.db
+
+# IDE 和编辑器配置
+.lingma/
+.vscode/
+.idea/
