@@ -210,48 +210,109 @@ echo -e "${CYAN}----------------------------------------${NC}"
 # --- 系统命令安装逻辑 ---
 SYSTEM_CMD_PATH="/usr/local/bin/cfopt"
 
+# 检查全局命令是否有效
+check_system_cmd() {
+    if [[ -L "${SYSTEM_CMD_PATH}" ]] || [[ -x "${SYSTEM_CMD_PATH}" ]]; then
+        # 检查符号链接是否指向正确位置
+        local target
+        target="$(readlink -f "${SYSTEM_CMD_PATH}" 2>/dev/null)"
+        if [[ -n "${target}" ]] && [[ -f "${target}" ]]; then
+            return 0
+        fi
+    fi
+    return 1
+}
+
+# 修复或安装全局命令
+fix_system_cmd() {
+    local script_path="$1"
+    
+    # 确保目标目录存在
+    if ! mkdir -p "$(dirname "${SYSTEM_CMD_PATH}")" 2>/dev/null; then
+        log_error "无法创建目录: $(dirname "${SYSTEM_CMD_PATH}")"
+        return 1
+    fi
+    
+    # 删除旧的全局命令（如果存在）
+    if [[ -e "${SYSTEM_CMD_PATH}" ]]; then
+        rm -f "${SYSTEM_CMD_PATH}" 2>/dev/null || true
+    fi
+    
+    # 创建符号链接（优先）或复制文件
+    if ln -sf "${script_path}" "${SYSTEM_CMD_PATH}" 2>/dev/null; then
+        chmod +x "${SYSTEM_CMD_PATH}" 2>/dev/null || true
+        if [[ -x "${SYSTEM_CMD_PATH}" ]]; then
+            log_success "全局命令已安装: ${SYSTEM_CMD_PATH} -> ${script_path}"
+            return 0
+        fi
+    fi
+    
+    # 如果符号链接失败，尝试复制文件
+    log_warning "符号链接创建失败，尝试复制文件..."
+    if cp "${script_path}" "${SYSTEM_CMD_PATH}" 2>/dev/null && chmod +x "${SYSTEM_CMD_PATH}"; then
+        log_success "全局命令已安装（复制模式）: ${SYSTEM_CMD_PATH}"
+        return 0
+    fi
+    
+    log_error "全局命令安装失败"
+    return 1
+}
+
 install_system_cmd() {
-    # 若已安装或处于临时运行环境（如 wget 管道），则跳过
-    if [[ "$(readlink -f "$0" 2>/dev/null)" = "${SYSTEM_CMD_PATH}" ]] || [[ ! -f "$0" ]]; then
+    # 若已安装且有效，则跳过
+    if check_system_cmd; then
+        local current_target
+        current_target="$(readlink -f "${SYSTEM_CMD_PATH}" 2>/dev/null)"
+        local script_path
+        script_path="$(readlink -f "$0" 2>/dev/null)"
+        
+        # 检查是否指向正确的脚本
+        if [[ "${current_target}" = "${script_path}" ]]; then
+            return 0
+        fi
+    fi
+    
+    # 处于临时运行环境（如 wget 管道），则跳过
+    if [[ ! -f "$0" ]]; then
         return 0
     fi
 
     echo ""
-    echo -e "${BLUE}[INFO] 建议将 'cfopt' 安装为系统全局命令。${NC}"
+    log_info "建议将 'cfopt' 安装为系统全局命令。"
     echo "       (安装后可在任意终端直接输入 cfopt 运行)"
     read -r -p "是否现在安装？(y/n，默认y): " INSTALL_CMD
     INSTALL_CMD="${INSTALL_CMD:-y}"
 
     if [[ "${INSTALL_CMD}" =~ ^[Yy]$ ]]; then
-        local exec_result=0
+        local script_path
+        script_path="$(readlink -f "$0")"
         
         # 非 Root 用户尝试提权处理
         if [[ "${EUID}" -ne 0 ]]; then
             if command -v sudo >/dev/null 2>&1; then
-                if safe_execute "安装全局命令" sudo cp "$0" "${SYSTEM_CMD_PATH}" && \
-                   safe_execute "设置执行权限" sudo chmod +x "${SYSTEM_CMD_PATH}"; then
-                    exec_result=0
+                if safe_execute "安装全局命令" sudo bash -c "ln -sf '${script_path}' '${SYSTEM_CMD_PATH}' && chmod +x '${SYSTEM_CMD_PATH}'"; then
+                    if check_system_cmd; then
+                        log_success "全局命令已安装: ${SYSTEM_CMD_PATH}"
+                        return 0
+                    else
+                        log_error "全局命令安装验证失败"
+                        return 1
+                    fi
                 else
-                    exec_result=1
+                    log_error "需要 root 权限或 sudo 支持。"
+                    return 1
                 fi
             else
                 log_error "需要 root 权限或 sudo 支持。"
                 return 1
             fi
         else
-            if safe_execute "安装全局命令" cp "$0" "${SYSTEM_CMD_PATH}" && \
-               safe_execute "设置执行权限" chmod +x "${SYSTEM_CMD_PATH}"; then
-                exec_result=0
+            if fix_system_cmd "${script_path}"; then
+                return 0
             else
-                exec_result=1
+                log_error "安装失败，请检查权限。"
+                return 1
             fi
-        fi
-
-        if [[ "${exec_result}" -eq 0 ]]; then
-            log_success "安装成功！路径: ${SYSTEM_CMD_PATH}"
-            return 0
-        else
-            log_error "安装失败，请检查权限。"
         fi
     fi
 }
@@ -1010,6 +1071,19 @@ check_and_update_components() {
 
 # --- 初始化流程 ---
 init_cfopt() {
+    # 0. 检查并修复全局命令（如果已安装但失效）
+    if [[ -e "${SYSTEM_CMD_PATH}" ]] && ! check_system_cmd; then
+        log_warning "检测到全局命令失效，正在尝试修复..."
+        local current_script
+        current_script="$(readlink -f "$0")"
+        if fix_system_cmd "${current_script}"; then
+            log_success "全局命令已修复"
+        else
+            log_warning "全局命令修复失败，您可以稍后在主菜单中重新安装"
+        fi
+        echo ""
+    fi
+    
     # 1. 环境检测
     check_environment
 
