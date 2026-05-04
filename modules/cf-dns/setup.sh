@@ -1438,6 +1438,108 @@ modify_config_menu() {
     done
 }
 
+# 域名选择菜单（支持多域名配置）
+select_domain_menu() {
+    local action_name="$1"  # 操作名称，如 "快速运行"、"查看配置" 等
+    
+    # 检查新格式的多域名配置目录
+    local config_dir="${ROOT_DIR}/conf/cf-dns"
+    local default_config="${ROOT_DIR}/conf/cf-dns.json"
+    local config_files=()
+    
+    if [[ -d "$config_dir" ]]; then
+        while IFS= read -r -d '' config_file; do
+            config_files+=("$config_file")
+        done < <(find "$config_dir" -name "*.json" -type f -print0 2>/dev/null)
+    fi
+    
+    # 如果没有找到新格式的配置，检查旧的默认配置
+    if [[ ${#config_files[@]} -eq 0 ]] && [[ -f "$default_config" ]]; then
+        config_files+=("$default_config")
+    fi
+    
+    # 如果仍然没有配置，提示用户
+    if [[ ${#config_files[@]} -eq 0 ]]; then
+        echo -e "${RED}[ERROR] 未找到任何 Cloudflare DNS 配置文件${NC}"
+        echo ""
+        echo -e "${YELLOW}请先完成配置:${NC}"
+        echo "  1. 选择 '1) 完整配置向导' 进行配置"
+        echo "  2. 或通过快速部署向导配置域名"
+        echo ""
+        read -r -p "是否现在运行配置向导? (y/n): " confirm
+        if [ "$confirm" = "y" ] || [ "$confirm" = "Y" ]; then
+            full_config_wizard
+        fi
+        return 1
+    fi
+    
+    # 如果只有一个配置，直接返回
+    if [[ ${#config_files[@]} -eq 1 ]]; then
+        echo "${config_files[0]}"
+        return 0
+    fi
+    
+    # 多个配置，显示选择菜单
+    clear
+    echo -e "${CYAN}+------------------------------------------------------------+"
+    echo -e " ${YELLOW}选择要${action_name}的域名${NC}"
+    echo -e "${CYAN}+------------------------------------------------------------+"
+    echo ""
+    
+    echo -e "${CYAN}已配置的域名列表：${NC}"
+    echo ""
+    local index=1
+    local domain_array=()
+    for config_file in "${config_files[@]}"; do
+        local domain_name
+        domain_name=$(basename "$config_file" .json)
+        
+        # 读取配置信息
+        local record_name enabled
+        record_name=$(jq -r '.dns.record_name // "@"' "$config_file" 2>/dev/null)
+        enabled=$(jq -r '.enabled // false' "$config_file" 2>/dev/null)
+        
+        # 构建完整域名显示
+        local full_domain
+        if [[ "$record_name" == "@" ]]; then
+            full_domain="$domain_name"
+        else
+            full_domain="${record_name}.${domain_name}"
+        fi
+        
+        # 显示启用状态
+        local status_label
+        if [[ "$enabled" == "true" ]]; then
+            status_label="${GREEN}[启用]${NC}"
+        else
+            status_label="${RED}[禁用]${NC}"
+        fi
+        
+        echo -e " ${GREEN}${index})${NC} ${full_domain} ${status_label}"
+        domain_array+=("$config_file")
+        ((index++))
+    done
+    
+    echo ""
+    echo -e " ${RED}0)${NC} 返回上一级"
+    echo ""
+    
+    read -r -p "请选择要${action_name}的域名 [0-$((index-1))]: " choice
+    
+    if [[ "$choice" == "0" ]]; then
+        return 1
+    fi
+    
+    if [[ "$choice" =~ ^[0-9]+$ ]] && [[ "$choice" -ge 1 ]] && [[ "$choice" -lt "$index" ]]; then
+        echo "${domain_array[$((choice-1))]}"
+        return 0
+    else
+        echo -e "${RED}[ERROR] 无效的选择${NC}"
+        read -r -p "按回车键返回..."
+        return 1
+    fi
+}
+
 # ==================== 主程序 ====================
 
 # 配置文件有效性检测
@@ -1545,32 +1647,39 @@ main() {
                 full_config_wizard
                 ;;
             2)
-                # 快速运行 - 支持多域名配置
-                echo -e "${GREEN}正在检测 Cloudflare DNS 配置...${NC}"
-                
-                # 检查新格式的多域名配置目录
-                local config_dir="${ROOT_DIR}/conf/cf-dns"
-                local default_config="${ROOT_DIR}/conf/cf-dns.json"
-                local config_files=()
-                
-                if [[ -d "$config_dir" ]]; then
-                    while IFS= read -r -d '' config_file; do
-                        config_files+=("$config_file")
-                    done < <(find "$config_dir" -name "*.json" -type f -print0 2>/dev/null)
+                # 快速运行 - 先选择域名
+                local selected_config
+                selected_config=$(select_domain_menu "快速运行")
+                if [[ $? -ne 0 ]]; then
+                    continue
                 fi
                 
-                # 如果没有找到新格式的配置，检查旧的默认配置
-                if [[ ${#config_files[@]} -eq 0 ]] && [[ -f "$default_config" ]]; then
-                    config_files+=("$default_config")
+                # 检测配置是否完整
+                local cf_api_token cf_zone_id cf_dns_name
+                cf_api_token=$(jq -r '.api.token // empty' "$selected_config")
+                cf_zone_id=$(jq -r '.api.zone_id // empty' "$selected_config")
+                cf_dns_name=$(jq -r '.dns.record_name // empty' "$selected_config")
+                
+                local config_ok=true
+                
+                if [ -z "$cf_api_token" ] || [ "$cf_api_token" = "your_api_token_here" ]; then
+                    echo -e "${RED}[ERROR] CF_API_TOKEN 未配置${NC}"
+                    config_ok=false
                 fi
                 
-                # 如果仍然没有配置，提示用户
-                if [[ ${#config_files[@]} -eq 0 ]]; then
-                    echo -e "${RED}[ERROR] 未找到任何 Cloudflare DNS 配置文件${NC}"
+                if [ -z "$cf_zone_id" ] || [ "$cf_zone_id" = "your_zone_id_here" ]; then
+                    echo -e "${RED}[ERROR] CF_ZONE_ID 未配置${NC}"
+                    config_ok=false
+                fi
+                
+                if [ -z "$cf_dns_name" ] || [ "$cf_dns_name" = "your_dns_name_here" ]; then
+                    echo -e "${RED}[ERROR] CF_DNS_NAME 未配置${NC}"
+                    config_ok=false
+                fi
+                
+                if [ "$config_ok" = false ]; then
                     echo ""
-                    echo -e "${YELLOW}请先完成配置:${NC}"
-                    echo "  1. 选择 '1) 完整配置向导' 进行配置"
-                    echo "  2. 或通过快速部署向导配置域名"
+                    echo -e "${YELLOW}请先完成所有必需配置项${NC}"
                     echo ""
                     read -r -p "是否现在运行配置向导? (y/n): " confirm
                     if [ "$confirm" = "y" ] || [ "$confirm" = "Y" ]; then
@@ -1579,70 +1688,43 @@ main() {
                     continue
                 fi
                 
-                echo -e "${GREEN}[OK] 找到 ${#config_files[@]} 个域名配置${NC}"
-                echo ""
-                
-                # 根据配置数量选择执行方式
-                if [[ ${#config_files[@]} -gt 1 ]]; then
-                    # 多个域名配置，使用批量更新器
-                    echo -e "${CYAN}检测到多个域名配置，使用批量更新模式...${NC}"
-                    sleep 1
-                    chmod +x "$ROOT_DIR/modules/cf-dns/batch.sh"
-                    bash "$ROOT_DIR/modules/cf-dns/batch.sh"
-                else
-                    # 单个域名配置，直接运行
-                    local single_config="${config_files[0]}"
-                    local domain_name
-                    domain_name=$(basename "$single_config" .json)
-                    
-                    # 检测配置是否完整
-                    local cf_api_token cf_zone_id cf_dns_name
-                    cf_api_token=$(jq -r '.api.token // empty' "$single_config")
-                    cf_zone_id=$(jq -r '.api.zone_id // empty' "$single_config")
-                    cf_dns_name=$(jq -r '.dns.record_name // empty' "$single_config")
-                    
-                    local config_ok=true
-                    
-                    if [ -z "$cf_api_token" ] || [ "$cf_api_token" = "your_api_token_here" ]; then
-                        echo -e "${RED}[ERROR] CF_API_TOKEN 未配置${NC}"
-                        config_ok=false
-                    fi
-                    
-                    if [ -z "$cf_zone_id" ] || [ "$cf_zone_id" = "your_zone_id_here" ]; then
-                        echo -e "${RED}[ERROR] CF_ZONE_ID 未配置${NC}"
-                        config_ok=false
-                    fi
-                    
-                    if [ -z "$cf_dns_name" ] || [ "$cf_dns_name" = "your_dns_name_here" ]; then
-                        echo -e "${RED}[ERROR] CF_DNS_NAME 未配置${NC}"
-                        config_ok=false
-                    fi
-                    
-                    if [ "$config_ok" = false ]; then
-                        echo ""
-                        echo -e "${YELLOW}请先完成所有必需配置项${NC}"
-                        echo ""
-                        read -r -p "是否现在运行配置向导? (y/n): " confirm
-                        if [ "$confirm" = "y" ] || [ "$confirm" = "Y" ]; then
-                            full_config_wizard
-                        fi
-                        continue
-                    fi
-                    
-                    echo -e "${CYAN}正在运行 Cloudflare DNS 更新器 (${domain_name})...${NC}"
-                    sleep 1
-                    chmod +x "$ROOT_DIR/modules/cf-dns/core.sh"
-                    CF_DNS_DOMAIN="$domain_name" bash "$ROOT_DIR/modules/cf-dns/core.sh" "$single_config"
-                fi
+                local domain_name
+                domain_name=$(basename "$selected_config" .json)
+                echo -e "${CYAN}正在运行 Cloudflare DNS 更新器 (${domain_name})...${NC}"
+                sleep 1
+                chmod +x "$ROOT_DIR/modules/cf-dns/core.sh"
+                CF_DNS_DOMAIN="$domain_name" bash "$ROOT_DIR/modules/cf-dns/core.sh" "$selected_config"
                 
                 echo ""
                 read -r -p "按回车键继续..."
                 ;;
             3)
+                # 查看配置 - 先选择域名
+                local selected_config
+                selected_config=$(select_domain_menu "查看配置")
+                if [[ $? -ne 0 ]]; then
+                    continue
+                fi
+                
+                # 临时设置 CONFIG_FILE 并调用 view_config
+                local original_config_file="$CONFIG_FILE"
+                CONFIG_FILE="$selected_config"
                 view_config
+                CONFIG_FILE="$original_config_file"
                 ;;
             4)
+                # 启用/禁用模块 - 先选择域名
+                local selected_config
+                selected_config=$(select_domain_menu "启用/禁用")
+                if [[ $? -ne 0 ]]; then
+                    continue
+                fi
+                
+                # 临时设置 CONFIG_FILE 并调用 toggle_module_status
+                local original_config_file="$CONFIG_FILE"
+                CONFIG_FILE="$selected_config"
                 toggle_module_status
+                CONFIG_FILE="$original_config_file"
                 ;;
             5)
                 echo -e "${GREEN}正在调用 IP 同步组件...${NC}"
@@ -1651,12 +1733,35 @@ main() {
                 read -r -p "按回车键继续..."
                 ;;
             6)
+                # 修改 IP 数量限制 - 先选择域名
+                local selected_config
+                selected_config=$(select_domain_menu "修改 IP 数量限制")
+                if [[ $? -ne 0 ]]; then
+                    continue
+                fi
+                
+                # 临时设置 CONFIG_FILE 并调用 modify_ip_limit
+                local original_config_file="$CONFIG_FILE"
+                CONFIG_FILE="$selected_config"
                 modify_ip_limit
+                CONFIG_FILE="$original_config_file"
                 ;;
             7)
+                # 修改配置 - 先选择域名
+                local selected_config
+                selected_config=$(select_domain_menu "修改配置")
+                if [[ $? -ne 0 ]]; then
+                    continue
+                fi
+                
+                # 临时设置 CONFIG_FILE 并调用 modify_config_menu
+                local original_config_file="$CONFIG_FILE"
+                CONFIG_FILE="$selected_config"
                 modify_config_menu
+                CONFIG_FILE="$original_config_file"
                 ;;
             8)
+                # 日志管理（不需要选择域名，因为日志是共享的）
                 log_management
                 ;;
             0)
