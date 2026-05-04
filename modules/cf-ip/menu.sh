@@ -216,8 +216,19 @@ download_cfst() {
         return 1
     fi
     
-    # 赋予执行权限
-    chmod +x cfst
+    # 检查解压后的文件结构（cfst 可能在子目录中）
+    if [[ -f "cfst" ]]; then
+        # 直接解压出 cfst 文件
+        chmod +x cfst
+    elif [[ -d "CloudflareSpeedTest" ]] && [[ -f "CloudflareSpeedTest/cfst" ]]; then
+        # 解压到子目录，移动到当前目录
+        mv CloudflareSpeedTest/cfst ./
+        chmod +x cfst
+        rm -rf CloudflareSpeedTest
+    else
+        echo -e "${RED}[ERROR] 未找到 cfst 可执行文件${NC}"
+        return 1
+    fi
     
     echo -e "${GREEN}[OK] cfst 已安装到: ${CFST_BIN}${NC}"
     return 0
