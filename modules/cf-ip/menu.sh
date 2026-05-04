@@ -353,6 +353,13 @@ manage_config() {
 
 # ====================== 【函数：简单配置】 ======================
 configure_simple() {
+    # 调试：检查环境变量
+    if [[ "${CF_OPT_ENTRY:-}" != "main_menu" ]] && [[ "${CF_OPT_ENTRY:-}" != "run_sh" ]]; then
+        echo -e "${RED}[ERROR] 环境变量 CF_OPT_ENTRY 未设置或值不正确: '${CF_OPT_ENTRY:-空}'${NC}"
+        echo -e "${RED}[ERROR] 请通过 'cfopt' 命令启动程序${NC}"
+        return 1
+    fi
+    
     echo ""
     echo -e "${CYAN}+------------------------------------------------------------+"
     echo -e " ${YELLOW}CF-IP 优选配置向导 - 简单模式"
