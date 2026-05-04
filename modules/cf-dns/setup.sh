@@ -392,9 +392,17 @@ full_config_wizard() {
     echo -e "${GREEN}[OK] 找到 ${zones_count} 个域名${NC}"
     echo ""
     
-    # 显示域名列表
+    # 显示域名列表（带编号）
     echo -e "${CYAN}可用域名列表：${NC}"
-    echo "$zones_response" | jq -r '.result[] | "  \(.name) (Zone ID: \(.id))"' | head -n 10
+    local domain_array=()
+    local index=1
+    while IFS= read -r line; do
+        local domain_name
+        domain_name=$(echo "$line" | awk '{print $1}')
+        echo -e " ${GREEN}${index})${NC} ${line}"
+        domain_array+=("$domain_name")
+        ((index++))
+    done <<< "$(echo "$zones_response" | jq -r '.result[] | "\(.name) (Zone ID: \(.id))"' | head -n 10)"
     if [[ "$zones_count" -gt 10 ]]; then
         echo -e "  ... 还有 $((zones_count - 10)) 个域名"
     fi
@@ -407,7 +415,17 @@ full_config_wizard() {
     echo -e "  系统已自动获取您的所有域名，请选择要配置的域名。"
     echo -e "  选择后，系统将自动匹配对应的 Zone ID。"
     echo ""
-    read -r -p "请输入域名 (例如: example.com): " cf_domain
+    read -r -p "请选择域名 [1-$((index-1))] 或直接输入域名: " cf_domain_input
+    
+    local cf_domain
+    if [[ "$cf_domain_input" =~ ^[0-9]+$ ]] && [[ "$cf_domain_input" -ge 1 ]] && [[ "$cf_domain_input" -lt "$index" ]]; then
+        # 用户选择了编号
+        cf_domain="${domain_array[$((cf_domain_input-1))]}"
+        echo -e "${GREEN}[OK] 已选择: ${cf_domain}${NC}"
+    else
+        # 用户手动输入域名
+        cf_domain="$cf_domain_input"
+    fi
     
     if [ -z "$cf_domain" ]; then
         echo -e "${RED}错误: 域名不能为空${NC}"

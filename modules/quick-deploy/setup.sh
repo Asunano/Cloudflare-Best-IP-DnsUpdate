@@ -792,13 +792,32 @@ deploy_cloudflare_dns() {
     echo -e "${GREEN}[OK] 找到 ${zones_count} 个域名${NC}"
     echo ""
     
-    # 显示域名列表
+    # 显示域名列表（带编号）
     echo -e "${CYAN}可用域名列表：${NC}"
-    echo "$zones_response" | jq -r '.result[] | "  \(.name) (Zone ID: \(.id))"' | head -n 10
+    local domain_array=()
+    local index=1
+    while IFS= read -r line; do
+        local domain_name
+        domain_name=$(echo "$line" | awk '{print $1}')
+        echo -e " ${GREEN}${index})${NC} ${line}"
+        domain_array+=("$domain_name")
+        ((index++))
+    done <<< "$(echo "$zones_response" | jq -r '.result[] | "\(.name) (Zone ID: \(.id))"' | head -n 10)"
     echo ""
     
-    # 让用户选择域名
-    read -r -p "请输入要配置的域名 (例如: example.com): " domain
+    # 让用户选择域名（支持编号或手动输入）
+    read -r -p "请选择域名 [1-$((index-1))] 或直接输入域名: " domain_input
+    
+    local domain
+    if [[ "$domain_input" =~ ^[0-9]+$ ]] && [[ "$domain_input" -ge 1 ]] && [[ "$domain_input" -lt "$index" ]]; then
+        # 用户选择了编号
+        domain="${domain_array[$((domain_input-1))]}"
+        echo -e "${GREEN}[OK] 已选择: ${domain}${NC}"
+    else
+        # 用户手动输入域名
+        domain="$domain_input"
+    fi
+    
     if [[ -z "$domain" ]]; then
         echo -e "${RED}[ERROR] 域名不能为空${NC}"
         return 1
