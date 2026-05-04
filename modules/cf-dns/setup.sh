@@ -348,7 +348,7 @@ full_config_wizard() {
     echo ""
     
     # 1. API Token
-    echo -e "${BLUE}步骤 1/5: 配置 API 令牌 (API Token)${NC}"
+    echo -e "${BLUE}步骤 1/6: 配置 API 令牌 (API Token)${NC}"
     echo ""
     echo -e "${YELLOW}[WARN] 重要提示:${NC}"
     echo -e "  ${RED}请务必使用 API 令牌，不要使用 Global API Key！${NC}"
@@ -370,23 +370,69 @@ full_config_wizard() {
         return 1
     fi
     
-    # 2. Zone ID
-    echo ""
-    echo -e "${BLUE}步骤 2/5: 配置 Zone ID (区域 ID)${NC}"
-    echo "Zone ID 是域名的唯一标识符。"
-    echo -e "${CYAN}查找方法:${NC} 登录 Cloudflare -> 点击域名 -> 在右侧栏底部找到 'API' -> 复制 Zone ID"
-    echo ""
-    read -r -p "请输入 CF_ZONE_ID: " cf_zone_id
+    # 验证 API Token 并获取域名列表
+    echo -e "${CYAN}正在验证 API Token...${NC}"
+    local zones_response
+    zones_response=$(curl -s -X GET "https://api.cloudflare.com/client/v4/zones?per_page=50" \
+        -H "Authorization: Bearer ${cf_api_token}" \
+        -H "Content-Type: application/json")
     
-    if [ -z "$cf_zone_id" ]; then
-        echo -e "${RED}错误: Zone ID 不能为空${NC}"
+    local zones_count
+    zones_count=$(echo "$zones_response" | jq -r '.result_info.total_count // 0')
+    
+    if [[ "$zones_count" == "0" ]]; then
+        echo -e "${RED}[ERROR] API Token 无效或没有可用的域名${NC}"
+        echo -e "${YELLOW}请检查：${NC}"
+        echo -e "  1. API Token 是否正确"
+        echo -e "  2. Token 是否有 'Zone - DNS - Edit' 权限"
+        read -r -p "按回车键重新输入..."
+        return 1
+    fi
+    
+    echo -e "${GREEN}[OK] 找到 ${zones_count} 个域名${NC}"
+    echo ""
+    
+    # 显示域名列表
+    echo -e "${CYAN}可用域名列表：${NC}"
+    echo "$zones_response" | jq -r '.result[] | "  \(.name) (Zone ID: \(.id))"' | head -n 10
+    if [[ "$zones_count" -gt 10 ]]; then
+        echo -e "  ... 还有 $((zones_count - 10)) 个域名"
+    fi
+    echo ""
+    
+    # 2. 选择域名（自动获取 Zone ID）
+    echo -e "${BLUE}步骤 2/6: 选择要配置的域名${NC}"
+    echo ""
+    echo -e "${YELLOW}[说明]${NC}"
+    echo -e "  系统已自动获取您的所有域名，请选择要配置的域名。"
+    echo -e "  选择后，系统将自动匹配对应的 Zone ID。"
+    echo ""
+    read -r -p "请输入域名 (例如: example.com): " cf_domain
+    
+    if [ -z "$cf_domain" ]; then
+        echo -e "${RED}错误: 域名不能为空${NC}"
         read -r -p "按回车键继续..."
         return 1
     fi
     
+    # 从 API 响应中获取 Zone ID
+    local cf_zone_id
+    cf_zone_id=$(echo "$zones_response" | jq -r --arg domain "$cf_domain" '.result[] | select(.name == $domain) | .id')
+    
+    if [[ -z "$cf_zone_id" ]]; then
+        echo -e "${RED}[ERROR] 未找到域名: ${cf_domain}${NC}"
+        echo -e "${YELLOW}请确认域名拼写是否正确${NC}"
+        read -r -p "按回车键重新输入..."
+        return 1
+    fi
+    
+    echo -e "${GREEN}[OK] 域名验证成功: ${cf_domain}${NC}"
+    echo -e "${CYAN}Zone ID: ${cf_zone_id:0:8}...${cf_zone_id: -4}${NC}"
+    echo ""
+    
     # 3. DNS 名称
     echo ""
-    echo -e "${BLUE}步骤 3/5: 配置 DNS 记录名称 (子域名)${NC}"
+    echo -e "${BLUE}步骤 3/6: 配置 DNS 记录名称 (主机记录)${NC}"
     echo ""
     echo -e "${YELLOW}[WARN] 新手必读:${NC}"
     echo -e "  ${RED}这里只填子域名部分，不要填完整域名！${NC}"
@@ -431,7 +477,7 @@ full_config_wizard() {
     
     # 4. IP 文件路径
     echo ""
-    echo -e "${BLUE}步骤 4/5: 配置 IP 文件路径${NC}"
+    echo -e "${BLUE}步骤 4/6: 配置 IP 文件路径${NC}"
     local default_ip_path="$ROOT_DIR/assets/data/cf-dns/ip_list.txt"
     echo "默认: $default_ip_path"
     echo ""
@@ -441,7 +487,7 @@ full_config_wizard() {
     
     # 5. IP 数量限制
     echo ""
-    echo -e "${BLUE}步骤 5/5: 配置 IP 数量限制${NC}"
+    echo -e "${BLUE}步骤 5/6: 配置 IP 数量限制${NC}"
     echo ""
     echo -e "${YELLOW}说明:${NC}"
     echo "  - 这个数值决定了你的域名一次能解析到多少个 IP。"
@@ -481,6 +527,7 @@ full_config_wizard() {
         .api.token = $token |
         .api.zone_id = $zone_id |
         .dns.record_name = $dns_name |
+        .dns.domain = "" |
         .ip_source.file_path = $ip_file |
         .dns.max_ips_per_record = $max_ips |
         .logging.log_dir = $log_dir' \
@@ -489,24 +536,33 @@ full_config_wizard() {
     # 自动修复配置文件权限为 600
     chmod 600 "$CONFIG_FILE"
     
-    # 自动获取并保存域名到配置文件
-    echo -e "${YELLOW}正在获取域名信息...${NC}"
-    local zone_name
-    zone_name=$(get_zone_name "$cf_zone_id" "$cf_api_token")
-    if [ -n "$zone_name" ]; then
-        # 验证域名格式
-        if [[ "$zone_name" =~ ^[a-zA-Z0-9]([a-zA-Z0-9-]*[a-zA-Z0-9])?\.[a-zA-Z]{2,}$ ]]; then
-            # 使用 jq 更新域名
-            local temp_file
-            temp_file=$(mktemp)
-            jq --arg domain "$zone_name" '.dns.domain = $domain' "$CONFIG_FILE" > "$temp_file" && mv "$temp_file" "$CONFIG_FILE"
-            echo -e "${GREEN}[OK] 已自动获取域名: ${zone_name}${NC}"
-        else
-            echo -e "${YELLOW}[WARN] 域名格式异常: ${zone_name}${NC}"
-        fi
+    # 保存域名到配置文件（使用用户输入的域名）
+    local temp_file
+    temp_file=$(mktemp)
+    jq --arg domain "$cf_domain" '.dns.domain = $domain' "$CONFIG_FILE" > "$temp_file" && mv "$temp_file" "$CONFIG_FILE"
+    echo -e "${GREEN}[OK] 已保存域名: ${cf_domain}${NC}"
+    
+    # 6. 确认配置信息
+    echo ""
+    echo -e "${BLUE}步骤 6/6: 确认配置信息${NC}"
+    echo ""
+    
+    # 构建完整域名显示
+    local full_domain
+    if [[ "$cf_dns_name" == "@" ]]; then
+        full_domain="$cf_domain"
     else
-        echo -e "${YELLOW}[WARN] 无法获取域名，请手动填写${NC}"
+        full_domain="${cf_dns_name}.${cf_domain}"
     fi
+    
+    echo -e "${CYAN}配置摘要：${NC}"
+    echo -e "  • 完整域名: ${GREEN}${full_domain}${NC}"
+    echo -e "  • 主机记录: ${GREEN}${cf_dns_name}${NC}"
+    echo -e "  • 根域名: ${GREEN}${cf_domain}${NC}"
+    echo -e "  • Zone ID: ${GREEN}${cf_zone_id:0:8}...${cf_zone_id: -4}${NC}"
+    echo -e "  • IP 文件: ${GREEN}${ip_file}${NC}"
+    echo -e "  • IP 数量: ${GREEN}${max_ips}${NC}"
+    echo ""
     
     # 创建 IP 数据目录
     mkdir -p "$(dirname "$ip_file")"
