@@ -24,6 +24,8 @@ VERSION_FILE="${ROOT_DIR}/version.txt"
 GITHUB_REPO="Asunano/Cloudflare-Best-IP-DnsUpdate"
 GITHUB_API_URL="https://api.github.com/repos/${GITHUB_REPO}"
 RAW_BASE_URL="https://raw.githubusercontent.com/${GITHUB_REPO}/main"
+# 镜像源（用于加速国内访问）
+MIRROR_BASE_URL="https://hk.gh-proxy.org/https://raw.githubusercontent.com/${GITHUB_REPO}/main"
 
 # 定义需要更新的组件映射
 # 格式: "KEY:本地路径:远程相对路径:显示名称"
@@ -43,18 +45,28 @@ declare -a COMPONENTS=(
 
 # ==================== 核心函数 ====================
 
-# 获取远程版本号
+# 获取远程版本号（支持镜像源回退）
 get_remote_version() {
     local remote_version
+    
+    # 尝试原始 URL
     remote_version=$(curl -s --max-time 10 "${RAW_BASE_URL}/version.txt" 2>/dev/null)
     
-    if [[ $? -ne 0 ]] || [[ -z "${remote_version}" ]]; then
-        echo ""
-        return 1
+    if [[ $? -eq 0 ]] && [[ -n "${remote_version}" ]]; then
+        echo "${remote_version}"
+        return 0
     fi
     
-    echo "${remote_version}"
-    return 0
+    # 尝试镜像源
+    remote_version=$(curl -s --max-time 10 "${MIRROR_BASE_URL}/version.txt" 2>/dev/null)
+    
+    if [[ $? -eq 0 ]] && [[ -n "${remote_version}" ]]; then
+        echo "${remote_version}"
+        return 0
+    fi
+    
+    echo ""
+    return 1
 }
 
 # 获取本地版本号
@@ -66,13 +78,12 @@ get_local_version() {
     fi
 }
 
-# 下载单个文件
+# 下载单个文件（支持镜像源回退）
 download_file() {
     local local_path="$1"
     local remote_path="$2"
     local display_name="$3"
     
-    local full_url="${RAW_BASE_URL}/${remote_path}"
     local target_file="${ROOT_DIR}/${local_path}"
     local temp_file
     temp_file=$(mktemp)
@@ -82,22 +93,47 @@ download_file() {
         temp_file="${ROOT_DIR}/modules/updater/update.sh.new"
     fi
     
-    # 下载到临时文件
+    # 尝试使用原始 URL 下载
+    local full_url="${RAW_BASE_URL}/${remote_path}"
+    local download_success=false
+    
+    echo -e "  ${CYAN}[INFO]${NC} 正在下载 ${display_name}..."
+    
     if curl -s --max-time 30 -o "${temp_file}" "${full_url}" 2>/dev/null; then
-        # 验证下载的文件非空
+        # 验证下载的文件非空且有效
         if [[ -s "${temp_file}" ]]; then
-            # 如果不是 updater.sh 自身，直接移动到目标位置
-            if [[ "${remote_path}" != "modules/updater/update.sh" ]]; then
-                mv "${temp_file}" "${target_file}"
-                chmod +x "${target_file}" 2>/dev/null || true
+            # 检查是否为 HTML 错误页
+            if ! grep -qi "<html\|404 Not Found\|403 Forbidden" "${temp_file}" 2>/dev/null; then
+                download_success=true
             fi
-            echo -e "  ${GREEN}[OK]${NC} ${display_name}"
-            return 0
-        else
-            rm -f "${temp_file}"
-            echo -e "  ${RED}[FAIL]${NC} ${display_name} (文件为空)"
-            return 1
         fi
+    fi
+    
+    # 如果原始 URL 失败，尝试镜像源
+    if [[ "${download_success}" = false ]]; then
+        echo -e "  ${YELLOW}[WARN]${NC} 原始地址失败，尝试镜像源..."
+        local mirror_url="${MIRROR_BASE_URL}/${remote_path}"
+        rm -f "${temp_file}"
+        temp_file=$(mktemp)
+        
+        if curl -s --max-time 30 -o "${temp_file}" "${mirror_url}" 2>/dev/null; then
+            if [[ -s "${temp_file}" ]]; then
+                if ! grep -qi "<html\|404 Not Found\|403 Forbidden" "${temp_file}" 2>/dev/null; then
+                    download_success=true
+                fi
+            fi
+        fi
+    fi
+    
+    # 处理下载结果
+    if [[ "${download_success}" = true ]]; then
+        # 如果不是 updater.sh 自身，直接移动到目标位置
+        if [[ "${remote_path}" != "modules/updater/update.sh" ]]; then
+            mv "${temp_file}" "${target_file}"
+            chmod +x "${target_file}" 2>/dev/null || true
+        fi
+        echo -e "  ${GREEN}[OK]${NC} ${display_name}"
+        return 0
     else
         rm -f "${temp_file}"
         echo -e "  ${RED}[FAIL]${NC} ${display_name} (网络错误)"
