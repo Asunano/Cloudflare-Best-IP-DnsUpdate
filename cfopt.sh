@@ -1158,6 +1158,7 @@ check_and_update_components() {
     # 定义模块映射: [KEY]="本地路径:远程文件"
     declare -A MODULE_MAP
     MODULE_MAP=(
+        ["QUICK_DEPLOY"]="${INSTALL_DIR}/modules/quick-deploy/setup.sh:modules/quick-deploy/setup.sh"
         ["CF_IP_MENU"]="${INSTALL_DIR}/modules/cf-ip/menu.sh:modules/cf-ip/menu.sh"
         ["CF_IP_CORE"]="${INSTALL_DIR}/modules/cf-ip/core.sh:modules/cf-ip/core.sh"
         ["CF_DNS_CORE"]="${INSTALL_DIR}/modules/cf-dns/core.sh:modules/cf-dns/core.sh"
@@ -1352,6 +1353,7 @@ init_cfopt() {
 
     # 4. 创建目录结构
     mkdir -p "${INSTALL_DIR}/modules/manager" \
+             "${INSTALL_DIR}/modules/quick-deploy" \
              "${INSTALL_DIR}/modules/cf-ip" \
              "${INSTALL_DIR}/modules/cf-dns" \
              "${INSTALL_DIR}/modules/dnspod-dns" \
@@ -1404,6 +1406,7 @@ EOF
     
     declare -A MODULE_MAP
     MODULE_MAP=(
+        ["QUICK_DEPLOY"]="${INSTALL_DIR}/modules/quick-deploy/setup.sh:modules/quick-deploy/setup.sh"
         ["CF_IP_MENU"]="${INSTALL_DIR}/modules/cf-ip/menu.sh:modules/cf-ip/menu.sh"
         ["CF_IP_CORE"]="${INSTALL_DIR}/modules/cf-ip/core.sh:modules/cf-ip/core.sh"
         ["CF_DNS_CORE"]="${INSTALL_DIR}/modules/cf-dns/core.sh:modules/cf-dns/core.sh"
