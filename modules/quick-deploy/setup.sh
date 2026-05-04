@@ -1132,6 +1132,11 @@ deploy_cloudflare_dns() {
         cd "${ROOT_DIR}" || return 1
         CF_OPT_ENTRY=1 bash "${ROOT_DIR}/modules/cf-ip/core.sh" || true
         echo -e "${GREEN}[OK] 测速完成${NC}"
+        
+        # 执行 IP 同步，将测速结果同步到 DNS 模块的 IP 文件
+        echo -e "${CYAN}正在同步 IP 数据...${NC}"
+        bash "${ROOT_DIR}/modules/ip-sync/sync.sh" || true
+        echo -e "${GREEN}[OK] IP 数据已同步到: ${ROOT_DIR}/assets/data/cf-dns/ip_list.txt${NC}"
     fi
     
     # 第5步：设置定时任务
@@ -1333,6 +1338,11 @@ deploy_dnspod_single() {
         cd "${ROOT_DIR}" || return 1
         CF_OPT_ENTRY=1 bash "${ROOT_DIR}/modules/cf-ip/core.sh" || true
         echo -e "${GREEN}[OK] 测速完成${NC}"
+        
+        # 执行 IP 同步，将测速结果同步到 DNS 模块的 IP 文件
+        echo -e "${CYAN}正在同步 IP 数据...${NC}"
+        bash "${ROOT_DIR}/modules/ip-sync/sync.sh" || true
+        echo -e "${GREEN}[OK] IP 数据已同步到: ${ROOT_DIR}/assets/data/cf-dns/ip_list.txt${NC}"
     fi
     
     # 第5步：设置定时任务
