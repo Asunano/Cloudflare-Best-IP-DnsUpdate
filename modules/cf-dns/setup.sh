@@ -1442,9 +1442,8 @@ modify_config_menu() {
 select_domain_menu() {
     local action_name="$1"  # 操作名称，如 "快速运行"、"查看配置" 等
     
-    # 检查新格式的多域名配置目录
+    # 检查多域名配置目录
     local config_dir="${ROOT_DIR}/conf/cf-dns"
-    local default_config="${ROOT_DIR}/conf/cf-dns.json"
     local config_files=()
     
     if [[ -d "$config_dir" ]]; then
@@ -1453,12 +1452,7 @@ select_domain_menu() {
         done < <(find "$config_dir" -name "*.json" -type f -print0 2>/dev/null)
     fi
     
-    # 如果没有找到新格式的配置，检查旧的默认配置
-    if [[ ${#config_files[@]} -eq 0 ]] && [[ -f "$default_config" ]]; then
-        config_files+=("$default_config")
-    fi
-    
-    # 如果仍然没有配置，提示用户
+    # 如果没有找到配置，提示用户
     if [[ ${#config_files[@]} -eq 0 ]]; then
         echo -e "${RED}[ERROR] 未找到任何 Cloudflare DNS 配置文件${NC}"
         echo ""
