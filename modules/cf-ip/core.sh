@@ -268,6 +268,8 @@ CFST_PID=$!
 # 实时显示进度（通过监控日志文件）
 stage="ping"
 last_log_size=0
+progress_bar_width=40
+
 while kill -0 "${CFST_PID}" 2>/dev/null; do
     # 检查日志文件是否有新内容
     if [[ -f "${LOG_FILE}" ]]; then
@@ -286,31 +288,54 @@ while kill -0 "${CFST_PID}" 2>/dev/null; do
             # 从日志中提取当前进度
             if [[ "${stage}" = "ping" ]]; then
                 # 提取 "可用: XXXX" 的数字
-                available_count=$(grep -oP '可用:\s*\K[0-9]+' "${LOG_FILE}" 2>/dev/null | tail -1)
-                if [[ -n "${available_count}" ]]; then
-                    echo -ne "\r${CYAN}  [进度] 已发现 ${available_count} 个可用 IP...${NC}   "
+                available_count=$(grep -o '可用: *[0-9]*' "${LOG_FILE}" 2>/dev/null | tail -1 | grep -o '[0-9]*$')
+                total_count=$(grep -o '[0-9]* / [0-9]*' "${LOG_FILE}" 2>/dev/null | tail -1 | awk '{print $3}')
+                
+                if [[ -n "${available_count}" ]] && [[ -n "${total_count}" ]]; then
+                    # 计算进度百分比
+                    progress=$((available_count * 100 / total_count))
+                    filled=$((progress * progress_bar_width / 100))
+                    empty=$((progress_bar_width - filled))
+                    
+                    # 构建进度条
+                    bar=""
+                    for ((i=0; i<filled; i++)); do bar+="█"; done
+                    for ((i=0; i<empty; i++)); do bar+="░"; done
+                    
+                    echo -ne "\r${CYAN}  [${bar}] ${progress}% (${available_count}/${total_count})${NC}   "
                 else
                     echo -ne "\r${CYAN}  [进度] 正在测速中...${NC}   "
                 fi
             else
                 # 下载阶段，显示下载进度
-                download_progress=$(grep -oP '[0-9]+\s*/\s*[0-9]+' "${LOG_FILE}" 2>/dev/null | tail -1)
-                if [[ -n "${download_progress}" ]]; then
-                    echo -ne "\r${CYAN}  [进度] 正在测试下载速度 (${download_progress})...${NC}   "
+                download_current=$(grep -o '[0-9]* / [0-9]*' "${LOG_FILE}" 2>/dev/null | tail -1 | awk '{print $1}')
+                download_total=$(grep -o '[0-9]* / [0-9]*' "${LOG_FILE}" 2>/dev/null | tail -1 | awk '{print $3}')
+                
+                if [[ -n "${download_current}" ]] && [[ -n "${download_total}" ]]; then
+                    progress=$((download_current * 100 / download_total))
+                    filled=$((progress * progress_bar_width / 100))
+                    empty=$((progress_bar_width - filled))
+                    
+                    # 构建进度条
+                    bar=""
+                    for ((i=0; i<filled; i++)); do bar+="█"; done
+                    for ((i=0; i<empty; i++)); do bar+="░"; done
+                    
+                    echo -ne "\r${CYAN}  [${bar}] ${progress}% (${download_current}/${download_total})${NC}   "
                 else
                     echo -ne "\r${CYAN}  [进度] 正在测试下载速度...${NC}   "
                 fi
             fi
         fi
     fi
-    sleep 1
+    sleep 0.5
 done
 
 # 等待进程结束
 wait "${CFST_PID}"
 EXIT_CODE=$?
 
-echo -e "\r${CYAN}  [进度] 测速完成！                         ${NC}"
+echo -e "\r${CYAN}  [████████████████████████████████████████] 100% 测速完成！${NC}"
 echo ""
 
 if [[ "${EXIT_CODE}" -eq 0 ]] && [[ -f "${OUTPUT_CSV}" ]]; then
