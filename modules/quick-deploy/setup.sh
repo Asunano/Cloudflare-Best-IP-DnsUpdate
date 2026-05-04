@@ -418,6 +418,7 @@ generate_cf_dns_config() {
     local domain="$1"
     local cf_token="$2"
     local cf_zone_id="$3"
+    local record_name="${4:-@}"  # 默认值为 @
     
     # 创建多域名配置目录
     local config_dir="${ROOT_DIR}/conf/cf-dns"
@@ -432,6 +433,7 @@ generate_cf_dns_config() {
         --arg domain "$domain" \
         --arg token "$cf_token" \
         --arg zone_id "$cf_zone_id" \
+        --arg record_name "$record_name" \
         '{
             "_comment": "Cloudflare DNS 更新器配置",
             "_version": "0.1",
@@ -442,7 +444,7 @@ generate_cf_dns_config() {
             },
             "dns": {
                 "domain": $domain,
-                "record_name": "@",
+                "record_name": $record_name,
                 "record_type": "A",
                 "ttl": 600,
                 "max_ips_per_record": 2
@@ -551,14 +553,92 @@ deploy_cloudflare_dns() {
     echo -e "${GREEN}您选择了：Cloudflare DNS（单线路模式）${NC}"
     echo ""
     
-    # 第1步：基础信息
-    show_step_header 1 4 "配置基础信息"
+    # 第1步：API 配置
+    show_step_header 1 5 "配置 Cloudflare API"
     
-    read -r -p "请输入您的域名 (例如: example.com): " domain
+    read -r -p "请输入 Cloudflare API Token: " cf_token
+    if [[ -z "$cf_token" ]]; then
+        echo -e "${RED}[ERROR] Cloudflare API Token 不能为空${NC}"
+        return 1
+    fi
+    
+    # 验证 API Token 并获取域名列表
+    echo -e "${CYAN}正在验证 API Token...${NC}"
+    local zones_response
+    zones_response=$(curl -s -X GET "https://api.cloudflare.com/client/v4/zones?per_page=50" \
+        -H "Authorization: Bearer ${cf_token}" \
+        -H "Content-Type: application/json")
+    
+    local zones_count
+    zones_count=$(echo "$zones_response" | jq -r '.result_info.total_count // 0')
+    
+    if [[ "$zones_count" == "0" ]]; then
+        echo -e "${RED}[ERROR] API Token 无效或没有可用的域名${NC}"
+        echo -e "${YELLOW}请检查：${NC}"
+        echo -e "  1. API Token 是否正确"
+        echo -e "  2. Token 是否有 'Zone - DNS - Edit' 权限"
+        return 1
+    fi
+    
+    echo -e "${GREEN}[OK] 找到 ${zones_count} 个域名${NC}"
+    echo ""
+    
+    # 显示域名列表
+    echo -e "${CYAN}可用域名列表：${NC}"
+    echo "$zones_response" | jq -r '.result[] | "  \(.name) (Zone ID: \(.id))"' | head -n 10
+    echo ""
+    
+    # 让用户选择域名
+    read -r -p "请输入要配置的域名 (例如: example.com): " domain
     if [[ -z "$domain" ]]; then
         echo -e "${RED}[ERROR] 域名不能为空${NC}"
         return 1
     fi
+    
+    # 从 API 响应中获取 Zone ID
+    local zone_id
+    zone_id=$(echo "$zones_response" | jq -r --arg domain "$domain" '.result[] | select(.name == $domain) | .id')
+    
+    if [[ -z "$zone_id" ]]; then
+        echo -e "${RED}[ERROR] 未找到域名: ${domain}${NC}"
+        echo -e "${YELLOW}请确认域名拼写是否正确${NC}"
+        return 1
+    fi
+    
+    echo -e "${GREEN}[OK] 域名验证成功: ${domain}${NC}"
+    echo -e "${CYAN}Zone ID: ${zone_id:0:8}...${zone_id: -4}${NC}"
+    echo ""
+    
+    # 第2步：设置主机记录
+    show_step_header 2 5 "设置主机记录"
+    
+    echo -e "${YELLOW}[说明]${NC}"
+    echo -e "  主机记录决定了完整的域名格式："
+    echo -e "  • 输入 ${GREEN}@${NC} → 解析到根域名 (${domain})"
+    echo -e "  • 输入 ${GREEN}www${NC} → 解析到 www.${domain}"
+    echo -e "  • 输入 ${GREEN}cf${NC} → 解析到 cf.${domain}"
+    echo ""
+    
+    read -r -p "请输入主机记录 [默认 @]: " record_name
+    record_name=${record_name:-@}
+    
+    # 验证主机记录格式
+    if [[ "$record_name" != "@" ]] && ! [[ "$record_name" =~ ^[a-zA-Z0-9][a-zA-Z0-9_-]*$ ]]; then
+        echo -e "${RED}[ERROR] 主机记录格式无效${NC}"
+        echo -e "${YELLOW}只能使用字母、数字、连字符(-)和下划线(_)，或使用 @ 表示根域名${NC}"
+        return 1
+    fi
+    
+    # 构建完整域名用于显示
+    local full_domain
+    if [[ "$record_name" == "@" ]]; then
+        full_domain="$domain"
+    else
+        full_domain="${record_name}.${domain}"
+    fi
+    
+    echo -e "${GREEN}[OK] 将解析到: ${full_domain}${NC}"
+    echo ""
     
     # 检查是否已部署
     if is_domain_deployed "$domain"; then
@@ -580,20 +660,8 @@ deploy_cloudflare_dns() {
         fi
     fi
     
-    read -r -p "请输入 Cloudflare API Token: " cf_token
-    if [[ -z "$cf_token" ]]; then
-        echo -e "${RED}[ERROR] Cloudflare API Token 不能为空${NC}"
-        return 1
-    fi
-    
-    read -r -p "请输入 Cloudflare Zone ID: " cf_zone_id
-    if [[ -z "$cf_zone_id" ]]; then
-        echo -e "${RED}[ERROR] Cloudflare Zone ID 不能为空${NC}"
-        return 1
-    fi
-    
-    # 第2步：生成配置
-    show_step_header 2 4 "生成配置文件"
+    # 第3步：生成配置
+    show_step_header 3 5 "生成配置文件"
     
     local recommended_colo
     recommended_colo=$(detect_optimal_colo)
@@ -603,17 +671,18 @@ deploy_cloudflare_dns() {
     echo -e "${GREEN}[OK] CF-IP 配置已生成${NC}"
     
     echo -e "${CYAN}正在生成 Cloudflare DNS 配置...${NC}"
-    generate_cf_dns_config "$domain" "$cf_token" "$cf_zone_id"
+    generate_cf_dns_config "$domain" "$cf_token" "$zone_id" "$record_name"
     echo -e "${GREEN}[OK] Cloudflare DNS 配置已生成: ${ROOT_DIR}/conf/cf-dns/${domain}.json${NC}"
     echo ""
     echo -e "${CYAN}配置信息：${NC}"
-    echo -e "  • 域名: ${domain}"
-    echo -e "  • Zone ID: ${cf_zone_id:0:8}...${cf_zone_id: -4}"  # 隐藏中间部分
+    echo -e "  • 完整域名: ${full_domain}"
+    echo -e "  • 主机记录: ${record_name}"
+    echo -e "  • Zone ID: ${zone_id:0:8}...${zone_id: -4}"  # 隐藏中间部分
     echo -e "  • 测速节点: ${recommended_colo}"
     echo ""
     
-    # 第3步：首次测速
-    show_step_header 3 4 "执行首次测速"
+    # 第4步：首次测速
+    show_step_header 4 5 "执行首次测速"
     
     echo -e "${YELLOW}提示: 首次测速可能需要 2-5 分钟，请耐心等待...${NC}"
     read -r -p "是否立即执行首次测速？[Y/n] (默认 Y): " run_test
@@ -625,8 +694,8 @@ deploy_cloudflare_dns() {
         echo -e "${GREEN}[OK] 测速完成${NC}"
     fi
     
-    # 第4步：设置定时任务
-    show_step_header 4 4 "设置自动化调度"
+    # 第5步：设置定时任务
+    show_step_header 5 5 "设置自动化调度"
     
     echo -e "${CYAN}将设置以下定时任务：${NC}"
     echo -e "  • 每天凌晨 3:00 自动执行全链路更新"
@@ -790,8 +859,8 @@ deploy_dnspod_single() {
         echo -e "${GREEN}[OK] 测速完成${NC}"
     fi
     
-    # 第4步：设置定时任务
-    show_step_header 4 4 "设置自动化调度"
+    # 第5步：设置定时任务
+    show_step_header 5 5 "设置自动化调度"
     
     echo -e "${CYAN}将设置以下定时任务：${NC}"
     echo -e "  • 每天凌晨 3:00 自动执行全链路更新"
@@ -924,8 +993,8 @@ deploy_dnspod_multi() {
         echo -e "${GREEN}[OK] 多线路测速完成${NC}"
     fi
     
-    # 第4步：设置定时任务
-    show_step_header 4 4 "设置自动化调度"
+    # 第5步：设置定时任务
+    show_step_header 5 5 "设置自动化调度"
     
     echo -e "${CYAN}将设置以下定时任务：${NC}"
     echo -e "  • 每 6 小时自动执行 IP 测速"
