@@ -776,6 +776,56 @@ show_main_menu() {
         source "${STATUS_CONF}"
     fi
     
+    # 【新增】检测并自动下载 cfst（如果缺失）
+    local cfst_bin="${INSTALL_DIR}/assets/cfst/cfst"
+    if [[ ! -f "${cfst_bin}" ]]; then
+        echo -e "${YELLOW}[INFO] 检测到测速程序 cfst 缺失，正在自动下载...${NC}"
+        echo ""
+        
+        # 从 GitHub 下载 cfst
+        local arch
+        arch="$(uname -m)"
+        case "${arch}" in
+            x86_64|amd64) arch="amd64" ;;
+            aarch64|arm64) arch="arm64" ;;
+            *) 
+                log_warning "不支持的系统架构: ${arch}，请手动安装 cfst"
+                read -r -p "按回车键继续..."
+                clear
+                # 继续显示主菜单，不中断流程
+                ;;
+        esac
+        
+        if [[ "${arch}" = "amd64" ]] || [[ "${arch}" = "arm64" ]]; then
+            local cfst_url="https://github.com/XIU2/CloudflareSpeedTest/releases/latest/download/CloudflareST_linux_${arch}.tar.gz"
+            local cfst_temp="/tmp/cfst_download.tar.gz"
+            
+            mkdir -p "${INSTALL_DIR}/assets/cfst"
+            
+            if curl -sfL --connect-timeout 10 --max-time 60 -o "${cfst_temp}" "${cfst_url}" 2>/dev/null; then
+                if tar -xzf "${cfst_temp}" -C "${INSTALL_DIR}/assets/cfst/" 2>/dev/null; then
+                    local cfst_file
+                    cfst_file=$(find "${INSTALL_DIR}/assets/cfst/" -name "cfst" -type f 2>/dev/null | head -1)
+                    if [[ -n "${cfst_file}" ]] && [[ -f "${cfst_file}" ]]; then
+                        chmod +x "${cfst_file}"
+                        log_success "cfst 测速程序已安装: ${cfst_file}"
+                    else
+                        log_warning "cfst 解压后未找到可执行文件"
+                    fi
+                else
+                    log_warning "cfst 解压失败"
+                fi
+                rm -f "${cfst_temp}"
+            else
+                log_warning "cfst 下载失败，请检查网络连接"
+            fi
+        fi
+        
+        echo ""
+        read -r -p "按回车键继续..."
+        clear
+    fi
+    
     # 获取各模块状态
     local cf_ip_status
     cf_ip_status="$(get_module_status "${INSTALL_DIR}/conf/cf-ip.json" "${INSTALL_DIR}/assets/data/cf-ip/result.csv")"
