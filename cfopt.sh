@@ -1175,9 +1175,10 @@ LOG_FILE="/tmp/cfopt_cleanup.log"
 echo "[$(date)] 开始清理: ${INSTALL_DIR}" >> "${LOG_FILE}"
 
 if [[ -d "${INSTALL_DIR}" ]]; then
-    # 第一遍：尝试终止所有相关进程
+    # 第一遍：尝试终止所有相关进程（排除当前清理脚本）
     echo "[$(date)] 第1步: 终止相关进程" >> "${LOG_FILE}"
-    pkill -9 -f "cfopt" 2>/dev/null || true
+    # 使用更精确的匹配，只终止 cfopt.sh 主程序，不终止清理脚本
+    pkill -9 -f "/cfopt\.sh" 2>/dev/null || true
     sleep 1
     
     # 第二遍：删除所有文件（包括隐藏文件）
