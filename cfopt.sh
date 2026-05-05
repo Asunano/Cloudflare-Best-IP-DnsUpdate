@@ -1395,6 +1395,31 @@ init_cfopt() {
     else
         log_warning "部分组件下载失败，稍后可通过菜单手动更新"
     fi
+    
+    # 4.2 下载 cfst 测速程序（CF-IP 核心依赖）
+    echo -e "${CYAN}[INFO] 正在下载 cfst 测速程序...${NC}"
+    local cfst_url="https://github.com/XIU2/CloudflareSpeedTest/releases/latest/download/CloudflareST_linux_amd64.tar.gz"
+    local cfst_temp="/tmp/cfst_download.tar.gz"
+    
+    if curl -sfL --connect-timeout 10 --max-time 60 -o "${cfst_temp}" "${cfst_url}" 2>/dev/null; then
+        # 解压并移动到目标位置
+        if tar -xzf "${cfst_temp}" -C "${INSTALL_DIR}/assets/cfst/" 2>/dev/null; then
+            # 找到解压后的 cfst 文件
+            local cfst_file
+            cfst_file=$(find "${INSTALL_DIR}/assets/cfst/" -name "cfst" -type f 2>/dev/null | head -1)
+            if [[ -n "${cfst_file}" ]] && [[ -f "${cfst_file}" ]]; then
+                chmod +x "${cfst_file}"
+                log_success "cfst 测速程序已安装: ${cfst_file}"
+            else
+                log_warning "cfst 解压后未找到可执行文件"
+            fi
+        else
+            log_warning "cfst 解压失败"
+        fi
+        rm -f "${cfst_temp}"
+    else
+        log_warning "cfst 下载失败，请手动运行 CF-IP 测速以自动安装"
+    fi
 
     # 初始化状态配置文件 (如果不存在)
     STATUS_CONF="${INSTALL_DIR}/conf/status.conf"
