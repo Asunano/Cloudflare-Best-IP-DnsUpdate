@@ -47,6 +47,35 @@ echo ""
 
 # ==================== 核心函数定义 ====================
 
+# 自动重新测速函数（用于同步失败时自动重试）
+auto_retry_test() {
+    local result_file="$1"
+    local colo_nodes="$2"  # 测速节点，如 "HKG,NRT"
+    local line_id="$3"     # 线路标识，用于进程锁
+    
+    echo -e "\n${CYAN}[INFO] 检测到测速数据无效，正在自动重新测速...${NC}"
+    
+    # 检查测速程序是否存在
+    local cfst_bin="${ROOT_DIR}/assets/cfst/cfst"
+    if [[ ! -f "${cfst_bin}" ]]; then
+        echo -e "${RED}[ERROR] 测速程序 cfst 不存在，无法自动重试${NC}"
+        return 1
+    fi
+    
+    # 调用 core.sh 执行测速
+    cd "${ROOT_DIR}" || return 1
+    CF_OPT_ENTRY=1 bash "${ROOT_DIR}/modules/cf-ip/core.sh" "${colo_nodes}" "${result_file}" "${line_id}"
+    
+    local exit_code=$?
+    if [[ ${exit_code} -eq 0 ]]; then
+        echo -e "${GREEN}[OK] 自动重新测速完成${NC}"
+        return 0
+    else
+        echo -e "${RED}[ERROR] 自动重新测速失败 (Exit Code: ${exit_code})${NC}"
+        return 1
+    fi
+}
+
 # Cloudflare DNS IP 同步函数（支持多域名）
 sync_cf_dns_ips() {
     local config_dir="${ROOT_DIR}/conf/cf-dns"
@@ -123,18 +152,37 @@ sync_cf_dns_ips() {
         actual_count="$(wc -l < "${target_file}")"
         
         # 【关键】如果没有找到有效 IP（所有 IP 下载速度都为 0），说明测速有问题
-        # 不应该回退到仅按延迟排序，而应该提示用户重新测速
+        # 在无人值守模式下，自动重新测速
         if [[ "${actual_count}" -eq 0 ]]; then
-            echo -e "  ${RED}[ERROR]${NC} ${domain_name}: 所有 IP 下载速度均为 0，测速数据无效"
-            echo -e "  ${YELLOW}[提示]${NC} 这可能是以下原因导致："
-            echo -e "    1. 下载测速地址有问题（默认地址可能不可用）"
-            echo -e "    2. 测速的 IP 地址有问题"
-            echo -e "    3. 网络环境有问题"
-            echo -e "  ${CYAN}[建议]${NC} 请重新运行测速，或检查 CF-IP 配置中的测速地址"
-            echo -e "  ${YELLOW}[跳过]${NC} ${domain_name}: 跳过本次同步"
-            # 不写入空文件，保持原有 IP 列表
-            rm -f "${target_file}" 2>/dev/null
-            continue
+            echo -e "  ${YELLOW}[WARN]${NC} ${domain_name}: 所有 IP 下载速度均为 0，测速数据无效"
+            
+            # 从配置中读取测速节点（如果有）
+            local colo_nodes
+            colo_nodes=$(jq -r '.ip_source.colo_nodes // "HKG,NRT"' "$json_file")
+            
+            # 自动重新测速
+            if auto_retry_test "${result_file}" "${colo_nodes}" "${domain_name}"; then
+                # 重新测速成功后，再次尝试同步
+                echo -e "  ${CYAN}[INFO]${NC} ${domain_name}: 正在使用新的测速结果进行同步..."
+                awk -F',' 'NR>1 && $6>0 {print $0}' "${result_file}" | \
+                    sort -t',' -k6,6 -rn -k5,5 -n | \
+                    head -n "${max_ips}" | \
+                    awk -F',' '{print $1}' > "${target_file}"
+                
+                actual_count="$(wc -l < "${target_file}")"
+                
+                # 如果重新测速后仍然失败，跳过
+                if [[ "${actual_count}" -eq 0 ]]; then
+                    echo -e "  ${RED}[ERROR]${NC} ${domain_name}: 重新测速后数据仍无效，跳过本次同步"
+                    rm -f "${target_file}" 2>/dev/null
+                    continue
+                fi
+            else
+                # 自动重试失败，跳过
+                echo -e "  ${RED}[ERROR]${NC} ${domain_name}: 自动重新测速失败，跳过本次同步"
+                rm -f "${target_file}" 2>/dev/null
+                continue
+            fi
         fi
         
         echo -e "  ${GREEN}[OK]${NC} ${domain_name}: 已写入 ${actual_count} 个最优 IP 到: ${target_file} (限制: ${max_ips})"
@@ -203,17 +251,37 @@ sync_dnspod_ips() {
             local actual_count
             actual_count="$(wc -l < "${target_file}")"
             
-            # 【关键】如果没有找到有效 IP（所有 IP 下载速度都为 0），说明测速有问题
+            # 【关键】如果没有找到有效 IP（所有 IP 下载速度都为 0），自动重新测速
             if [[ "${actual_count}" -eq 0 ]]; then
-                echo -e "    ${RED}[ERROR]${NC} ${domain_name}: 所有 IP 下载速度均为 0，测速数据无效"
-                echo -e "    ${YELLOW}[提示]${NC} 这可能是以下原因导致："
-                echo -e "      1. 下载测速地址有问题（默认地址可能不可用）"
-                echo -e "      2. 测速的 IP 地址有问题"
-                echo -e "      3. 网络环境有问题"
-                echo -e "    ${CYAN}[建议]${NC} 请重新运行测速，或检查 CF-IP 配置中的测速地址"
-                echo -e "    ${YELLOW}[跳过]${NC} ${domain_name}: 跳过本次同步"
-                rm -f "${target_file}" 2>/dev/null
-                continue
+                echo -e "    ${YELLOW}[WARN]${NC} ${domain_name}: 所有 IP 下载速度均为 0，测速数据无效"
+                
+                # 从配置中读取测速节点（如果有）
+                local colo_nodes
+                colo_nodes=$(jq -r '.ip_source.colo_nodes // "HKG,NRT"' "$json_file")
+                
+                # 自动重新测速
+                if auto_retry_test "${RESULT_CSV}" "${colo_nodes}" "${domain_name}"; then
+                    # 重新测速成功后，再次尝试同步
+                    echo -e "    ${CYAN}[INFO]${NC} ${domain_name}: 正在使用新的测速结果进行同步..."
+                    awk -F',' 'NR>1 && $6>0 {print $0}' "${RESULT_CSV}" | \
+                        sort -t',' -k6,6 -rn -k5,5 -n | \
+                        head -n "${max_ips}" | \
+                        awk -F',' '{print $1}' > "${target_file}"
+                    
+                    actual_count="$(wc -l < "${target_file}")"
+                    
+                    # 如果重新测速后仍然失败，跳过
+                    if [[ "${actual_count}" -eq 0 ]]; then
+                        echo -e "    ${RED}[ERROR]${NC} ${domain_name}: 重新测速后数据仍无效，跳过本次同步"
+                        rm -f "${target_file}" 2>/dev/null
+                        continue
+                    fi
+                else
+                    # 自动重试失败，跳过
+                    echo -e "    ${RED}[ERROR]${NC} ${domain_name}: 自动重新测速失败，跳过本次同步"
+                    rm -f "${target_file}" 2>/dev/null
+                    continue
+                fi
             fi
             
             echo -e "  ${GREEN}[OK]${NC} ${domain_name}(单线路): 已写入 ${actual_count} 个最优 IP 到: ${target_file} (限制: ${max_ips})"
@@ -255,17 +323,37 @@ sync_dnspod_ips() {
                     local actual_count
                     actual_count="$(wc -l < "${target_file}")"
                     
-                    # 【关键】如果没有找到有效 IP（所有 IP 下载速度都为 0），说明测速有问题
+                    # 【关键】如果没有找到有效 IP（所有 IP 下载速度都为 0），自动重新测速
                     if [[ "${actual_count}" -eq 0 ]]; then
-                        echo -e "      ${RED}[ERROR]${NC} ${isp} 线路: 所有 IP 下载速度均为 0，测速数据无效"
-                        echo -e "      ${YELLOW}[提示]${NC} 这可能是以下原因导致："
-                        echo -e "        1. 下载测速地址有问题（默认地址可能不可用）"
-                        echo -e "        2. 测速的 IP 地址有问题"
-                        echo -e "        3. 网络环境有问题"
-                        echo -e "      ${CYAN}[建议]${NC} 请重新运行测速，或检查 CF-IP 配置中的测速地址"
-                        echo -e "      ${YELLOW}[跳过]${NC} ${isp} 线路: 跳过本次同步"
-                        rm -f "${target_file}" 2>/dev/null
-                        continue
+                        echo -e "      ${YELLOW}[WARN]${NC} ${isp} 线路: 所有 IP 下载速度均为 0，测速数据无效"
+                        
+                        # 从配置中读取该线路的测速节点
+                        local colo_nodes
+                        colo_nodes=$(jq -r ".multi_line.colo_${isp} // \"HKG,NRT\"" "$json_file")
+                        
+                        # 自动重新测速（针对特定线路）
+                        if auto_retry_test "${src_file}" "${colo_nodes}" "${domain_name}_${isp}"; then
+                            # 重新测速成功后，再次尝试同步
+                            echo -e "      ${CYAN}[INFO]${NC} ${isp} 线路: 正在使用新的测速结果进行同步..."
+                            awk -F',' 'NR>1 && $6>0 {print $0}' "${src_file}" | \
+                                sort -t',' -k6,6 -rn -k5,5 -n | \
+                                head -n "${max_ips}" | \
+                                awk -F',' '{print $1}' > "${target_file}"
+                            
+                            actual_count="$(wc -l < "${target_file}")"
+                            
+                            # 如果重新测速后仍然失败，跳过
+                            if [[ "${actual_count}" -eq 0 ]]; then
+                                echo -e "      ${RED}[ERROR]${NC} ${isp} 线路: 重新测速后数据仍无效，跳过本次同步"
+                                rm -f "${target_file}" 2>/dev/null
+                                continue
+                            fi
+                        else
+                            # 自动重试失败，跳过
+                            echo -e "      ${RED}[ERROR]${NC} ${isp} 线路: 自动重新测速失败，跳过本次同步"
+                            rm -f "${target_file}" 2>/dev/null
+                            continue
+                        fi
                     fi
                     
                     echo -e "    ${GREEN}[OK]${NC} ${isp} 线路: 已写入 ${actual_count} 个最优 IP 到: ${target_file} (限制: ${max_ips})"
