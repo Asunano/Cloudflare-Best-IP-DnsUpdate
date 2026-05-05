@@ -615,7 +615,6 @@ generate_config_simple() {
     return 0
 }
 
-# ====================== 【函数：多线路参数配置】 ======================
 # ====================== 【函数：生成高级配置】 ======================
 generate_config_advanced() {
     # 使用 jq 创建完整的 JSON 配置文件
@@ -729,7 +728,6 @@ view_config() {
     local enabled threads colo ping_times download_count
     local latency_max packet_loss_max speed_min show_count
     local take_ip_num max_retry output_html enable_log
-    local multi_line_enabled
     
     enabled="$(jq -r '.enabled // false' "${CONFIG_FILE}")"
     threads="$(jq -r '.cfst.threads // 200' "${CONFIG_FILE}")"
@@ -744,7 +742,6 @@ view_config() {
     max_retry="$(jq -r '.speed_test.max_retry // 3' "${CONFIG_FILE}")"
     output_html="$(jq -r '.speed_test.output_html // true' "${CONFIG_FILE}")"
     enable_log="$(jq -r '.speed_test.enable_log // true' "${CONFIG_FILE}")"
-    multi_line_enabled="$(jq -r '.multi_line.enabled // false' "${CONFIG_FILE}")"
     
     # 格式化状态显示
     local status_enabled
@@ -766,13 +763,6 @@ view_config() {
         status_log="${GRAY}[关闭]${NC}"
     fi
     
-    local status_multiline
-    if [[ "${multi_line_enabled}" = "true" ]]; then
-        status_multiline="${GREEN}[已启用]${NC}"
-    else
-        status_multiline="${GRAY}[未启用]${NC}"
-    fi
-    
     echo ""
     echo -e "${CYAN}+------------------------------------------------------------+${NC}"
     echo -e " ${YELLOW}CF-IP 优选配置概览${NC}"
@@ -792,20 +782,6 @@ view_config() {
     echo -e "   $(printf '%-22s' "最大丢包: ${YELLOW}${packet_loss_max}%${NC}")$(printf '%-22s' "最大重试: ${YELLOW}${max_retry} 次${NC}")"
     echo -e "   $(printf '%-22s' "最低速度: ${YELLOW}${speed_min} MB/s${NC}")$(printf '%-22s' "HTML 报告: ${status_html}")"
     echo -e "   $(printf '%-22s' "显示数量: ${YELLOW}${show_count} 个${NC}")$(printf '%-22s' "运行日志: ${status_log}")"
-    
-    echo ""
-    echo -e " ${GREEN}[多线路支持]${NC}"
-    echo -e "   状态: ${status_multiline}"
-    
-    if [[ "${multi_line_enabled}" = "true" ]]; then
-        local colo_mobile colo_unicom colo_telecom
-        colo_mobile="$(jq -r '.multi_line.colo_mobile // ""' "${CONFIG_FILE}")"
-        colo_unicom="$(jq -r '.multi_line.colo_unicom // ""' "${CONFIG_FILE}")"
-        colo_telecom="$(jq -r '.multi_line.colo_telecom // ""' "${CONFIG_FILE}")"
-        [[ -n "${colo_mobile}" ]] && echo -e "   $(printf '%-18s' "移动节点: ${YELLOW}${colo_mobile}${NC}")"
-        [[ -n "${colo_unicom}" ]] && echo -e "   $(printf '%-18s' "联通节点: ${YELLOW}${colo_unicom}${NC}")"
-        [[ -n "${colo_telecom}" ]] && echo -e "   $(printf '%-18s' "电信节点: ${YELLOW}${colo_telecom}${NC}")"
-    fi
     
     echo ""
     echo -e "${CYAN}+------------------------------------------------------------+${NC}"
