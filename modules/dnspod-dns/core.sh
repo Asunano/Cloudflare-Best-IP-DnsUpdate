@@ -114,9 +114,9 @@ if [[ ! -f "${CONFIG_FILE}" ]]; then
         
         if [[ "$choice" =~ ^[Yy]$ ]] || [[ -z "$choice" ]]; then
             echo ""
-            echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+            echo -e "${CYAN}+------------------------------------------------------------+${NC}"
             echo -e "${GREEN}正在启动快速配置向导...${NC}"
-            echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+            echo -e "${CYAN}+------------------------------------------------------------+${NC}"
             echo ""
             exec bash "$ROOT_DIR/modules/dnspod-dns/setup.sh"
         else
