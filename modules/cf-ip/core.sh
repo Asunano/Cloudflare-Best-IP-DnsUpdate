@@ -261,12 +261,39 @@ cd "$(dirname "$CFST_BIN")" || exit 1
 "${CMD[@]}" > "${LOG_FILE}" 2>&1 &
 CFST_PID=$!
 
+# ==================== 文件大小获取函数 ====================
+# 兼容 Linux、macOS、BSD 系统
+get_file_size() {
+    local file="$1"
+    local size
+    
+    if [[ ! -f "${file}" ]]; then
+        echo "0"
+        return
+    fi
+    
+    # 优先使用 stat 命令（macOS/BSD 格式）
+    if stat --version >/dev/null 2>&1; then
+        # Linux stat
+        size=$(stat -c %s "${file}" 2>/dev/null)
+    else
+        # macOS/BSD stat
+        size=$(stat -f %z "${file}" 2>/dev/null)
+    fi
+    
+    # 降级方案：wc -c（去除空格）
+    if [[ -z "${size}" ]] || [[ ! "${size}" =~ ^[0-9]+$ ]]; then
+        size=$(wc -c < "${file}" 2>/dev/null | tr -d '[:space:]')
+    fi
+    
+    echo "${size:-0}"
+}
+
 # ==================== 进度条显示函数 ====================
 # 参数：$1=当前值, $2=总值, $3=阶段提示文本
 display_progress() {
     local current="$1"
     local total="$2"
-    local hint="$3"
     
     # 强制限制当前值 ≤ 总值，防止进度溢出
     if [[ ${current} -gt ${total} ]]; then
@@ -278,10 +305,10 @@ display_progress() {
     local filled=$((progress * progress_bar_width / 100))
     local empty=$((progress_bar_width - filled))
     
-    # 构建进度条
-    local bar=""
-    for ((i=0; i<filled; i++)); do bar+="█"; done
-    for ((i=0; i<empty; i++)); do bar+="░"; done
+    # 优化：使用 printf + tr 生成进度条，比 for 循环快得多
+    local bar
+    bar=$(printf '%*s' "${filled}" '' | tr ' ' '█')
+    bar+=$(printf '%*s' "${empty}" '' | tr ' ' '░')
     
     echo -ne "\r${CYAN}  [${bar}] ${progress}% (${current}/${total})${NC}   "
 }
@@ -291,12 +318,12 @@ display_progress() {
 parse_and_display_progress() {
     local log_file="$1"
     local current_stage="$2"
-    local bar_width="$3"
     
     if [[ "${current_stage}" = "ping" ]]; then
         # 延迟阶段：提取 "可用: XXXX / YYYY" 格式
+        # 优化：只读取最后 100 行，避免全量检索
         local ping_line
-        ping_line=$(grep '可用:' "${log_file}" 2>/dev/null | tail -1)
+        ping_line=$(tail -n 100 "${log_file}" 2>/dev/null | grep '可用:' | tail -1)
         
         if [[ -n "${ping_line}" ]]; then
             # 使用 grep -oE 提取纯数字，兼容性更好
@@ -313,7 +340,7 @@ parse_and_display_progress() {
                 if [[ -n "${available_count}" ]] && [[ -n "${total_count}" ]] && \
                    [[ "${available_count}" =~ ^[0-9]+$ ]] && [[ "${total_count}" =~ ^[0-9]+$ ]] && \
                    [[ "${total_count}" -gt 0 ]]; then
-                    display_progress "${available_count}" "${total_count}" "可用"
+                    display_progress "${available_count}" "${total_count}"
                     return 0
                 fi
             fi
@@ -321,9 +348,9 @@ parse_and_display_progress() {
         echo -ne "\r${CYAN}  [进度] 正在测速中...${NC}   "
     else
         # 下载阶段：提取 "X / 10" 格式的进度
-        # 使用 tail 读取最新日志，兼容 macOS/BSD
+        # 优化：只读取最后 100 行
         local download_line
-        download_line=$(grep -E '^[0-9]+ / [0-9]+' "${log_file}" 2>/dev/null | tail -1)
+        download_line=$(tail -n 100 "${log_file}" 2>/dev/null | grep -E '^[0-9]+ / [0-9]+' | tail -1)
         
         if [[ -n "${download_line}" ]]; then
             # 使用 grep -oE 提取纯数字
@@ -340,7 +367,7 @@ parse_and_display_progress() {
                 if [[ -n "${download_current}" ]] && [[ -n "${download_total}" ]] && \
                    [[ "${download_current}" =~ ^[0-9]+$ ]] && [[ "${download_total}" =~ ^[0-9]+$ ]] && \
                    [[ "${download_total}" -gt 0 ]]; then
-                    display_progress "${download_current}" "${download_total}" "下载"
+                    display_progress "${download_current}" "${download_total}"
                     return 0
                 fi
             fi
@@ -380,14 +407,16 @@ monitor_progress() {
         empty_loop_count=0
         
         # 检查日志文件是否有新内容
+        # 优化：使用 get_file_size 函数，兼容所有系统
         local current_log_size
-        current_log_size=$(wc -c < "${log_file}" 2>/dev/null || echo "0")
+        current_log_size=$(get_file_size "${log_file}")
         
         if [[ "${current_log_size}" -gt "${last_log_size}" ]]; then
             last_log_size=${current_log_size}
             
             # 检测是否进入第二阶段（下载测速）
-            if [[ "${stage}" = "ping" ]] && grep -q "开始下载测速" "${log_file}" 2>/dev/null; then
+            # 优化：只检查最后 100 行
+            if [[ "${stage}" = "ping" ]] && tail -n 100 "${log_file}" 2>/dev/null | grep -q "开始下载测速"; then
                 stage="download"
                 echo -e "\r${CYAN}  [进度] 延迟测速完成，正在进行下载测速...          ${NC}"
                 echo -e "${GRAY}  第二阶段: 下载速度测试${NC}"
