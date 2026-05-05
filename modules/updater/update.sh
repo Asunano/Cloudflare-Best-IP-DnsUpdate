@@ -227,6 +227,7 @@ download_file() {
                 echo -e "  ${RED}[FAIL]${NC} ${display_name} (哈希校验失败)"
                 echo -e "    预期: ${expected_hash}"
                 echo -e "    实际: ${actual_hash}"
+                echo -e "    ${YELLOW}提示: 这可能是网络缓存导致的，请稍后重试${NC}"
                 rm -f "${temp_file}"
                 return 1
             fi
@@ -370,11 +371,18 @@ perform_update() {
     echo -e "  远程版本: ${CYAN}${remote_version}${NC}"
     echo ""
     
-    if [[ "${local_version}" == "${remote_version}" ]]; then
-        echo -e "${GREEN}[OK] 已是最新版本，无需更新${NC}"
+    # 【特殊处理】如果本地版本是 unknown（首次安装或 version.txt 损坏），直接全量更新
+    if [[ "${local_version}" == "unknown" ]]; then
+        echo -e "${YELLOW}[INFO] 检测到首次安装或版本文件损坏，执行全量更新...${NC}"
         echo ""
-        read -r -p "按回车键返回..."
-        return 0
+    else
+        # 版本号相同，无需更新
+        if [[ "${local_version}" == "${remote_version}" ]]; then
+            echo -e "${GREEN}[OK] 已是最新版本，无需更新${NC}"
+            echo ""
+            read -r -p "按回车键返回..."
+            return 0
+        fi
     fi
     
     echo -e "${YELLOW}[INFO] 开始更新...${NC}"
