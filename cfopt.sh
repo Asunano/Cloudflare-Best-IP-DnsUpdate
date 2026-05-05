@@ -173,7 +173,8 @@ SCRIPT_VERSION="0.1"
 
 # GitHub 原始地址和镜像地址（用于加速国内访问）
 REMOTE_URL="https://raw.githubusercontent.com/Asunano/Cloudflare-Best-IP-DnsUpdate/main"
-REMOTE_URL_MIRROR="https://hk.gh-proxy.org/https://raw.githubusercontent.com/Asunano/Cloudflare-Best-IP-DnsUpdate/main"
+# 自定义镜像源（优先使用）
+REMOTE_URL_MIRROR="https://mirror.drxian.qzz.io/scripts/Cloudflare-Best-IP-DnsUpdate"
 VERSION_FILE_REMOTE="${REMOTE_URL}/version.txt"
 
 # 根据用户权限动态确定安装目录
