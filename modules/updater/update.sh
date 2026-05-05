@@ -88,6 +88,25 @@ get_component_hash() {
     return 1
 }
 
+# 从 version.txt 中获取指定组件的版本号
+get_component_version() {
+    local component_key="$1"
+    local version_content="$2"
+    
+    # 从 version.txt 中提取对应组件的版本号
+    local version_line
+    version_line=$(echo "${version_content}" | grep "^${component_key}=" | head -1)
+    
+    if [[ -n "${version_line}" ]]; then
+        # 格式: KEY=VERSION:HASH
+        echo "${version_line}" | cut -d'=' -f2 | cut -d':' -f1
+        return 0
+    fi
+    
+    echo ""
+    return 1
+}
+
 # 获取本地版本号
 get_local_version() {
     if [[ -f "${VERSION_FILE}" ]]; then
@@ -184,10 +203,6 @@ check_updates() {
     echo -e "${CYAN}+------------------------------------------------------------+${NC}"
     echo ""
     
-    # 获取版本信息
-    local local_version
-    local_version=$(get_local_version)
-    
     echo -e "${CYAN}[INFO] 正在检查更新...${NC}"
     local remote_versions
     remote_versions=$(get_remote_version)
@@ -200,85 +215,74 @@ check_updates() {
         return 1
     fi
     
-    # 提取版本号（第一行非注释内容）
-    local remote_version
-    remote_version=$(echo "${remote_versions}" | grep -v '^#' | grep -v '^$' | head -1 | cut -d'=' -f2 | cut -d':' -f1)
-    
-    echo -e "  本地版本: ${GRAY}${local_version}${NC}"
-    echo -e "  远程版本: ${CYAN}${remote_version}${NC}"
-    echo ""
-    
     local needs_update=false
     local update_list=()
     
-    # 【情况1】版本号不同 → 直接标记所有组件需要更新
-    if [[ "${local_version}" != "${remote_version}" ]]; then
-        echo -e "${YELLOW}[INFO] 发现新版本！${NC}"
+    # 逐个检查每个组件
+    for component in "${COMPONENTS[@]}"; do
+        IFS=':' read -r key local_path remote_path display_name <<< "${component}"
+        
+        # 获取云端版本号和哈希值
+        local remote_version
+        remote_version=$(get_component_version "${key}" "${remote_versions}")
+        local remote_hash
+        remote_hash=$(get_component_hash "${key}" "${remote_versions}")
+        
+        if [[ -z "${remote_version}" ]] || [[ -z "${remote_hash}" ]]; then
+            continue
+        fi
+        
+        # 计算本地文件哈希值
+        local local_file="${ROOT_DIR}/${local_path}"
+        local local_hash=""
+        if [[ -f "${local_file}" ]]; then
+            local_hash=$(sha256sum "${local_file}" | awk '{print $1}')
+        fi
+        
+        # 【策略】先对比版本号，再对比哈希值
+        local should_update=false
+        
+        if [[ "${local_hash}" != "${remote_hash}" ]]; then
+            # 哈希值不同，需要进一步判断
+            if [[ "${remote_version}" != "0.1" ]]; then
+                # 云端版本号不是 0.1，说明是正式发布，直接更新
+                should_update=true
+            else
+                # 云端版本号是 0.1，可能是开发中的变化，也更新
+                should_update=true
+            fi
+        fi
+        
+        if [[ "${should_update}" = true ]]; then
+            needs_update=true
+            update_list+=("${display_name}")
+        fi
+    done
+    
+    if [[ "${needs_update}" = false ]]; then
+        echo -e "${GREEN}[OK] 所有组件已是最新版本${NC}"
+        echo ""
+        read -r -p "按回车键返回..."
+        return 0
+    else
+        echo -e "${YELLOW}[INFO] 发现 ${#update_list[@]} 个组件需要更新！${NC}"
         echo ""
         echo -e "${CYAN}需要更新的组件：${NC}"
         
-        for component in "${COMPONENTS[@]}"; do
-            IFS=':' read -r key local_path remote_path display_name <<< "${component}"
-            echo -e "  • ${display_name}"
-            update_list+=("${display_name}")
+        for item in "${update_list[@]}"; do
+            echo -e "  • ${item}"
         done
         
-        needs_update=true
-    else
-        # 【情况2】版本号相同 → 逐个检查 SHA256 哈希值
-        echo -e "${CYAN}[INFO] 版本号相同，正在检查文件完整性...${NC}"
         echo ""
-        
-        for component in "${COMPONENTS[@]}"; do
-            IFS=':' read -r key local_path remote_path display_name <<< "${component}"
-            
-            # 获取云端哈希值
-            local remote_hash
-            remote_hash=$(get_component_hash "${key}" "${remote_versions}")
-            
-            if [[ -z "${remote_hash}" ]]; then
-                continue
-            fi
-            
-            # 计算本地文件哈希值
-            local local_file="${ROOT_DIR}/${local_path}"
-            local local_hash=""
-            if [[ -f "${local_file}" ]]; then
-                local_hash=$(sha256sum "${local_file}" | awk '{print $1}')
-            fi
-            
-            # 对比哈希值
-            if [[ "${local_hash}" != "${remote_hash}" ]]; then
-                needs_update=true
-                update_list+=("${display_name}")
-            fi
-        done
-        
-        if [[ "${needs_update}" = false ]]; then
-            echo -e "${GREEN}[OK] 所有组件已是最新版本${NC}"
-            echo ""
-            read -r -p "按回车键返回..."
-            return 0
-        else
-            echo -e "${YELLOW}[INFO] 发现 ${#update_list[@]} 个组件有变更！${NC}"
-            echo ""
-            echo -e "${CYAN}需要更新的组件：${NC}"
-            
-            for item in "${update_list[@]}"; do
-                echo -e "  • ${item}"
-            done
+        echo -e "${YELLOW}运行以下命令进行更新：${NC}"
+        echo -e "  ${CYAN}bash modules/updater/update.sh update${NC}"
+        echo ""
+        read -r -p "是否立即执行更新？[y/N] (默认 N): " confirm_update
+        if [[ "${confirm_update}" =~ ^[Yy]$ ]]; then
+            perform_update
         fi
+        return 0
     fi
-    
-    echo ""
-    echo -e "${YELLOW}运行以下命令进行更新：${NC}"
-    echo -e "  ${CYAN}bash modules/updater/update.sh update${NC}"
-    echo ""
-    read -r -p "是否立即执行更新？[y/N] (默认 N): " confirm_update
-    if [[ "${confirm_update}" =~ ^[Yy]$ ]]; then
-        perform_update
-    fi
-    return 0
 }
 
 # 执行更新
