@@ -13,6 +13,7 @@ RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 CYAN='\033[0;36m'
+MAGENTA='\033[0;35m'
 BOLD='\033[1m'
 GRAY='\033[0;90m'
 NC='\033[0m'
@@ -159,6 +160,7 @@ fi
 mkdir -p "${OUTPUT_DIR}" "${LOG_DIR}"
 
 # 允许外部传入特定的 COLO 列表、输出文件名和线路标识
+LINE_TAG="${3:-default}" # 【修复】先赋值 LINE_TAG，再使用它生成文件名
 TARGET_COLO="${1:-${CFST_COLO:-HKG,NRT}}"
 # 【修复】如果没有指定输出文件，根据线路标识生成唯一文件名，避免覆盖
 if [[ -n "${2:-}" ]]; then
@@ -168,7 +170,6 @@ else
     timestamp=$(date '+%Y%m%d_%H%M%S')
     OUTPUT_CSV="${OUTPUT_DIR}/result_${LINE_TAG}_${timestamp}.csv"
 fi
-LINE_TAG="${3:-default}" # 用于生成独立的进程锁
 
 # ==================== 【进程锁管理】 ====================
 LOCK_FILE="${OUTPUT_DIR}/.lock_${LINE_TAG}"
@@ -184,7 +185,8 @@ acquire_lock() {
         fi
     fi
     echo $$ > "${LOCK_FILE}"
-    trap 'rm -f "${LOCK_FILE}"' EXIT INT TERM HUP
+    # 【修复】使用双引号，确保变量正确解析
+    trap 'rm -f "'"${LOCK_FILE}"'"' EXIT INT TERM HUP
 }
 
 # 获取锁以确保同一线路不会并发执行
@@ -224,8 +226,8 @@ echo -e "   • 目标地区: ${TARGET_COLO}"
 echo -e "   • 提取数量: ${TAKE_IP_NUM}"
 echo -e "   • 输出文件: ${OUTPUT_CSV}"
 
-# 构建 cfst 命令 - 使用绝对路径
-CMD=(./cfst "-n" "${CFST_THREADS}" "-t" "${CFST_PING_TIMES}")
+# 构建 cfst 命令 - 【修复】使用绝对路径变量 CFST_BIN
+CMD=("${CFST_BIN}" "-n" "${CFST_THREADS}" "-t" "${CFST_PING_TIMES}")
 if [[ -n "${TARGET_COLO}" ]]; then CMD+=("-cfcolo" "${TARGET_COLO}"); fi
 if [[ -n "${IP_DATA_FILE}" ]]; then CMD+=("-f" "${IP_DATA_FILE}"); fi
 CMD+=("-dn" "${CFST_DOWNLOAD_COUNT}" "-dt" "${CFST_DOWNLOAD_TIME}")
@@ -272,21 +274,24 @@ get_file_size() {
         return
     fi
     
-    # 优先使用 stat 命令（macOS/BSD 格式）
-    if stat --version >/dev/null 2>&1; then
+    # 【修复】优先尝试 macOS/BSD stat（无 --version 参数）
+    if stat -f %z "${file}" >/dev/null 2>&1; then
+        # macOS/BSD stat
+        size=$(stat -f %z "${file}" 2>/dev/null)
+    elif stat -c %s "${file}" >/dev/null 2>&1; then
         # Linux stat
         size=$(stat -c %s "${file}" 2>/dev/null)
     else
-        # macOS/BSD stat
-        size=$(stat -f %z "${file}" 2>/dev/null)
-    fi
-    
-    # 降级方案：wc -c（去除空格）
-    if [[ -z "${size}" ]] || [[ ! "${size}" =~ ^[0-9]+$ ]]; then
+        # 降级方案：wc -c（去除空格）
         size=$(wc -c < "${file}" 2>/dev/null | tr -d '[:space:]')
     fi
     
-    echo "${size:-0}"
+    # 最终校验
+    if [[ -z "${size}" ]] || [[ ! "${size}" =~ ^[0-9]+$ ]]; then
+        echo "0"
+    else
+        echo "${size}"
+    fi
 }
 
 # ==================== 进度条显示函数 ====================
