@@ -41,7 +41,7 @@ show_header() {
     clear
     echo -e "${CYAN}+------------------------------------------------------------+${NC}"
     echo -e " ${BOLD}${YELLOW}Cloudflare-Best-IP-DnsUpdate v${SCRIPT_VERSION}${NC}"
-    echo -e " ${CYAN}项目仓库: https://github.com/Asunano/Cloudflare-Best-IP-DnsUpdate${NC}"
+    echo -e " ${MAGENTA}项目仓库: https://github.com/Asunano/Cloudflare-Best-IP-DnsUpdate${NC}"
     echo -e "${CYAN}+------------------------------------------------------------+${NC}"
     echo ""
 }
@@ -219,8 +219,11 @@ select_colo_nodes() {
     clear
     
     echo -e "${CYAN}+------------------------------------------------------------+${NC}"
-    echo -e "${CYAN} [步骤 3/5] 选择测速节点（地区）${NC}"
+    echo -e " ${BOLD}${YELLOW}Cloudflare-Best-IP-DnsUpdate v${SCRIPT_VERSION}${NC}"
+    echo -e " ${MAGENTA}项目仓库: https://github.com/Asunano/Cloudflare-Best-IP-DnsUpdate${NC}"
     echo -e "${CYAN}+------------------------------------------------------------+${NC}"
+    echo ""
+    echo -e "${CYAN}[步骤 3/5] 选择测速节点（地区）${NC}"
     echo ""
     echo -e " ${YELLOW}提示: 选择距离您服务器较近的地区可获得更优的延迟${NC}"
     echo ""
