@@ -48,9 +48,9 @@ LOCK_FILE="${ROOT_DIR}/modules/cf-ip/.menu.lock"
 acquire_lock() {
     if [[ -f "${LOCK_FILE}" ]]; then
         local pid
-        pid="$(cat "${LOCK_FILE}" 2>/dev/null)"
+        pid="$(cat "${LOCK_FILE}" 2>/dev/null || echo "")"
         # 校验 PID 是否有效且进程正在运行
-        if [[ -n "${pid}" ]] && kill -0 "${pid}" 2>/dev/null; then
+        if [[ -n "${pid}" ]] && [[ "${pid}" =~ ^[0-9]+$ ]] && kill -0 "${pid}" 2>/dev/null; then
             echo -e "${RED}[ERROR] 检测到另一个 CF-IP 管理进程正在运行 (PID: ${pid})。${NC}"
             echo -e "${CYAN}提示:${NC} 如果确认没有进程在运行，请手动删除: ${LOCK_FILE}"
             exit 1
@@ -67,6 +67,8 @@ acquire_lock() {
 # ====================== 【入口权限校验】 ======================
 if [[ "${CF_OPT_ENTRY:-}" != "main_menu" ]] && [[ "${CF_OPT_ENTRY:-}" != "run_sh" ]]; then
     echo -e "${RED}[ERROR] 请使用 'cfopt' 命令进入主菜单运行此模块。${NC}"
+    echo -e "${YELLOW}[INFO] 当前 CF_OPT_ENTRY='${CF_OPT_ENTRY:-空}'${NC}"
+    echo -e "${CYAN}提示:${NC} 请运行 'cfopt' 命令，然后选择 '2. CF IP 优选管理'"
     exit 1
 fi
 
