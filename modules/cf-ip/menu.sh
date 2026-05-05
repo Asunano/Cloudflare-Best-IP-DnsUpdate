@@ -460,6 +460,8 @@ configure_simple() {
         echo -e "${RED}[ERROR] 配置生成失败，请重试${NC}"
         return 1
     fi
+    
+    return 0
 }
 
 # ====================== 【函数：高级配置】 ======================
@@ -531,7 +533,12 @@ configure_advanced() {
     
     read -r -p "测速全部IP？(true/false，默认留空): " CFST_ALL_IP
     
-    generate_config_advanced
+    if ! generate_config_advanced; then
+        echo -e "${RED}[ERROR] 配置生成失败，请重试${NC}"
+        return 1
+    fi
+    
+    return 0
 }
 
 # ====================== 【函数：生成简单配置】 ======================
@@ -690,6 +697,7 @@ generate_config_advanced() {
     echo ""
     echo -e "${GREEN}[OK] 高级配置完成！${NC}"
     echo "配置文件已保存到：${CONFIG_FILE}"
+    return 0
 }
 
 # ====================== 【函数：修改配置】 ======================
