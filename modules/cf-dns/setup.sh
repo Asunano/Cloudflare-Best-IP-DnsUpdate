@@ -786,40 +786,47 @@ EOF
         if [[ ! -f "$cf_ip_config" ]]; then
             echo -e "${CYAN}正在创建 CF-IP 基础配置...${NC}"
             mkdir -p "${ROOT_DIR}/conf"
-            cat > "$cf_ip_config" << 'EOF'
-{
-    "_comment": "CF-IP 优选程序配置",
-    "_version": "0.1",
-    "cfst": {
-        "directory": "./assets/cfst",
-        "threads": 200,
-        "colo": "HKG,NRT",
-        "ping_times": 4,
-        "download_count": 10,
-        "download_time": 10,
-        "port": 443,
-        "url": "https://cf-ns.com/cdn-cgi/trace",
-        "httping": false,
-        "latency_max": 9999,
-        "packet_loss_max": 100,
-        "speed_min": 0,
-        "show_count": 20,
-        "ip_file": "",
-        "disable_download": false,
-        "all_ip": false
-    },
-    "speed_test": {
-        "take_ip_num": 5,
-        "output_html": true,
-        "max_retry": 3,
-        "enable_log": true
-    },
-    "paths": {
-        "output_dir": "./assets/data/cf-ip",
-        "log_dir": "./logs/cf-ip"
-    }
-}
-EOF
+            
+            # 使用 jq 安全地生成 JSON 配置文件
+            local temp_file
+            temp_file=$(mktemp)
+            
+            jq -n '{
+                "_comment": "CF-IP 优选程序配置",
+                "_version": "0.1",
+                "enabled": true,
+                "cfst": {
+                    "directory": "./assets/cfst",
+                    "binary": "cfst",
+                    "threads": 200,
+                    "colo": "HKG,NRT",
+                    "ping_times": 4,
+                    "download_count": 10,
+                    "download_time": 10,
+                    "port": 443,
+                    "url": "https://cf-ns.com/cdn-cgi/trace",
+                    "httping": false,
+                    "latency_max": 9999,
+                    "packet_loss_max": 100,
+                    "speed_min": 0,
+                    "show_count": 20,
+                    "ip_file": "",
+                    "disable_download": false,
+                    "all_ip": false
+                },
+                "speed_test": {
+                    "take_ip_num": 5,
+                    "output_html": true,
+                    "max_retry": 3,
+                    "enable_log": true
+                },
+                "paths": {
+                    "output_dir": "./assets/data/cf-ip",
+                    "log_dir": "./logs/cf-ip"
+                }
+            }' > "$temp_file"
+            
+            mv "$temp_file" "$cf_ip_config"
             chmod 600 "$cf_ip_config"
             echo -e "${GREEN}[OK] CF-IP 基础配置已创建${NC}"
             echo ""
