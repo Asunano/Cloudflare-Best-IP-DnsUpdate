@@ -160,7 +160,14 @@ mkdir -p "${OUTPUT_DIR}" "${LOG_DIR}"
 
 # 允许外部传入特定的 COLO 列表、输出文件名和线路标识
 TARGET_COLO="${1:-${CFST_COLO:-HKG,NRT}}"
-OUTPUT_CSV="${2:-${OUTPUT_DIR}/result.csv}"
+# 【修复】如果没有指定输出文件，根据线路标识生成唯一文件名，避免覆盖
+if [[ -n "${2:-}" ]]; then
+    OUTPUT_CSV="$2"
+else
+    # 使用时间戳和线路标识生成唯一文件名
+    timestamp=$(date '+%Y%m%d_%H%M%S')
+    OUTPUT_CSV="${OUTPUT_DIR}/result_${LINE_TAG}_${timestamp}.csv"
+fi
 LINE_TAG="${3:-default}" # 用于生成独立的进程锁
 
 # ==================== 【进程锁管理】 ====================
@@ -352,7 +359,6 @@ if [[ "${EXIT_CODE}" -eq 0 ]] && [[ -f "${OUTPUT_CSV}" ]]; then
     
     # 【增强】验证测速结果是否有效
     if [[ -f "${OUTPUT_CSV}" ]]; then
-        local valid_ip_count
         valid_ip_count=$(awk -F',' 'NR>1 && $6>0 {count++} END {print count+0}' "${OUTPUT_CSV}")
         
         if [[ "${valid_ip_count}" -eq 0 ]]; then
