@@ -160,83 +160,6 @@ download_with_retry() {
     return 1
 }
 
-# ====================== 【函数：下载 cfst 测速程序】 ======================
-download_cfst() {
-    local arch
-    arch="$(uname -m)"
-    
-    # 映射架构名称（使用 cfst 官方命名）
-    case "${arch}" in
-        x86_64|amd64) arch="amd64" ;;
-        aarch64|arm64) arch="arm64" ;;
-        armv7l|armv7) arch="arm" ;;
-        i386|i686) arch="386" ;;
-        *) 
-            echo -e "${RED}[ERROR] 不支持的系统架构: ${arch}${NC}"
-            return 1
-            ;;
-    esac
-    
-    # 构建文件名
-    local filename="cfst_linux_${arch}.tar.gz"
-    
-    # 国内镜像加速列表（按优先级排序）
-    local mirrors=(
-        "https://gh-proxy.org/https://github.com/XIU2/CloudflareSpeedTest/releases/latest/download/${filename}"
-        "https://cdn.gh-proxy.org/https://github.com/XIU2/CloudflareSpeedTest/releases/latest/download/${filename}"
-        "https://ghfast.top/https://github.com/XIU2/CloudflareSpeedTest/releases/latest/download/${filename}"
-        "https://wget.la/https://github.com/XIU2/CloudflareSpeedTest/releases/latest/download/${filename}"
-    )
-    
-    echo -e "${CYAN}[INFO] 系统架构: ${arch}${NC}"
-    echo -e "${CYAN}[INFO] 正在下载 cfst...${NC}"
-    
-    # 创建目标目录
-    mkdir -p "${CFST_DIR}"
-    cd "${CFST_DIR}" || return 1
-    
-    # 尝试从镜像源下载
-    local download_success=false
-    for mirror_url in "${mirrors[@]}"; do
-        echo -e "${CYAN}[INFO] 尝试镜像: ${mirror_url%%/https*}...${NC}"
-        if wget -N "${mirror_url}" 2>/dev/null; then
-            download_success=true
-            break
-        fi
-    done
-    
-    if [[ "${download_success}" != "true" ]]; then
-        echo -e "${RED}[ERROR] 所有下载源均失败，请检查网络连接${NC}"
-        return 1
-    fi
-    
-    # 解压（直接覆盖，无需删除旧文件）
-    echo -e "${CYAN}[INFO] 正在解压...${NC}"
-    if ! tar -zxf "${filename}" 2>/dev/null; then
-        echo -e "${RED}[ERROR] 解压失败${NC}"
-        return 1
-    fi
-    
-    # 删除 tar.gz 压缩包（节省空间）
-    rm -f "${filename}"
-    
-    # 检查解压后的文件结构
-    if [[ -f "cfst" ]]; then
-        # 直接解压出 cfst 文件（最常见的情况）
-        chmod +x cfst
-    elif [[ -d "CloudflareSpeedTest" ]] && [[ -f "CloudflareSpeedTest/cfst" ]]; then
-        # 解压到子目录，移动到当前目录
-        mv CloudflareSpeedTest/cfst ./
-        chmod +x cfst
-        rm -rf CloudflareSpeedTest
-    else
-        echo -e "${RED}[ERROR] 未找到 cfst 可执行文件${NC}"
-        return 1
-    fi
-    
-    echo -e "${GREEN}[OK] cfst 已安装到: ${CFST_BIN}${NC}"
-    return 0
-}
 
 # ====================== 【函数：检查配置文件】 ======================
 check_config() {
@@ -320,63 +243,11 @@ show_main_menu() {
         echo -e " ${RED}[NONE] 配置文件: 未找到 (请先运行 cfopt 安装)"
     fi
     
-    # 检查测速程序并自动下载
+    # 检查测速程序状态
     if [[ -f "${CFST_BIN}" ]]; then
         echo -e " ${GREEN}[OK] 测速程序: cfst 已就绪"
     else
-        echo -e " ${RED}[NONE] 测速程序: cfst 缺失"
-        echo -e "${CYAN}+------------------------------------------------------------+"
-        echo -e " ${YELLOW}正在自动下载测速程序 cfst...${NC}"
-        echo -e "${CYAN}+------------------------------------------------------------+"
-        echo ""
-        
-        # 显示下载提示和动画效果（在后台运行）
-        local spinner_pid
-        (
-            while true; do
-                for i in '⠋' '⠙' '⠹' '⠸' '⠼' '⠴' '⠦' '⠧' '⠇' '⠏'; do
-                    printf "\r   ${CYAN}%s 正在从 GitHub 下载 cfst...${NC}" "$i"
-                    sleep 0.1
-                done
-            done
-        ) &
-        spinner_pid=$!
-        
-        # 执行下载（禁用 download_cfst 内部的输出，避免冲突）
-        if download_cfst > /dev/null 2>&1; then
-            # 停止动画
-            kill $spinner_pid 2>/dev/null || true
-            wait $spinner_pid 2>/dev/null || true
-            
-            echo -e "\r   ${GREEN}✓ 下载完成！cfst 已成功安装${NC}"
-            echo ""
-            echo -e "   ${GRAY}安装位置: ${CFST_BIN}${NC}"
-            echo -e "   ${GRAY}版本信息: $(bash "${CFST_BIN}" --version 2>/dev/null | head -1 || echo '未知')${NC}"
-            echo ""
-            echo -e "   ${GREEN}即将返回主菜单...${NC}"
-            sleep 1.5
-        else
-            # 停止动画
-            kill $spinner_pid 2>/dev/null || true
-            wait $spinner_pid 2>/dev/null || true
-            
-            echo -e "\r   ${RED}✗ 下载失败${NC}"
-            echo ""
-            echo -e "   ${YELLOW}可能的原因：${NC}"
-            echo -e "   • 网络连接不稳定或无法访问 GitHub"
-            echo -e "   • 系统架构不支持 (${ARCH})"
-            echo -e "   • 防火墙或代理设置问题"
-            echo ""
-            echo -e "   ${CYAN}建议操作：${NC}"
-            echo -e "   • 检查网络连接后重试"
-            echo -e "   • 手动下载: https://github.com/XIU2/CloudflareSpeedTest/releases"
-            echo ""
-            read -r -p "   按回车键继续..." || true
-        fi
-        
-        # 重新显示菜单（现在 cfst 应该已存在）
-        show_main_menu
-        return
+        echo -e " ${RED}[NONE] 测速程序: cfst 缺失（请重新运行 cfopt 初始化）"
     fi
     
     echo -e "${CYAN}+------------------------------------------------------------+"
@@ -393,17 +264,6 @@ show_main_menu() {
 
 # ====================== 【函数：配置管理入口】 ======================
 manage_config() {
-    # 智能检测并下载 cfst（如果不存在）
-    if [[ ! -f "${CFST_BIN}" ]]; then
-        echo -e "\n${YELLOW}[INFO] 检测到测速程序 cfst 未安装，即将自动下载...${NC}"
-        if ! download_cfst; then
-            echo -e "${RED}[ERROR] cfst 下载失败，请检查网络连接后重试。${NC}"
-            pause_and_continue
-            return
-        fi
-        echo -e "${GREEN}[OK] cfst 下载成功！${NC}"
-        echo ""
-    fi
     
     if [[ ! -f "${CONFIG_FILE}" ]]; then
         echo -e "${CYAN}[INFO] 首次配置向导启动...${NC}"
@@ -1178,17 +1038,6 @@ remove_cron() {
 
 # ====================== 【函数：手动执行测速】 ======================
 run_test() {
-    # 智能检测并下载 cfst（如果不存在）
-    if [[ ! -f "${CFST_BIN}" ]]; then
-        echo -e "\n${YELLOW}[INFO] 检测到测速程序 cfst 未安装，即将自动下载...${NC}"
-        if ! download_cfst; then
-            echo -e "${RED}[ERROR] cfst 下载失败，请检查网络连接后重试。${NC}"
-            pause_and_continue
-            return
-        fi
-        echo -e "${GREEN}[OK] cfst 下载成功！${NC}"
-        echo ""
-    fi
     
     if [[ ! -f "${IP_AUTO_SCRIPT}" ]]; then
         echo -e "${RED}[ERROR] 核心脚本 core.sh 不存在${NC}"
@@ -1272,15 +1121,7 @@ while true; do
     case ${CHOICE} in
         1) manage_config ;;
         2) view_config ;;
-        3) 
-            # 【新增】如果 cfst 不存在，先下载
-            if [[ ! -f "${CFST_BIN}" ]]; then
-                echo -e "\n${YELLOW}[INFO] 检测到测速程序 cfst 未安装，即将自动下载...${NC}"
-                download_cfst
-            else
-                run_test
-            fi
-            ;;
+        3) run_test ;;
         4) manage_cron ;;
         5) view_logs ;;
         0) 
