@@ -482,13 +482,16 @@ generate_dnspod_config() {
                 }
             }' > "$temp_file"
     else
+        # 按域名独立存储 IP 列表，避免多域名冲突
+        local ip_file="${ROOT_DIR}/assets/data/dnspod-dns/${full_domain}.txt"
+            
         jq -n \
             --arg domain "$domain" \
             --arg id "$dnspod_id" \
             --arg token "$dnspod_token" \
             --arg mode "single" \
             --arg record_name "$record_name" \
-            --arg ip_file "${ROOT_DIR}/assets/data/dnspod-dns/ip_list.txt" \
+            --arg ip_file "${ip_file}" \
             '{
                 "_comment": "DNSPod DNS 更新器配置",
                 "_version": "0.1",
@@ -548,12 +551,15 @@ generate_cf_dns_config() {
     local temp_file
     temp_file=$(mktemp)
     
+    # 按域名独立存储 IP 列表，避免多域名冲突
+    local ip_file="${ROOT_DIR}/assets/data/cf-dns/${full_domain}.txt"
+    
     jq -n \
         --arg domain "$domain" \
         --arg token "$cf_token" \
         --arg zone_id "$cf_zone_id" \
         --arg record_name "$record_name" \
-        --arg ip_file "${ROOT_DIR}/assets/data/cf-dns/ip_list.txt" \
+        --arg ip_file "${ip_file}" \
         '{
             "_comment": "Cloudflare DNS 更新器配置",
             "_version": "0.1",
@@ -1136,7 +1142,7 @@ deploy_cloudflare_dns() {
         # 执行 IP 同步，将测速结果同步到 DNS 模块的 IP 文件
         echo -e "${CYAN}正在同步 IP 数据...${NC}"
         bash "${ROOT_DIR}/modules/ip-sync/sync.sh" || true
-        echo -e "${GREEN}[OK] IP 数据已同步到: ${ROOT_DIR}/assets/data/cf-dns/ip_list.txt${NC}"
+        echo -e "${GREEN}[OK] IP 数据已同步到: ${ROOT_DIR}/assets/data/cf-dns/${full_domain}.txt${NC}"
     fi
     
     # 第5步：设置定时任务
@@ -1195,8 +1201,8 @@ deploy_cloudflare_dns() {
     echo -e "   • 选择 '6. 检查组件更新' 保持最新版本"
     echo ""
     echo -e " ${CYAN}配置文件位置：${NC}"
-    echo -e "   • DNS 配置: ${GREEN}${ROOT_DIR}/conf/cf-dns/${domain}.json${NC}"
-    echo -e "   • IP 列表文件: ${GREEN}${ROOT_DIR}/assets/data/cf-dns/ip_list.txt${NC}"
+    echo -e "   • DNS 配置: ${GREEN}${ROOT_DIR}/conf/cf-dns/${full_domain}.json${NC}"
+    echo -e "   • IP 列表文件: ${GREEN}${ROOT_DIR}/assets/data/cf-dns/${full_domain}.txt${NC}"
     echo ""
     
     read -r -p "按回车键返回主菜单..."
@@ -1342,7 +1348,7 @@ deploy_dnspod_single() {
         # 执行 IP 同步，将测速结果同步到 DNS 模块的 IP 文件
         echo -e "${CYAN}正在同步 IP 数据...${NC}"
         bash "${ROOT_DIR}/modules/ip-sync/sync.sh" || true
-        echo -e "${GREEN}[OK] IP 数据已同步到: ${ROOT_DIR}/assets/data/cf-dns/ip_list.txt${NC}"
+        echo -e "${GREEN}[OK] IP 数据已同步到: ${ROOT_DIR}/assets/data/cf-dns/${full_domain}.txt${NC}"
     fi
     
     # 第5步：设置定时任务
@@ -1401,8 +1407,8 @@ deploy_dnspod_single() {
     echo -e "   • 选择 '6. 检查组件更新' 保持最新版本"
     echo ""
     echo -e " ${CYAN}配置文件位置：${NC}"
-    echo -e "   • DNS 配置: ${GREEN}${ROOT_DIR}/conf/dnspod/${domain}.json${NC}"
-    echo -e "   • IP 列表文件: ${GREEN}${ROOT_DIR}/assets/data/cf-dns/ip_list.txt${NC}"
+    echo -e "   • DNS 配置: ${GREEN}${ROOT_DIR}/conf/dnspod/${full_domain}.json${NC}"
+    echo -e "   • IP 列表文件: ${GREEN}${ROOT_DIR}/assets/data/dnspod-dns/${full_domain}.txt${NC}"
     echo ""
     
     read -r -p "按回车键返回主菜单..."
@@ -1552,8 +1558,8 @@ deploy_dnspod_multi() {
     echo -e "   • 选择 '6. 检查组件更新' 保持最新版本"
     echo ""
     echo -e " ${CYAN}配置文件位置：${NC}"
-    echo -e "   • DNS 配置: ${GREEN}${ROOT_DIR}/conf/dnspod/${domain}.json${NC}"
-    echo -e "   • IP 列表文件: ${GREEN}${ROOT_DIR}/assets/data/cf-dns/ip_list.txt${NC}"
+    echo -e "   • DNS 配置: ${GREEN}${ROOT_DIR}/conf/dnspod/${full_domain}.json${NC}"
+    echo -e "   • IP 列表文件: ${GREEN}${ROOT_DIR}/assets/data/dnspod-dns/${full_domain}.txt${NC}"
     echo ""
     
     read -r -p "按回车键返回主菜单..."
