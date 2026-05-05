@@ -440,11 +440,10 @@ perform_update() {
         echo ""
         echo -e "${YELLOW}[INFO] 建议重新启动以应用所有更新${NC}"
         
-        # 如果更新了 cfopt.sh 或 updater.sh，给出明确提示
-        if [[ -f "${INSTALL_DIR}/cfopt.sh.new" ]] || [[ -f "${ROOT_DIR}/modules/updater/update.sh.new" ]]; then
+        # 如果更新了 updater.sh，给出明确提示（cfopt.sh 直接覆盖，无需特殊处理）
+        if [[ -f "${ROOT_DIR}/modules/updater/update.sh.new" ]]; then
             echo -e "${CYAN}注意: 以下组件将在下次运行时自动应用：${NC}"
-            [[ -f "${INSTALL_DIR}/cfopt.sh.new" ]] && echo -e "  • 主程序 (cfopt.sh)"
-            [[ -f "${ROOT_DIR}/modules/updater/update.sh.new" ]] && echo -e "  • 更新组件 (updater.sh)"
+            echo -e "  • 更新组件 (updater.sh)"
         fi
     fi
     
