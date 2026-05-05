@@ -22,6 +22,9 @@ NC='\033[0m'
 # 将 Cloudflare Colo 代码转换为中文名称
 convert_colo_to_name() {
     local colo_code="$1"
+    # 【修复】统一转换为大写，支持小写输入
+    colo_code=$(echo "${colo_code}" | tr '[:lower:]' '[:upper:]')
+    
     case "${colo_code}" in
         HKG) echo "香港" ;;
         NRT|TYO) echo "东京" ;;
@@ -259,6 +262,8 @@ echo ""
 echo -e "${GRAY}  第一阶段: 延迟测速 (TCP Ping)${NC}"
 
 # 切换到 cfst 所在目录执行
+# 【修复】保存原目录，测速完成后返回
+ORIGINAL_DIR="$(pwd)"
 cd "$(dirname "$CFST_BIN")" || exit 1
 
 # 启动测速程序（后台运行）
@@ -558,13 +563,36 @@ done
 # 清屏，显示结果
 clear 2>/dev/null || true
 
+# 【修复】返回原目录，避免影响上层脚本
+cd "${ORIGINAL_DIR}" || exit 1
+
 echo ""
 echo -e "${GREEN}[OK] 测速完成！${NC}"
 echo ""
 
 # 展示测速结果摘要（从配置文件读取）
-total_ips=$(wc -l < "${OUTPUT_CSV}")
-total_ips=$((total_ips - 1))  # 减去表头
+# 【修复】检查 CSV 文件是否存在且非空
+if [[ ! -f "${OUTPUT_CSV}" ]]; then
+    echo -e "${RED}[ERROR] 测速结果文件不存在: ${OUTPUT_CSV}${NC}"
+    exit 1
+fi
+
+# 【修复】检查是否有有效数据（至少有一行数据，不含表头）
+data_lines=$(wc -l < "${OUTPUT_CSV}")
+data_lines=$((data_lines - 1))  # 减去表头
+
+if [[ ${data_lines} -le 0 ]]; then
+    echo -e "${YELLOW}[WARN] 测速完成，但未找到有效 IP 数据${NC}"
+    echo -e "${CYAN}[提示] 可能的原因：${NC}"
+    echo -e "  • 所有 IP 均不可达"
+    echo -e "  • 网络环境异常"
+    echo -e "  • 测速配置过于严格"
+    echo ""
+    echo -e "${GRAY}结果文件: ${OUTPUT_CSV}${NC}"
+    exit 0
+fi
+
+total_ips=${data_lines}
 available_ips=$((total_ips > TAKE_IP_NUM ? TAKE_IP_NUM : total_ips))
 
 # 转换 Colo 代码为中文
@@ -582,11 +610,19 @@ done
 # 获取最优 IP 的详细信息
 best_ip_line=$(head -n 2 "${OUTPUT_CSV}" | tail -n 1)
 
-# 使用 awk 解析 CSV，更健壮地处理字段
-best_ip=$(echo "$best_ip_line" | awk -F',' '{print $1}' | xargs)
-delay=$(echo "$best_ip_line" | awk -F',' '{print $5}' | xargs)
-speed=$(echo "$best_ip_line" | awk -F',' '{print $6}' | xargs)
-region=$(echo "$best_ip_line" | awk -F',' '{print $7}' | xargs | tr -d '\r')
+# 【修复】使用 awk 解析 CSV，并处理 Windows 换行符 \r
+best_ip=$(echo "$best_ip_line" | awk -F',' '{gsub(/\r/, "", $1); print $1}' | xargs)
+delay=$(echo "$best_ip_line" | awk -F',' '{gsub(/\r/, "", $5); print $5}' | xargs)
+speed=$(echo "$best_ip_line" | awk -F',' '{gsub(/\r/, "", $6); print $6}' | xargs)
+region=$(echo "$best_ip_line" | awk -F',' '{gsub(/\r/, "", $7); print $7}' | xargs)
+
+# 【修复】数字变量空值校验，为空时设置默认值
+if [[ -z "${delay}" ]] || [[ ! "${delay}" =~ ^[0-9]+$ ]]; then
+    delay="N/A"
+fi
+if [[ -z "${speed}" ]] || [[ ! "${speed}" =~ ^[0-9.]+$ ]]; then
+    speed="N/A"
+fi
 
 best_region_name=$(convert_colo_to_name "${region}")
 
@@ -606,10 +642,20 @@ echo -e "    延迟: ${delay}ms | 下载: ${speed}MB/s | 地区: ${best_region_n
 echo ""
 echo -e " ${GREEN}Top 3 推荐 IP:${NC}"
 head -n 4 "${OUTPUT_CSV}" | tail -n 3 | while IFS= read -r line; do
-    ip=$(echo "$line" | awk -F',' '{print $1}' | xargs)
-    delay=$(echo "$line" | awk -F',' '{print $5}' | xargs)
-    speed=$(echo "$line" | awk -F',' '{print $6}' | xargs)
-    region=$(echo "$line" | awk -F',' '{print $7}' | xargs | tr -d '\r')
+    # 【修复】处理 Windows 换行符 \r
+    ip=$(echo "$line" | awk -F',' '{gsub(/\r/, "", $1); print $1}' | xargs)
+    delay=$(echo "$line" | awk -F',' '{gsub(/\r/, "", $5); print $5}' | xargs)
+    speed=$(echo "$line" | awk -F',' '{gsub(/\r/, "", $6); print $6}' | xargs)
+    region=$(echo "$line" | awk -F',' '{gsub(/\r/, "", $7); print $7}' | xargs)
+    
+    # 【修复】数字变量空值校验
+    if [[ -z "${delay}" ]] || [[ ! "${delay}" =~ ^[0-9]+$ ]]; then
+        delay="N/A"
+    fi
+    if [[ -z "${speed}" ]] || [[ ! "${speed}" =~ ^[0-9.]+$ ]]; then
+        speed="N/A"
+    fi
+    
     region_name=$(convert_colo_to_name "${region}")
     echo -e "  ${GREEN}➤${NC} ${ip}  (延迟: ${delay}ms, 下载: ${speed}MB/s, 地区: ${region_name})"
 done
