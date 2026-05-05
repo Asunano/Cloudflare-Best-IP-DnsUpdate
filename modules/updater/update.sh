@@ -19,6 +19,20 @@ CYAN='\033[0;36m'
 GRAY='\033[0;90m'
 NC='\033[0m'
 
+# 【修复】检测是否为 TTY 终端，非 TTY 环境禁用颜色输出
+if [[ -t 1 ]]; then
+    # TTY 终端，启用颜色
+    :
+else
+    # 非 TTY 环境（管道、重定向），禁用颜色
+    RED=''
+    GREEN=''
+    YELLOW=''
+    CYAN=''
+    GRAY=''
+    NC=''
+fi
+
 # ==================== 全局临时文件管理 ====================
 # 【修复】记录所有临时文件，确保脚本退出时自动清理
 declare -a TEMP_FILES=()
@@ -108,13 +122,25 @@ get_component_hash() {
     local version_content="$2"
     
     # 【修复】使用固定字符串匹配（-F），避免正则表达式问题
-    # 格式: KEY=VERSION:HASH
+    # 【修复】支持多种格式：KEY=VERSION:HASH 或 KEY=HASH
+    # 格式1: KEY=VERSION:HASH
+    # 格式2: KEY=HASH（兼容旧版本）
     local hash_line
     hash_line=$(echo "${version_content}" | grep -F "${component_key}=" | grep "^${component_key}=" | head -1)
     
     if [[ -n "${hash_line}" ]]; then
-        # 提取 HASH 部分（第二个冒号后）
-        echo "${hash_line}" | cut -d':' -f2
+        # 提取等号后的内容
+        local value_part
+        value_part=$(echo "${hash_line}" | cut -d'=' -f2)
+        
+        # 判断格式：包含冒号则是 VERSION:HASH，否则直接是 HASH
+        if [[ "${value_part}" == *":"* ]]; then
+            # 格式1: VERSION:HASH，提取第二个字段
+            echo "${value_part}" | cut -d':' -f2
+        else
+            # 格式2: 直接是 HASH
+            echo "${value_part}"
+        fi
         return 0
     fi
     
@@ -128,13 +154,25 @@ get_component_version() {
     local version_content="$2"
     
     # 【修复】使用固定字符串匹配（-F），避免正则表达式问题
-    # 格式: KEY=VERSION:HASH
+    # 【修复】支持多种格式：KEY=VERSION:HASH 或 KEY=HASH
+    # 格式1: KEY=VERSION:HASH
+    # 格式2: KEY=HASH（兼容旧版本，返回 "unknown"）
     local version_line
     version_line=$(echo "${version_content}" | grep -F "${component_key}=" | grep "^${component_key}=" | head -1)
     
     if [[ -n "${version_line}" ]]; then
-        # 提取 VERSION 部分（= 和 : 之间）
-        echo "${version_line}" | cut -d'=' -f2 | cut -d':' -f1
+        # 提取等号后的内容
+        local value_part
+        value_part=$(echo "${version_line}" | cut -d'=' -f2)
+        
+        # 判断格式：包含冒号则是 VERSION:HASH，否则直接是 HASH
+        if [[ "${value_part}" == *":"* ]]; then
+            # 格式1: VERSION:HASH，提取第一个字段
+            echo "${value_part}" | cut -d':' -f1
+        else
+            # 格式2: 直接是 HASH，无版本号信息
+            echo "unknown"
+        fi
         return 0
     fi
     
@@ -183,6 +221,7 @@ download_file() {
     local target_file="${ROOT_DIR}/${local_path}"
     local temp_file
     temp_file=$(mktemp)
+    TEMP_FILES+=("${temp_file}")  # 【修复】注册临时文件
     
     # 【特殊处理】updater.sh 自身：下载到 .new 文件，避免覆盖正在运行的脚本
     if [[ "${remote_path}" = "modules/updater/update.sh" ]]; then
@@ -192,6 +231,22 @@ download_file() {
     local download_success=false
     
     echo -e "  ${CYAN}[INFO]${NC} 正在下载 ${display_name}..."
+    
+    # 【修复】检查目标目录是否有写入权限
+    local target_dir
+    target_dir=$(dirname "${target_file}")
+    if [[ ! -d "${target_dir}" ]]; then
+        echo -e "  ${RED}[FAIL]${NC} ${display_name} (目录不存在: ${target_dir})"
+        rm -f "${temp_file}"
+        return 1
+    fi
+    
+    if [[ ! -w "${target_dir}" ]]; then
+        echo -e "  ${RED}[FAIL]${NC} ${display_name} (无写入权限: ${target_dir})"
+        echo -e "    ${YELLOW}提示: 请检查目录权限或使用 sudo 运行${NC}"
+        rm -f "${temp_file}"
+        return 1
+    fi
     
     # 【优先】尝试使用镜像源下载（国内加速）
     local mirror_url="${MIRROR_BASE_URL}/${remote_path}"
@@ -318,9 +373,12 @@ download_file() {
             
             if [[ "${actual_hash}" != "${expected_hash}" ]]; then
                 echo -e "  ${RED}[FAIL]${NC} ${display_name} (哈希校验失败)"
-                echo -e "    预期: ${expected_hash}"
-                echo -e "    实际: ${actual_hash}"
-                echo -e "    ${YELLOW}提示: 这可能是网络缓存导致的，请稍后重试${NC}"
+                echo -e "    ${GRAY}预期: ${expected_hash}${NC}"
+                echo -e "    ${GRAY}实际: ${actual_hash}${NC}"
+                echo -e "    ${YELLOW}可能原因:${NC}"
+                echo -e "      1. 网络缓存未刷新，请稍后重试"
+                echo -e "      2. 远程文件已被修改，但 version.txt 未更新"
+                echo -e "      3. 本地文件被手动修改"
                 rm -f "${temp_file}"
                 return 1
             fi
@@ -343,6 +401,7 @@ download_file() {
             # 【修复】确保文件有执行权限
             chmod +x "${target_file}" 2>/dev/null || {
                 echo -e "  ${RED}[FAIL]${NC} ${display_name} (无法设置执行权限)"
+                echo -e "    ${YELLOW}可能原因: 文件系统不支持执行权限或权限不足${NC}"
                 return 1
             }
         else
@@ -354,6 +413,10 @@ download_file() {
     else
         rm -f "${temp_file}"
         echo -e "  ${RED}[FAIL]${NC} ${display_name} (网络错误)"
+        echo -e "    ${YELLOW}可能原因:${NC}"
+        echo -e "      1. 网络连接异常，请检查网络"
+        echo -e "      2. GitHub 访问受限，请检查防火墙"
+        echo -e "      3. 镜像源暂时不可用，已自动切换到官方源"
         return 1
     fi
 }
@@ -518,6 +581,7 @@ perform_update() {
     
     # 增量更新：只下载哈希值不同的组件
     local need_restart=false
+    local cfopt_updated=false  # 【修复】跟踪 cfopt.sh 是否更新
     
     for component in "${COMPONENTS[@]}"; do
         IFS=':' read -r key local_path remote_path display_name <<< "${component}"
@@ -559,8 +623,14 @@ perform_update() {
             
             echo -e "  ${CYAN}[INFO]${NC} ${display_name} (将在重启后应用)"
             need_restart=true
+            cfopt_updated=true  # 【修复】标记 cfopt.sh 已更新
             # 先下载到 .new 文件
-            download_file "${local_path}.new" "${remote_path}" "${display_name}" "${expected_hash}"
+            if download_file "${local_path}.new" "${remote_path}" "${display_name}" "${expected_hash}"; then
+                ((success_count++))  # 【修复】计入成功计数
+            else
+                ((fail_count++))
+                cfopt_updated=false  # 【修复】下载失败，取消标记
+            fi
             continue
         fi
         
@@ -581,6 +651,9 @@ perform_update() {
     fi
     if [[ ${fail_count} -gt 0 ]]; then
         echo -e "  失败: ${RED}${fail_count}${NC} 个组件"
+    fi
+    if [[ "${cfopt_updated}" = true ]]; then
+        echo -e "  待应用: ${CYAN}1${NC} 个组件 (cfopt.sh，需重启)"
     fi
     echo -e "  新版本: ${CYAN}${remote_version}${NC}"
     echo -e "${CYAN}+------------------------------------------------------------+${NC}"
