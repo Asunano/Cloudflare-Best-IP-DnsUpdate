@@ -1227,8 +1227,7 @@ CLEANUP_EOF
 check_and_update_components() {
     clear
     bash "${INSTALL_DIR}/modules/updater/update.sh" update
-    echo ""
-    read -r -p "按回车键返回主菜单..."
+    # updater 模块已有"按回车键返回"提示，无需重复
     show_main_menu
 }
 
