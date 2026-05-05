@@ -359,24 +359,20 @@ for ((retry=1; retry<=MAX_RETRY; retry++)); do
         echo -e "${YELLOW}[等待] ${wait_time} 秒后重试...${NC}"
         sleep ${wait_time}
         
-        # 重新执行测速
-        "${CFST_BIN}" \
-            -f "${CFST_DIR}/ip.txt" \
-            -n "${TARGET_COLO}" \
-            -t "${CFST_THREADS}" \
-            -p "${CFST_PING_TIMES}" \
-            -dn "${CFST_DOWNLOAD_COUNT}" \
-            -dt "${CFST_DOWNLOAD_TIME}" \
-            -tl "${CFST_LATENCY_MAX}" \
-            -pl "${CFST_PACKET_LOSS_MAX}" \
-            -sl "${CFST_SPEED_MIN}" \
-            -sc "${CFST_SHOW_COUNT}" \
-            -tp "${CFST_PORT}" \
-            -u "${CFST_URL}" \
-            -http "${CFST_HTTPING}" \
-            -dd "${CFST_DISABLE_DOWNLOAD}" \
-            -all "${CFST_ALL_IP}" \
-            -o "${OUTPUT_CSV}" 2>&1 | tee -a "${LOG_FILE}"
+        # 重新执行测速（使用与第一次测速相同的参数构建方式）
+        RETRY_CMD=("${CFST_BIN}" "-n" "${CFST_THREADS}" "-t" "${CFST_PING_TIMES}")
+        if [[ -n "${TARGET_COLO}" ]]; then RETRY_CMD+=("-cfcolo" "${TARGET_COLO}"); fi
+        if [[ -n "${IP_DATA_FILE}" ]]; then RETRY_CMD+=("-f" "${IP_DATA_FILE}"); else RETRY_CMD+=("-f" "${CFST_DIR}/ip.txt"); fi
+        RETRY_CMD+=("-dn" "${CFST_DOWNLOAD_COUNT}" "-dt" "${CFST_DOWNLOAD_TIME}")
+        RETRY_CMD+=("-tp" "${CFST_PORT}" "-url" "${CFST_URL}")
+        if [[ "${CFST_HTTPING}" = "true" ]]; then RETRY_CMD+=("-httping"); fi
+        RETRY_CMD+=("-tl" "${CFST_LATENCY_MAX}" "-tlr" "${CFST_PACKET_LOSS_MAX}" "-sl" "${CFST_SPEED_MIN}")
+        RETRY_CMD+=("-p" "${CFST_SHOW_COUNT}")
+        if [[ "${CFST_DISABLE_DOWNLOAD}" = "true" ]]; then RETRY_CMD+=("-dd"); fi
+        if [[ "${CFST_ALL_IP}" = "true" ]]; then RETRY_CMD+=("-allip"); fi
+        RETRY_CMD+=("-o" "${OUTPUT_CSV}")
+        
+        "${RETRY_CMD[@]}" 2>&1 | tee -a "${LOG_FILE}"
         
         EXIT_CODE=${PIPESTATUS[0]}
     fi
