@@ -4070,7 +4070,7 @@ while true; do
             ;;
         0)
             # 退出子菜单，返回 cfopt 主菜单
-            break
+            exit 0
             ;;
         *)
             echo ""
@@ -4081,3 +4081,6 @@ while true; do
             ;;
     esac
 done
+
+# 正常情况下不会到达这里，但为了安全起见
+exit 0

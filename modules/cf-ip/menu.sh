@@ -1192,7 +1192,7 @@ while true; do
         0) 
             # 退出子菜单，返回 cfopt 主菜单
             echo -e "${CYAN}[INFO] 正在返回主菜单...${NC}"
-            break
+            exit 0
             ;;
         *)
             echo -e "${RED}[ERROR] 无效的选择，请输入 0-5 之间的数字${NC}"
@@ -1200,6 +1200,9 @@ while true; do
             ;;
     esac
 done
+
+# 正常情况下不会到达这里，但为了安全起见
+exit 0
 
 
 
