@@ -53,6 +53,8 @@ acquire_lock() {
         if [[ -n "${pid}" ]] && [[ "${pid}" =~ ^[0-9]+$ ]] && kill -0 "${pid}" 2>/dev/null; then
             echo -e "${RED}[ERROR] 检测到另一个 CF-IP 管理进程正在运行 (PID: ${pid})。${NC}"
             echo -e "${CYAN}提示:${NC} 如果确认没有进程在运行，请手动删除: ${LOCK_FILE}"
+            echo ""
+            read -r -p "按回车键返回主菜单..."
             exit 1
         else
             echo -e "${YELLOW}[WARN] 发现残留锁文件，正在清理...${NC}"
@@ -69,6 +71,8 @@ if [[ "${CF_OPT_ENTRY:-}" != "main_menu" ]] && [[ "${CF_OPT_ENTRY:-}" != "run_sh
     echo -e "${RED}[ERROR] 请使用 'cfopt' 命令进入主菜单运行此模块。${NC}"
     echo -e "${YELLOW}[INFO] 当前 CF_OPT_ENTRY='${CF_OPT_ENTRY:-空}'${NC}"
     echo -e "${CYAN}提示:${NC} 请运行 'cfopt' 命令，然后选择 '2. CF IP 优选管理'"
+    echo ""
+    read -r -p "按回车键返回主菜单..."
     exit 1
 fi
 
