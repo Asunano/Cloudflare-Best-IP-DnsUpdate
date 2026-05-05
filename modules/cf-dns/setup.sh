@@ -1691,6 +1691,19 @@ main() {
     # 首次使用检测 - 如果配置文件不存在，自动进入配置向导
     if [ ! -f "$CONFIG_FILE" ]; then
         echo -e "${YELLOW}[WARN] 检测到首次使用，配置文件不存在${NC}"
+        echo ""
+        echo -e "${CYAN}您可以选择：${NC}"
+        echo -e "  ${GREEN}1)${NC} 立即运行配置向导（推荐）"
+        echo -e "  ${RED}0)${NC} 退出程序"
+        echo ""
+        read -r -p "请选择 [0-1] (默认 1): " first_choice
+        first_choice=${first_choice:-1}
+        
+        if [[ "$first_choice" == "0" ]]; then
+            echo -e "${CYAN}[INFO] 已取消配置${NC}"
+            exit 0
+        fi
+        
         echo -e "${YELLOW}将自动启动配置向导...${NC}"
         echo ""
         sleep 2
