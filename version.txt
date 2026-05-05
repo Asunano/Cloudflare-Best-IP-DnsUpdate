@@ -5,7 +5,7 @@
 # 用途：用于客户端更新时的完整性校验
 # ============================================================
 
-UPDATER=0.1:f576af96aa38c9873669d55cffa8f1a4be46257ffbdd9e5e872dc1df6d375ced
+UPDATER=0.1:77cfe96f9ab6e3891d1a86c8b3d196de9b89900288b0adf0e374ff5d605f85c5
 CFOPT=0.1:6a073a342e39ba73983de6390bc31609282890729dbcb1fb89bdb9dff007dbce
 QUICK_DEPLOY=0.1:9e2a27284335c45563d0d80071ba55688ff2a05ae9a79482dedcb4f990d8551b
 CF_IP_MENU=0.1:4116efef4ba7dbde88ce3cb236a27287f01e0cae9bf6525eba5558b729f08c3d
