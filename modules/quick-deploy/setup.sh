@@ -213,7 +213,13 @@ delete_domain_config() {
 select_colo_nodes() {
     local domain="$1"
     
-    echo -e "${CYAN}请选择测速节点（地区）：${NC}"
+    # 清屏，保持界面整洁
+    clear
+    
+    echo -e "${CYAN}+------------------------------------------------------------+${NC}"
+    echo -e "${CYAN} [步骤 3/5] 选择测速节点（地区）${NC}"
+    echo -e "${CYAN}+------------------------------------------------------------+${NC}"
+    echo ""
     echo -e " ${YELLOW}提示: 选择距离您服务器较近的地区可获得更优的延迟${NC}"
     echo ""
     echo -e " ${GREEN}常用节点推荐：${NC}"
@@ -228,7 +234,7 @@ select_colo_nodes() {
     echo -e "   7. 自定义节点（手动输入）"
     echo ""
     
-    read -r -p "请选择 [1-7] (默认 1): " colo_choice
+    read -r -p "${CYAN}请选择 [1-7] (默认 1):${NC} " colo_choice
     colo_choice=${colo_choice:-1}
     
     case "$colo_choice" in
@@ -246,7 +252,7 @@ select_colo_nodes() {
             echo -e "${YELLOW}请输入 IATA 机场代码，多个用逗号分隔${NC}"
             echo -e "${GRAY}示例: HKG,NRT,LAX 或 SIN,TYO,FRA${NC}"
             echo -e "${GRAY}常见代码: HKG(香港) NRT/TYO(东京) SIN(新加坡) LAX(洛杉矶) SJC(旧金山) FRA(法兰克福) LON(伦敦) SYD(悉尼)${NC}"
-            read -r -p "请输入节点代码: " custom_colo
+            read -r -p "${CYAN}请输入节点代码:${NC} " custom_colo
             if [[ -z "$custom_colo" ]]; then
                 echo -e "${YELLOW}[WARN] 未输入，使用默认值 HKG,NRT${NC}"
                 echo "HKG,NRT"
@@ -1174,10 +1180,8 @@ deploy_cloudflare_dns() {
         fi
     fi
     
-    # 第3步：生成配置
-    show_step_header 3 5 "生成配置文件"
-    
-    # 让用户选择测速节点
+    # 第3步：选择测速节点并生成配置
+    # 让用户选择测速节点（函数内部会清屏并显示标题）
     local recommended_colo
     recommended_colo=$(select_colo_nodes "$domain")
     echo -e "${GREEN}[OK] 已选择测速节点: ${recommended_colo}${NC}"
@@ -1393,10 +1397,8 @@ deploy_dnspod_single() {
     echo -e "${GREEN}[OK] 主机记录已设置: ${record_name}${NC}"
     echo ""
     
-    # 第3步：生成配置
-    show_step_header 3 5 "生成配置文件"
-    
-    # 让用户选择测速节点
+    # 第3步：选择测速节点并生成配置
+    # 让用户选择测速节点（函数内部会清屏并显示标题）
     local recommended_colo
     recommended_colo=$(select_colo_nodes "$domain")
     echo -e "${GREEN}[OK] 已选择测速节点: ${recommended_colo}${NC}"
