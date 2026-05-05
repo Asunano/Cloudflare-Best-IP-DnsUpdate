@@ -352,22 +352,34 @@ full_config_wizard() {
     # 1. API Token
     echo -e "${BLUE}步骤 1/6: 配置 API 令牌 (API Token)${NC}"
     echo ""
-    echo -e "${YELLOW}[WARN] 重要提示:${NC}"
+    echo -e "${YELLOW}[WARN] 重要提示：${NC}"
     echo -e "  ${RED}请务必使用 API 令牌，不要使用 Global API Key！${NC}"
     echo -e "  ${RED}两者长度相同但格式不同，混用会导致鉴权失败！${NC}"
     echo ""
-    echo -e "${CYAN}如何获取 API 令牌 (3步搞定):${NC}"
+    echo -e "${CYAN}如何获取 API 令牌（3步搞定）：${NC}"
     echo "  1. 访问: https://dash.cloudflare.com/profile/api-tokens"
     echo "  2. 点击 '创建令牌' -> 选择 '编辑区域 DNS' 模板"
     echo "  3. 在 '区域资源' 选中你的域名 -> 复制生成的令牌"
     echo ""
-    echo -e "${YELLOW}API 令牌示例:${NC} cfut_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx [OK]"
-    echo -e "${YELLOW}Global API Key 示例:${NC} xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx [ERROR]"
+    echo -e "${YELLOW}API 令牌示例：${NC} cfut_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx ${GREEN}[正确]${NC}"
+    echo -e "${YELLOW}Global API Key 示例：${NC} xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx ${RED}[错误]${NC}"
+    echo ""
+    echo -e "${CYAN}[提示]${NC} 令牌需要包含以下权限："
+    echo -e "  • Zone - DNS - Edit（编辑 DNS 记录）"
+    echo -e "  • Zone - Zone - Read（读取域名列表）"
     echo ""
     read -r -p "请输入 CF_API_TOKEN: " cf_api_token
     
     if [ -z "$cf_api_token" ]; then
         echo -e "${RED}错误: API Token 不能为空${NC}"
+        read -r -p "按回车键继续..."
+        return 1
+    fi
+    
+    # 简单验证令牌格式
+    if [[ ${#cf_api_token} -lt 20 ]]; then
+        echo -e "${RED}错误: API Token 长度异常${NC}"
+        echo -e "${YELLOW}请检查是否正确复制了完整的令牌${NC}"
         read -r -p "按回车键继续..."
         return 1
     fi
