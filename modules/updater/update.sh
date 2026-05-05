@@ -58,6 +58,13 @@ RAW_BASE_URL="https://raw.githubusercontent.com/${GITHUB_REPO}/main"
 # 自定义镜像源（优先使用）
 MIRROR_BASE_URL="https://mirror.drxian.qzz.io/scripts/Cloudflare-Best-IP-DnsUpdate"
 
+# ==================== 退出码定义 ====================
+EXIT_SUCCESS=0        # 成功
+EXIT_NETWORK_ERROR=1  # 网络错误
+EXIT_PERMISSION_ERROR=2  # 权限错误
+EXIT_VALIDATION_ERROR=3  # 校验失败
+EXIT_MISSING_TOOL=4   # 缺少必要工具
+
 # 定义需要更新的组件映射
 # 格式: "KEY:本地路径:远程相对路径:显示名称"
 declare -a COMPONENTS=(
@@ -95,7 +102,7 @@ get_remote_version() {
                 remote_version=$(cat "${temp_version_file}")
                 rm -f "${temp_version_file}"
                 echo "${remote_version}"
-                return 0
+                return ${EXIT_SUCCESS}
             fi
         fi
     fi
@@ -109,14 +116,14 @@ get_remote_version() {
                 remote_version=$(cat "${temp_version_file}")
                 rm -f "${temp_version_file}"
                 echo "${remote_version}"
-                return 0
+                return ${EXIT_SUCCESS}
             fi
         fi
     fi
     
     rm -f "${temp_version_file}"
     echo ""
-    return 1
+    return ${EXIT_NETWORK_ERROR}
 }
 
 # 从 version.txt 中获取指定组件的哈希值
@@ -148,11 +155,11 @@ get_component_hash() {
             # 格式2: 直接是 HASH
             echo "${value_part}"
         fi
-        return 0
+        return ${EXIT_SUCCESS}
     fi
     
     echo ""
-    return 1
+    return ${EXIT_VALIDATION_ERROR}
 }
 
 # 从 version.txt 中获取指定组件的版本号
@@ -184,11 +191,11 @@ get_component_version() {
             # 格式2: 直接是 HASH，无版本号信息
             echo "unknown"
         fi
-        return 0
+        return ${EXIT_SUCCESS}
     fi
     
     echo ""
-    return 1
+    return ${EXIT_VALIDATION_ERROR}
 }
 
 # 获取本地版本号
@@ -223,6 +230,7 @@ get_display_version() {
 }
 
 # 下载单个文件（支持镜像源优先和SHA256校验）
+# 【优化】统一退出码规范
 download_file() {
     local local_path="$1"
     local remote_path="$2"
@@ -247,20 +255,21 @@ download_file() {
     local target_dir
     target_dir=$(dirname "${target_file}")
     
-    # 【优化】统一处理：目录不存在则创建，存在则检查权限
+    # 【优化】统一处理：先创建目录，再检查权限
     if [[ ! -d "${target_dir}" ]]; then
         mkdir -p "${target_dir}" 2>/dev/null || {
             echo -e "  ${RED}[FAIL]${NC} ${display_name} (无法创建目录: ${target_dir})"
             rm -f "${temp_file}"
-            return 1
+            return ${EXIT_PERMISSION_ERROR}
         }
     fi
     
+    # 【修复】目录创建后再次检查权限（避免误报）
     if [[ ! -w "${target_dir}" ]]; then
         echo -e "  ${RED}[FAIL]${NC} ${display_name} (无写入权限: ${target_dir})"
         echo -e "    ${YELLOW}提示: 请检查目录权限或使用 sudo 运行${NC}"
         rm -f "${temp_file}"
-        return 1
+        return ${EXIT_PERMISSION_ERROR}
     fi
     
     # 【优先】尝试使用镜像源下载（国内加速）
@@ -337,8 +346,18 @@ download_file() {
     if [[ "${download_success}" = true ]]; then
         # 【强制】SHA256 哈希校验
         if [[ -n "${expected_hash}" ]]; then
+            # 【修复】兼容嵌入式系统：优先使用 sha256sum，备用 shasum -a 256
             local actual_hash
-            actual_hash=$(sha256sum "${temp_file}" | awk '{print $1}')
+            if command -v sha256sum &>/dev/null; then
+                actual_hash=$(sha256sum "${temp_file}" | awk '{print $1}')
+            elif command -v shasum &>/dev/null; then
+                actual_hash=$(shasum -a 256 "${temp_file}" | awk '{print $1}')
+            else
+                echo -e "  ${RED}[FAIL]${NC} ${display_name} (缺少哈希校验工具)"
+                echo -e "    ${YELLOW}提示: 请安装 coreutils 或 perl-digest-sha${NC}"
+                rm -f "${temp_file}"
+                return ${EXIT_MISSING_TOOL}
+            fi
             
             if [[ "${actual_hash}" != "${expected_hash}" ]]; then
                 echo -e "  ${RED}[FAIL]${NC} ${display_name} (哈希校验失败)"
@@ -349,36 +368,25 @@ download_file() {
                 echo -e "      2. 远程文件已被修改，但 version.txt 未更新"
                 echo -e "      3. 本地文件被手动修改"
                 rm -f "${temp_file}"
-                return 1
+                return ${EXIT_VALIDATION_ERROR}
             fi
         fi
         
         # 如果不是 updater.sh 自身，直接移动到目标位置
         if [[ "${remote_path}" != "modules/updater/update.sh" ]]; then
-            # 【修复】确保目标目录存在
-            local target_dir
-            target_dir=$(dirname "${target_file}")
-            if [[ ! -d "${target_dir}" ]]; then
-                mkdir -p "${target_dir}" 2>/dev/null || {
-                    echo -e "  ${RED}[FAIL]${NC} ${display_name} (无法创建目录: ${target_dir})"
-                    rm -f "${temp_file}"
-                    return 1
-                }
-            fi
-            
             mv -f "${temp_file}" "${target_file}"
             # 【修复】确保文件有执行权限
             chmod +x "${target_file}" 2>/dev/null || {
                 echo -e "  ${RED}[FAIL]${NC} ${display_name} (无法设置执行权限)"
                 echo -e "    ${YELLOW}可能原因: 文件系统不支持执行权限或权限不足${NC}"
-                return 1
+                return ${EXIT_PERMISSION_ERROR}
             }
         else
             # updater.sh 自身，确保 .new 文件有执行权限
             chmod +x "${temp_file}" 2>/dev/null || true
         fi
         echo -e "  ${GREEN}[OK]${NC} ${display_name}"
-        return 0
+        return ${EXIT_SUCCESS}
     else
         rm -f "${temp_file}"
         echo -e "  ${RED}[FAIL]${NC} ${display_name} (网络错误)"
@@ -386,7 +394,7 @@ download_file() {
         echo -e "      1. 网络连接异常，请检查网络"
         echo -e "      2. GitHub 访问受限，请检查防火墙"
         echo -e "      3. 镜像源暂时不可用，已自动切换到官方源"
-        return 1
+        return ${EXIT_NETWORK_ERROR}
     fi
 }
 
@@ -609,6 +617,16 @@ perform_update() {
             continue
         fi
         
+        # 【特殊处理】updater.sh 需要更新时，计入统计
+        if [[ "${remote_path}" = "modules/updater/update.sh" ]]; then
+            if download_file "${local_path}" "${remote_path}" "${display_name}" "${expected_hash}"; then
+                ((success_count++))  # 【修复】计入成功计数
+            else
+                ((fail_count++))
+            fi
+            continue
+        fi
+        
         # 哈希值不同，执行下载
         if download_file "${local_path}" "${remote_path}" "${display_name}" "${expected_hash}"; then
             ((success_count++))
@@ -635,8 +653,14 @@ perform_update() {
     echo ""
     
     # 更新 version.txt
-    echo "${remote_versions}" > "${VERSION_FILE}"
-    echo -e "${GREEN}[OK] 版本号文件已更新${NC}"
+    # 【修复】添加容错处理，检查写入权限
+    if echo "${remote_versions}" > "${VERSION_FILE}" 2>/dev/null; then
+        echo -e "${GREEN}[OK] 版本号文件已更新${NC}"
+    else
+        echo -e "${RED}[WARN] 版本号文件更新失败${NC}"
+        echo -e "  ${YELLOW}可能原因: 无写入权限或磁盘空间不足${NC}"
+        echo -e "  ${YELLOW}建议: 手动执行 'chmod 644 ${VERSION_FILE}' 后重试${NC}"
+    fi
     
     # 【修复】清理残留文件
     rm -f "${ROOT_DIR}/.restart_needed" 2>/dev/null || true
