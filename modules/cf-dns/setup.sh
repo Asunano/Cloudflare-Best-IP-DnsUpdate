@@ -778,15 +778,17 @@ EOF
     
     if [[ "$run_test" =~ ^[Yy]$ ]]; then
         echo -e "${YELLOW}提示: 首次测速可能需要 2-5 分钟，请耐心等待...${NC}"
+        echo ""
         cd "${ROOT_DIR}" || return 1
         
-        # 为当前域名生成独立的测速结果文件
-        CF_OPT_ENTRY=1 bash "${ROOT_DIR}/modules/cf-ip/core.sh" "${recommended_colo}" "${result_file}" "${full_domain}" || true
+        # 为当前域名生成独立的测速结果文件（使用静默模式，不显示标题栏）
+        CF_OPT_ENTRY=scheduler bash "${ROOT_DIR}/modules/cf-ip/core.sh" "${recommended_colo}" "${result_file}" "${full_domain}" 2>&1 | grep -v "^+" | grep -v "项目仓库" | grep -v "启动时间" | grep -v "^$" || true
         echo -e "${GREEN}[OK] 测速完成${NC}"
+        echo ""
         
-        # 执行 IP 同步，将测速结果同步到 DNS 模块的 IP 文件
+        # 执行 IP 同步，将测速结果同步到 DNS 模块的 IP 文件（静默模式）
         echo -e "${CYAN}正在同步 IP 数据...${NC}"
-        bash "${ROOT_DIR}/modules/ip-sync/sync.sh" || true
+        bash "${ROOT_DIR}/modules/ip-sync/sync.sh" 2>&1 | grep -v "^+" | grep -v "项目仓库" | grep -v "^$" || true
         echo -e "${GREEN}[OK] IP 数据已同步到: ${ip_file}${NC}"
     fi
     
