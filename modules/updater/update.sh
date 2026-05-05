@@ -392,6 +392,8 @@ perform_update() {
     local skip_count=0
     
     # 增量更新：只下载哈希值不同的组件
+    local need_restart=false
+    
     for component in "${COMPONENTS[@]}"; do
         IFS=':' read -r key local_path remote_path display_name <<< "${component}"
         
@@ -414,6 +416,15 @@ perform_update() {
         if [[ "${local_hash}" == "${expected_hash}" ]]; then
             echo -e "  ${GREEN}[SKIP]${NC} ${display_name} (已是最新)"
             ((skip_count++))
+            continue
+        fi
+        
+        # 【特殊处理】cfopt.sh 需要更新时，标记并延迟处理
+        if [[ "${remote_path}" = "cfopt.sh" ]]; then
+            echo -e "  ${CYAN}[INFO]${NC} ${display_name} (将在重启后应用)"
+            need_restart=true
+            # 先下载到 .new 文件
+            download_file "${local_path}.new" "${remote_path}" "${display_name}" "${expected_hash}"
             continue
         fi
         
@@ -448,11 +459,29 @@ perform_update() {
         echo ""
         echo -e "${YELLOW}[INFO] 建议重新启动以应用所有更新${NC}"
         
-        # 如果更新了 updater.sh，给出明确提示（cfopt.sh 直接覆盖，无需特殊处理）
+        # 如果更新了 updater.sh，给出明确提示
         if [[ -f "${ROOT_DIR}/modules/updater/update.sh.new" ]]; then
             echo -e "${CYAN}注意: 以下组件将在下次运行时自动应用：${NC}"
             echo -e "  • 更新组件 (updater.sh)"
         fi
+    fi
+    
+    # 【关键】如果 cfopt.sh 需要更新，执行无感重启
+    if [[ "${need_restart}" = true ]] && [[ -f "${ROOT_DIR}/cfopt.sh.new" ]]; then
+        echo ""
+        echo -e "${CYAN}[INFO] 主程序已更新，正在重启以应用新版本...${NC}"
+        sleep 2
+        
+        # 移动 .new 文件覆盖原文件
+        mv "${ROOT_DIR}/cfopt.sh.new" "${ROOT_DIR}/cfopt.sh"
+        chmod +x "${ROOT_DIR}/cfopt.sh"
+        
+        echo -e "${GREEN}[OK] cfopt.sh 已更新到最新版本${NC}"
+        echo ""
+        echo -e "${YELLOW}[INFO] 正在重新启动...${NC}"
+        
+        # 使用 exec 替换当前进程，重新启动 cfopt.sh
+        exec bash "${ROOT_DIR}/cfopt.sh"
     fi
     
     echo ""
