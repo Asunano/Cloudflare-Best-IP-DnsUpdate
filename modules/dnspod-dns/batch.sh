@@ -30,11 +30,38 @@ CONFIG_DIR="${ROOT_DIR}/conf/dnspod"
 # ==================== 收集所有配置文件 ====================
 declare -a CONFIG_FILES=()
 
-# 检查多域名配置目录
+# 【优先】检查多域名配置目录
 if [[ -d "$CONFIG_DIR" ]]; then
     while IFS= read -r -d '' config_file; do
         CONFIG_FILES+=("$config_file")
     done < <(find "$CONFIG_DIR" -name "*.json" -type f -print0 2>/dev/null)
+fi
+
+# 【向后兼容】如果没有找到多域名配置，检查旧的单文件配置
+if [[ ${#CONFIG_FILES[@]} -eq 0 ]] && [[ -f "${ROOT_DIR}/conf/dnspod.json" ]]; then
+    echo -e "${YELLOW}[INFO] 检测到旧版单文件配置，正在迁移...${NC}"
+    
+    # 创建多域名目录
+    mkdir -p "$CONFIG_DIR"
+    
+    # 从旧配置中提取域名
+    domain_name=""
+    if command -v jq &>/dev/null; then
+        domain_name=$(jq -r '.dns.domain // "unknown"' "${ROOT_DIR}/conf/dnspod.json" 2>/dev/null)
+    fi
+    
+    # 如果提取失败，使用默认名称
+    if [[ -z "$domain_name" ]] || [[ "$domain_name" == "null" ]]; then
+        domain_name="default"
+    fi
+    
+    # 复制并重命名配置文件
+    cp "${ROOT_DIR}/conf/dnspod.json" "${CONFIG_DIR}/${domain_name}.json"
+    CONFIG_FILES=("${CONFIG_DIR}/${domain_name}.json")
+    
+    echo -e "${GREEN}[OK] 已迁移到多域名格式: ${domain_name}.json${NC}"
+    echo -e "${GRAY}提示: 建议删除旧的 conf/dnspod.json 文件${NC}"
+    echo ""
 fi
 
 # 如果没有找到配置，退出
