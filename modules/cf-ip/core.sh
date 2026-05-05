@@ -327,7 +327,8 @@ display_progress() {
     # 格式：[========================================] 100% (5955/5955)   
     # 最大长度：2 + 40 + 2 + 4 + 2 + 12 + 4 = 66 字符
     local output
-    output=$(printf "${CYAN}  [%s] %3d%% (%d/%d)${NC}   " "${bar}" "${progress}" "${current}" "${total}")
+    # 【修复】使用 echo -e 正确解释转义码
+    output=$(echo -e "${CYAN}  [${bar}] $(printf '%3d' ${progress})% (${current}/${total})${NC}   ")
     # 补齐到 80 字符，确保覆盖干净
     printf "\r%-80s" "${output}"
 }
@@ -467,7 +468,8 @@ EXIT_CODE=$?
 
 # 修复：固定长度输出，确保覆盖干净
 echo ""
-printf "\r%-80s" "${CYAN}  [========================================] 100% 测速完成！${NC}"
+# 【修复】使用 echo -e 正确解释转义码
+echo -e "${CYAN}  [========================================] 100% 测速完成！${NC}"
 echo ""
 
 # 【增强】测速结果验证与自动重试
@@ -518,7 +520,8 @@ for ((retry=1; retry<=MAX_RETRY; retry++)); do
         
         # 修复：固定长度输出，确保覆盖干净
         echo ""
-        printf "\r%-80s" "${CYAN}  [========================================] 100% 测速完成！${NC}"
+        # 【修复】使用 echo -e 正确解释转义码
+        echo -e "${CYAN}  [========================================] 100% 测速完成！${NC}"
         echo ""
     fi
     
@@ -612,10 +615,11 @@ done
 best_ip_line=$(head -n 2 "${OUTPUT_CSV}" | tail -n 1)
 
 # 【修复】使用 awk 解析 CSV，并处理 Windows 换行符 \r
+# cfst CSV 格式: IP,Port,Latency,PacketLoss,Delay,Speed,Region
 best_ip=$(echo "$best_ip_line" | awk -F',' '{gsub(/\r/, "", $1); print $1}' | xargs)
-delay=$(echo "$best_ip_line" | awk -F',' '{gsub(/\r/, "", $5); print $5}' | xargs)
-speed=$(echo "$best_ip_line" | awk -F',' '{gsub(/\r/, "", $6); print $6}' | xargs)
-region=$(echo "$best_ip_line" | awk -F',' '{gsub(/\r/, "", $7); print $7}' | xargs)
+delay=$(echo "$best_ip_line" | awk -F',' '{gsub(/\r/, "", $3); print $3}' | xargs)  # 第3列是延迟
+speed=$(echo "$best_ip_line" | awk -F',' '{gsub(/\r/, "", $6); print $6}' | xargs)  # 第6列是速度
+region=$(echo "$best_ip_line" | awk -F',' '{gsub(/\r/, "", $7); print $7}' | xargs)  # 第7列是地区
 
 # 【修复】数字变量空值校验，为空时设置默认值
 if [[ -z "${delay}" ]] || [[ ! "${delay}" =~ ^[0-9]+$ ]]; then
@@ -645,9 +649,9 @@ echo -e " ${GREEN}Top 3 推荐 IP:${NC}"
 head -n 4 "${OUTPUT_CSV}" | tail -n 3 | while IFS= read -r line; do
     # 【修复】处理 Windows 换行符 \r
     ip=$(echo "$line" | awk -F',' '{gsub(/\r/, "", $1); print $1}' | xargs)
-    delay=$(echo "$line" | awk -F',' '{gsub(/\r/, "", $5); print $5}' | xargs)
-    speed=$(echo "$line" | awk -F',' '{gsub(/\r/, "", $6); print $6}' | xargs)
-    region=$(echo "$line" | awk -F',' '{gsub(/\r/, "", $7); print $7}' | xargs)
+    delay=$(echo "$line" | awk -F',' '{gsub(/\r/, "", $3); print $3}' | xargs)  # 第3列是延迟
+    speed=$(echo "$line" | awk -F',' '{gsub(/\r/, "", $6); print $6}' | xargs)  # 第6列是速度
+    region=$(echo "$line" | awk -F',' '{gsub(/\r/, "", $7); print $7}' | xargs)  # 第7列是地区
     
     # 【修复】数字变量空值校验
     if [[ -z "${delay}" ]] || [[ ! "${delay}" =~ ^[0-9]+$ ]]; then
