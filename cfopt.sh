@@ -766,7 +766,7 @@ system_health_check() {
 show_main_menu() {
     clear
     echo -e "${CYAN}+------------------------------------------------------------+${NC}"
-    echo -e " ${YELLOW}cfopt - Cloudflare 优选与 DNS 管理套件 v${SCRIPT_VERSION}${NC}"
+    echo -e " ${YELLOW}Cloudflare-Best-IP-DnsUpdate v${SCRIPT_VERSION}${NC}"
     echo -e "${CYAN}+------------------------------------------------------------+${NC}"
     
     # 加载状态配置
