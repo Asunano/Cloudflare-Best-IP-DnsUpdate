@@ -208,7 +208,18 @@ check_updates() {
     echo -e "  远程版本: ${CYAN}${remote_version}${NC}"
     echo ""
     
-    # 检查每个组件的哈希值
+    # 【第一步】对比版本号
+    if [[ "${local_version}" == "${remote_version}" ]]; then
+        echo -e "${GREEN}[OK] 已是最新版本，无需更新${NC}"
+        echo ""
+        read -r -p "按回车键返回..."
+        return 0
+    fi
+    
+    # 【第二步】版本号不同，逐个检查组件的 SHA256 哈希值
+    echo -e "${YELLOW}[INFO] 发现新版本，正在检查组件完整性...${NC}"
+    echo ""
+    
     local needs_update=false
     local update_list=()
     
