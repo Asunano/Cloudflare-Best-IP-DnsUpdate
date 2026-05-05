@@ -551,8 +551,9 @@ generate_cf_dns_config() {
     local temp_file
     temp_file=$(mktemp)
     
-    # 按域名独立存储 IP 列表，避免多域名冲突
+    # 按域名独立存储 IP 列表和测速结果，避免多域名冲突
     local ip_file="${ROOT_DIR}/assets/data/cf-dns/${full_domain}.txt"
+    local result_file="${ROOT_DIR}/assets/data/cf-ip/result_${full_domain}.csv"
     
     jq -n \
         --arg domain "$domain" \
@@ -560,6 +561,7 @@ generate_cf_dns_config() {
         --arg zone_id "$cf_zone_id" \
         --arg record_name "$record_name" \
         --arg ip_file "${ip_file}" \
+        --arg result_file "${result_file}" \
         '{
             "_comment": "Cloudflare DNS 更新器配置",
             "_version": "0.1",
@@ -576,7 +578,8 @@ generate_cf_dns_config() {
                 "max_ips_per_record": 2
             },
             "ip_source": {
-                "file_path": $ip_file
+                "file_path": $ip_file,
+                "result_file": $result_file
             }
         }' > "$temp_file"
     
@@ -1149,7 +1152,10 @@ deploy_cloudflare_dns() {
     
     if [[ "$run_test" =~ ^[Yy]$ ]]; then
         cd "${ROOT_DIR}" || return 1
-        CF_OPT_ENTRY=1 bash "${ROOT_DIR}/modules/cf-ip/core.sh" || true
+        
+        # 为当前域名生成独立的测速结果文件
+        local result_file="${ROOT_DIR}/assets/data/cf-ip/result_${full_domain}.csv"
+        CF_OPT_ENTRY=1 bash "${ROOT_DIR}/modules/cf-ip/core.sh" "${recommended_colo}" "${result_file}" "${full_domain}" || true
         echo -e "${GREEN}[OK] 测速完成${NC}"
         
         # 执行 IP 同步，将测速结果同步到 DNS 模块的 IP 文件
@@ -1355,7 +1361,10 @@ deploy_dnspod_single() {
     
     if [[ "$run_test" =~ ^[Yy]$ ]]; then
         cd "${ROOT_DIR}" || return 1
-        CF_OPT_ENTRY=1 bash "${ROOT_DIR}/modules/cf-ip/core.sh" || true
+        
+        # 为当前域名生成独立的测速结果文件
+        local result_file="${ROOT_DIR}/assets/data/cf-ip/result_${full_domain}.csv"
+        CF_OPT_ENTRY=1 bash "${ROOT_DIR}/modules/cf-ip/core.sh" "${recommended_colo}" "${result_file}" "${full_domain}" || true
         echo -e "${GREEN}[OK] 测速完成${NC}"
         
         # 执行 IP 同步，将测速结果同步到 DNS 模块的 IP 文件
