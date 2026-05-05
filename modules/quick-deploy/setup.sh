@@ -620,6 +620,7 @@ generate_cf_dns_config() {
         --arg record_name "$record_name" \
         --arg ip_file "${ip_file}" \
         --arg result_file "${result_file}" \
+        --arg colo_nodes "$recommended_colo" \
         '{
             "_comment": "Cloudflare DNS 更新器配置",
             "_version": "0.1",
@@ -637,7 +638,8 @@ generate_cf_dns_config() {
             },
             "ip_source": {
                 "file_path": $ip_file,
-                "result_file": $result_file
+                "result_file": $result_file,
+                "colo_nodes": $colo_nodes
             }
         }' > "$temp_file"
     
