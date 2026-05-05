@@ -40,7 +40,10 @@ declare -a TEMP_FILES=()
 # 注册清理函数
 cleanup_temp_files() {
     for temp_file in "${TEMP_FILES[@]}"; do
-        rm -f "${temp_file}" 2>/dev/null || true
+        # 【修复】排除 update.sh.new 和 cfopt.sh.new，这些是需要保留的文件
+        if [[ "${temp_file}" != *".sh.new" ]]; then
+            rm -f "${temp_file}" 2>/dev/null || true
+        fi
     done
 }
 
@@ -121,22 +124,26 @@ get_component_hash() {
     local component_key="$1"
     local version_content="$2"
     
-    # 【修复】使用固定字符串匹配（-F），避免正则表达式问题
-    # 【修复】支持多种格式：KEY=VERSION:HASH 或 KEY=HASH
-    # 格式1: KEY=VERSION:HASH
-    # 格式2: KEY=HASH（兼容旧版本）
+    # 【优化】使用精确匹配，避免重复过滤
+    # 格式: KEY=VERSION:HASH 或 KEY=HASH
     local hash_line
-    hash_line=$(echo "${version_content}" | grep -F "${component_key}=" | grep "^${component_key}=" | head -1)
+    hash_line=$(echo "${version_content}" | grep -F "${component_key}=" | head -1)
     
     if [[ -n "${hash_line}" ]]; then
+        # 确保是精确匹配（行首）
+        if [[ "${hash_line}" != "${component_key}="* ]]; then
+            echo ""
+            return 1
+        fi
+        
         # 提取等号后的内容
         local value_part
-        value_part=$(echo "${hash_line}" | cut -d'=' -f2)
+        value_part="${hash_line#*=}"
         
         # 判断格式：包含冒号则是 VERSION:HASH，否则直接是 HASH
         if [[ "${value_part}" == *":"* ]]; then
             # 格式1: VERSION:HASH，提取第二个字段
-            echo "${value_part}" | cut -d':' -f2
+            echo "${value_part##*:}"
         else
             # 格式2: 直接是 HASH
             echo "${value_part}"
@@ -153,22 +160,26 @@ get_component_version() {
     local component_key="$1"
     local version_content="$2"
     
-    # 【修复】使用固定字符串匹配（-F），避免正则表达式问题
-    # 【修复】支持多种格式：KEY=VERSION:HASH 或 KEY=HASH
-    # 格式1: KEY=VERSION:HASH
-    # 格式2: KEY=HASH（兼容旧版本，返回 "unknown"）
+    # 【优化】使用精确匹配，避免重复过滤
+    # 格式: KEY=VERSION:HASH 或 KEY=HASH
     local version_line
-    version_line=$(echo "${version_content}" | grep -F "${component_key}=" | grep "^${component_key}=" | head -1)
+    version_line=$(echo "${version_content}" | grep -F "${component_key}=" | head -1)
     
     if [[ -n "${version_line}" ]]; then
+        # 确保是精确匹配（行首）
+        if [[ "${version_line}" != "${component_key}="* ]]; then
+            echo ""
+            return 1
+        fi
+        
         # 提取等号后的内容
         local value_part
-        value_part=$(echo "${version_line}" | cut -d'=' -f2)
+        value_part="${version_line#*=}"
         
         # 判断格式：包含冒号则是 VERSION:HASH，否则直接是 HASH
         if [[ "${value_part}" == *":"* ]]; then
             # 格式1: VERSION:HASH，提取第一个字段
-            echo "${value_part}" | cut -d':' -f1
+            echo "${value_part%%:*}"
         else
             # 格式2: 直接是 HASH，无版本号信息
             echo "unknown"
@@ -235,10 +246,14 @@ download_file() {
     # 【修复】检查目标目录是否有写入权限
     local target_dir
     target_dir=$(dirname "${target_file}")
+    
+    # 【优化】统一处理：目录不存在则创建，存在则检查权限
     if [[ ! -d "${target_dir}" ]]; then
-        echo -e "  ${RED}[FAIL]${NC} ${display_name} (目录不存在: ${target_dir})"
-        rm -f "${temp_file}"
-        return 1
+        mkdir -p "${target_dir}" 2>/dev/null || {
+            echo -e "  ${RED}[FAIL]${NC} ${display_name} (无法创建目录: ${target_dir})"
+            rm -f "${temp_file}"
+            return 1
+        }
     fi
     
     if [[ ! -w "${target_dir}" ]]; then
@@ -251,107 +266,40 @@ download_file() {
     # 【优先】尝试使用镜像源下载（国内加速）
     local mirror_url="${MIRROR_BASE_URL}/${remote_path}"
     
-    # 【修复】添加 -L 参数支持 302 重定向
-    # 【修复】添加重试逻辑（最多 3 次）
-    local max_retries=3
-    local retry_count=0
-    
-    while [[ ${retry_count} -lt ${max_retries} ]]; do
-        if curl -sLf --max-time 30 -o "${temp_file}" "${mirror_url}" 2>/dev/null; then
-            # 验证下载的文件非空且有效
-            if [[ -s "${temp_file}" ]]; then
-                # 先检查是否为有效的 Shell 脚本
-                local is_valid_script=false
-                local first_line
-                first_line="$(head -1 "${temp_file}" 2>/dev/null | sed '1s/^\xEF\xBB\xBF//')"
-                if [[ "${first_line}" == "#!"* ]]; then
-                    is_valid_script=true
-                fi
-                
-                # 【修复】如果是有效的 Shell 脚本，直接接受（不进行 HTML 检查）
-                # 如果不是脚本，才检查是否为 HTML 错误页面
-                if [[ "${is_valid_script}" = true ]]; then
-                    download_success=true
-                    break  # 下载成功，跳出重试循环
-                else
-                    # 非脚本文件才进行 HTML 检查（避免误判脚本中的 html 字符串）
-                    # 同时检查文件大小，太小的文件可能是错误响应
-                    local file_size
-                    file_size=$(wc -c < "${temp_file}")
-                    if [[ ${file_size} -lt 100 ]]; then
-                        # 文件太小，可能是错误响应
-                        download_success=false
-                        retry_count=$((retry_count + 1))
-                        sleep 1  # 等待 1 秒后重试
-                        continue
-                    elif grep -qi "^<html\|^<!DOCTYPE" "${temp_file}" 2>/dev/null; then
-                        # 明确的 HTML 文件
-                        download_success=false
-                        retry_count=$((retry_count + 1))
-                        sleep 1
-                        continue
-                    else
-                        download_success=true
-                        break
-                    fi
-                fi
-            fi
-        fi
-        
-        retry_count=$((retry_count + 1))
-        if [[ ${retry_count} -lt ${max_retries} ]]; then
-            sleep 1  # 等待 1 秒后重试
-        fi
-    done
-    
-    # 【备用】如果镜像源失败，尝试官方源
-    if [[ "${download_success}" = false ]]; then
-        echo -e "  ${YELLOW}[WARN]${NC} 镜像源失败，尝试官方源..."
-        local full_url="${RAW_BASE_URL}/${remote_path}"
-        rm -f "${temp_file}"
-        temp_file=$(mktemp)
-        TEMP_FILES+=("${temp_file}")  # 【修复】注册临时文件
-        
-        # 【修复】添加 -L 参数支持 302 重定向
-        # 【修复】添加重试逻辑（最多 3 次）
-        retry_count=0
+    # 【优化】统一重试逻辑函数，避免代码重复
+    download_with_retry() {
+        local url="$1"
+        local output_file="$2"
+        local max_retries=3
+        local retry_count=0
         
         while [[ ${retry_count} -lt ${max_retries} ]]; do
-            if curl -sLf --max-time 30 -o "${temp_file}" "${full_url}" 2>/dev/null; then
-                if [[ -s "${temp_file}" ]]; then
+            if curl -sLf --max-time 30 -o "${output_file}" "${url}" 2>/dev/null; then
+                # 验证下载的文件非空且有效
+                if [[ -s "${output_file}" ]]; then
                     # 先检查是否为有效的 Shell 脚本
                     local is_valid_script=false
                     local first_line
-                    first_line="$(head -1 "${temp_file}" 2>/dev/null | sed '1s/^\xEF\xBB\xBF//')"
+                    first_line="$(head -1 "${output_file}" 2>/dev/null | sed '1s/^\xEF\xBB\xBF//')"
                     if [[ "${first_line}" == "#!"* ]]; then
                         is_valid_script=true
                     fi
                     
-                    # 【修复】如果是有效的 Shell 脚本，直接接受（不进行 HTML 检查）
-                    # 如果不是脚本，才检查是否为 HTML 错误页面
+                    # 如果是有效的 Shell 脚本，直接接受
                     if [[ "${is_valid_script}" = true ]]; then
-                        download_success=true
-                        break
+                        return 0
                     else
-                        # 非脚本文件才进行 HTML 检查（避免误判脚本中的 html 字符串）
-                        # 同时检查文件大小，太小的文件可能是错误响应
+                        # 非脚本文件才进行 HTML 检查
                         local file_size
-                        file_size=$(wc -c < "${temp_file}")
+                        file_size=$(wc -c < "${output_file}")
                         if [[ ${file_size} -lt 100 ]]; then
                             # 文件太小，可能是错误响应
-                            download_success=false
-                            retry_count=$((retry_count + 1))
-                            sleep 1
-                            continue
-                        elif grep -qi "^<html\|^<!DOCTYPE" "${temp_file}" 2>/dev/null; then
+                            : # 继续重试
+                        elif grep -qi "^<html\|^<!DOCTYPE" "${output_file}" 2>/dev/null; then
                             # 明确的 HTML 文件
-                            download_success=false
-                            retry_count=$((retry_count + 1))
-                            sleep 1
-                            continue
+                            : # 继续重试
                         else
-                            download_success=true
-                            break
+                            return 0
                         fi
                     fi
                 fi
@@ -362,6 +310,27 @@ download_file() {
                 sleep 1
             fi
         done
+        
+        return 1
+    }
+    
+    # 尝试镜像源
+    if download_with_retry "${mirror_url}" "${temp_file}"; then
+        download_success=true
+    fi
+    
+    # 【备用】如果镜像源失败，尝试官方源
+    if [[ "${download_success}" = false ]]; then
+        echo -e "  ${YELLOW}[WARN]${NC} 镜像源失败，尝试官方源..."
+        local full_url="${RAW_BASE_URL}/${remote_path}"
+        rm -f "${temp_file}"
+        temp_file=$(mktemp)
+        TEMP_FILES+=("${temp_file}")  # 【修复】注册临时文件
+        
+        # 【优化】复用统一的重试函数
+        if download_with_retry "${full_url}" "${temp_file}"; then
+            download_success=true
+        fi
     fi
     
     # 处理下载结果
@@ -397,7 +366,7 @@ download_file() {
                 }
             fi
             
-            mv "${temp_file}" "${target_file}"
+            mv -f "${temp_file}" "${target_file}"
             # 【修复】确保文件有执行权限
             chmod +x "${target_file}" 2>/dev/null || {
                 echo -e "  ${RED}[FAIL]${NC} ${display_name} (无法设置执行权限)"
@@ -423,7 +392,10 @@ download_file() {
 
 # 检查更新
 check_updates() {
-    clear
+    # 【修复】非 TTY 环境不执行 clear，避免输出异常字符
+    if [[ -t 1 ]]; then
+        clear
+    fi
     echo -e "${CYAN}+------------------------------------------------------------+${NC}"
     echo -e " ${YELLOW}cfopt 组件更新检查${NC}"
     echo -e "${CYAN}+------------------------------------------------------------+${NC}"
@@ -523,7 +495,10 @@ check_updates() {
 
 # 执行更新
 perform_update() {
-    clear
+    # 【修复】非 TTY 环境不执行 clear，避免输出异常字符
+    if [[ -t 1 ]]; then
+        clear
+    fi
     echo -e "${CYAN}+------------------------------------------------------------+${NC}"
     echo -e " ${YELLOW}cfopt 组件更新${NC}"
     echo -e "${CYAN}+------------------------------------------------------------+${NC}"
@@ -684,7 +659,7 @@ perform_update() {
         echo -e "${CYAN}[INFO] 主程序已更新${NC}"
         
         # 移动 .new 文件覆盖原文件
-        mv "${ROOT_DIR}/cfopt.sh.new" "${ROOT_DIR}/cfopt.sh"
+        mv -f "${ROOT_DIR}/cfopt.sh.new" "${ROOT_DIR}/cfopt.sh"
         chmod +x "${ROOT_DIR}/cfopt.sh"
         
         echo -e "${GREEN}[OK] cfopt.sh 已更新到最新版本${NC}"
@@ -715,7 +690,10 @@ perform_update() {
 
 # 显示帮助
 show_help() {
-    clear
+    # 【修复】非 TTY 环境不执行 clear，避免输出异常字符
+    if [[ -t 1 ]]; then
+        clear
+    fi
     echo -e "${CYAN}+------------------------------------------------------------+${NC}"
     echo -e " ${YELLOW}cfopt 更新工具${NC}"
     echo -e "${CYAN}+------------------------------------------------------------+${NC}"
@@ -744,7 +722,7 @@ main() {
     local updater_new="${ROOT_DIR}/modules/updater/update.sh.new"
     if [[ -f "${updater_new}" ]]; then
         echo -e "${CYAN}[INFO] 检测到更新版本的 updater.sh，正在应用...${NC}"
-        mv "${updater_new}" "${ROOT_DIR}/modules/updater/update.sh"
+        mv -f "${updater_new}" "${ROOT_DIR}/modules/updater/update.sh"
         chmod +x "${ROOT_DIR}/modules/updater/update.sh"
         echo -e "${GREEN}[OK] updater.sh 已更新！${NC}"
         echo ""
