@@ -1253,12 +1253,25 @@ init_cfopt() {
              "${INSTALL_DIR}/modules/dnspod-dns" \
              "${INSTALL_DIR}/modules/scheduler" \
              "${INSTALL_DIR}/modules/ip-sync" \
+             "${INSTALL_DIR}/modules/updater" \
              "${INSTALL_DIR}/assets/cfst" \
              "${INSTALL_DIR}/assets/data/cf-ip" \
              "${INSTALL_DIR}/assets/data/cf-dns" \
              "${INSTALL_DIR}/assets/data/dnspod-dns" \
              "${INSTALL_DIR}/conf/templates" \
              "${INSTALL_DIR}/logs"
+
+    # 4.1 下载 updater 模块（用于后续更新检查）
+    echo -e "${CYAN}[INFO] 正在下载更新组件...${NC}"
+    if ! download_with_retry "${REMOTE_URL_MIRROR}/modules/updater/update.sh" \
+                             "${INSTALL_DIR}/modules/updater/update.sh"; then
+        # 镜像源失败，尝试官方源
+        if ! download_with_retry "${REMOTE_URL}/modules/updater/update.sh" \
+                                 "${INSTALL_DIR}/modules/updater/update.sh"; then
+            log_warning "更新组件下载失败，稍后可通过菜单手动更新"
+        fi
+    fi
+    chmod +x "${INSTALL_DIR}/modules/updater/update.sh" 2>/dev/null || true
 
     # 初始化状态配置文件 (如果不存在)
     STATUS_CONF="${INSTALL_DIR}/conf/status.conf"
