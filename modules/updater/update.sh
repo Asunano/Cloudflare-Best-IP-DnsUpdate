@@ -24,8 +24,8 @@ VERSION_FILE="${ROOT_DIR}/version.txt"
 GITHUB_REPO="Asunano/Cloudflare-Best-IP-DnsUpdate"
 GITHUB_API_URL="https://api.github.com/repos/${GITHUB_REPO}"
 RAW_BASE_URL="https://raw.githubusercontent.com/${GITHUB_REPO}/main"
-# 镜像源（用于加速国内访问）
-MIRROR_BASE_URL="https://hk.gh-proxy.org/https://raw.githubusercontent.com/${GITHUB_REPO}/main"
+# 自定义镜像源（优先使用）
+MIRROR_BASE_URL="https://mirror.drxian.qzz.io/scripts/Cloudflare-Best-IP-DnsUpdate"
 
 # 定义需要更新的组件映射
 # 格式: "KEY:本地路径:远程相对路径:显示名称"
