@@ -45,20 +45,20 @@ declare -a COMPONENTS=(
 
 # ==================== 核心函数 ====================
 
-# 获取远程版本号（支持镜像源回退）
+# 获取远程版本信息（镜像源优先）
 get_remote_version() {
     local remote_version
     
-    # 尝试原始 URL
-    remote_version=$(curl -s --max-time 10 "${RAW_BASE_URL}/version.txt" 2>/dev/null)
+    # 【优先】尝试镜像源（国内加速）
+    remote_version=$(curl -s --max-time 10 "${MIRROR_BASE_URL}/version.txt" 2>/dev/null)
     
     if [[ $? -eq 0 ]] && [[ -n "${remote_version}" ]]; then
         echo "${remote_version}"
         return 0
     fi
     
-    # 尝试镜像源
-    remote_version=$(curl -s --max-time 10 "${MIRROR_BASE_URL}/version.txt" 2>/dev/null)
+    # 【备用】尝试官方源
+    remote_version=$(curl -s --max-time 10 "${RAW_BASE_URL}/version.txt" 2>/dev/null)
     
     if [[ $? -eq 0 ]] && [[ -n "${remote_version}" ]]; then
         echo "${remote_version}"
@@ -97,7 +97,7 @@ get_local_version() {
     fi
 }
 
-# 下载单个文件（支持镜像源回退和SHA256校验）
+# 下载单个文件（支持镜像源优先和SHA256校验）
 download_file() {
     local local_path="$1"
     local remote_path="$2"
@@ -113,13 +113,14 @@ download_file() {
         temp_file="${ROOT_DIR}/modules/updater/update.sh.new"
     fi
     
-    # 尝试使用原始 URL 下载
-    local full_url="${RAW_BASE_URL}/${remote_path}"
     local download_success=false
     
     echo -e "  ${CYAN}[INFO]${NC} 正在下载 ${display_name}..."
     
-    if curl -s --max-time 30 -o "${temp_file}" "${full_url}" 2>/dev/null; then
+    # 【优先】尝试使用镜像源下载（国内加速）
+    local mirror_url="${MIRROR_BASE_URL}/${remote_path}"
+    
+    if curl -s --max-time 30 -o "${temp_file}" "${mirror_url}" 2>/dev/null; then
         # 验证下载的文件非空且有效
         if [[ -s "${temp_file}" ]]; then
             # 检查是否为 HTML 错误页
@@ -129,14 +130,14 @@ download_file() {
         fi
     fi
     
-    # 如果原始 URL 失败，尝试镜像源
+    # 【备用】如果镜像源失败，尝试官方源
     if [[ "${download_success}" = false ]]; then
-        echo -e "  ${YELLOW}[WARN]${NC} 原始地址失败，尝试镜像源..."
-        local mirror_url="${MIRROR_BASE_URL}/${remote_path}"
+        echo -e "  ${YELLOW}[WARN]${NC} 镜像源失败，尝试官方源..."
+        local full_url="${RAW_BASE_URL}/${remote_path}"
         rm -f "${temp_file}"
         temp_file=$(mktemp)
         
-        if curl -s --max-time 30 -o "${temp_file}" "${mirror_url}" 2>/dev/null; then
+        if curl -s --max-time 30 -o "${temp_file}" "${full_url}" 2>/dev/null; then
             if [[ -s "${temp_file}" ]]; then
                 if ! grep -qi "<html\|404 Not Found\|403 Forbidden" "${temp_file}" 2>/dev/null; then
                     download_success=true
@@ -147,7 +148,7 @@ download_file() {
     
     # 处理下载结果
     if [[ "${download_success}" = true ]]; then
-        # 【新增】SHA256 哈希校验
+        # 【强制】SHA256 哈希校验
         if [[ -n "${expected_hash}" ]]; then
             local actual_hash
             actual_hash=$(sha256sum "${temp_file}" | awk '{print $1}')
