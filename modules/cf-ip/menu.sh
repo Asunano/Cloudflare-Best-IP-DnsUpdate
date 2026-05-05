@@ -1018,10 +1018,14 @@ if [[ "${config_status}" -ne 0 ]]; then
     confirm=${confirm:-Y}
     
     if [[ "$confirm" =~ ^[Yy]$ ]]; then
-        manage_config
+        manage_config || {
+            echo -e "${RED}[ERROR] 配置向导执行失败${NC}"
+            exit 1
+        }
     else
         echo -e "${CYAN}[INFO] 已取消配置${NC}"
-        exit 0
+        echo -e "${YELLOW}[WARN] 未配置无法使用 CF-IP 功能，请重新进入菜单进行配置${NC}"
+        # 不退出，继续显示主菜单，让用户可以稍后配置
     fi
 fi
 
