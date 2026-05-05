@@ -350,6 +350,25 @@ if [[ "${EXIT_CODE}" -eq 0 ]] && [[ -f "${OUTPUT_CSV}" ]]; then
     echo -e "${GREEN}[OK] 测速完成！${NC}"
     echo ""
     
+    # 【增强】验证测速结果是否有效
+    if [[ -f "${OUTPUT_CSV}" ]]; then
+        local valid_ip_count
+        valid_ip_count=$(awk -F',' 'NR>1 && $6>0 {count++} END {print count+0}' "${OUTPUT_CSV}")
+        
+        if [[ "${valid_ip_count}" -eq 0 ]]; then
+            echo -e "${RED}[ERROR] 测速结果无效：所有 IP 的下载速度均为 0${NC}"
+            echo -e "${YELLOW}[提示] 可能的原因：${NC}"
+            echo -e "  • 测速地址不可达或网络问题"
+            echo -e "  • 防火墙阻止了下载测试"
+            echo -e "  • Cloudflare CDN 暂时异常"
+            echo ""
+            echo -e "${CYAN}[建议] 请检查网络连接后重新运行测速${NC}"
+            exit 1
+        else
+            echo -e "${GREEN}[验证] 找到 ${valid_ip_count} 个有效 IP（下载速度 > 0）${NC}"
+        fi
+    fi
+    
     # 展示测速结果摘要（从配置文件读取）
     total_ips=$(wc -l < "${OUTPUT_CSV}")
     total_ips=$((total_ips - 1))  # 减去表头
