@@ -85,7 +85,6 @@ jobs:
         generate_entry "DNSPOD_SETUP" "modules/dnspod-dns/setup.sh"
         generate_entry "SCHEDULER_RUN" "modules/scheduler/run.sh"
         generate_entry "IP_SYNC" "modules/ip-sync/sync.sh"
-        generate_entry "DIAGNOSE" "modules/updater/diagnose.sh"
         
         echo ""
         echo "======================================"
