@@ -1108,9 +1108,16 @@ config_status=$?
 
 if [[ "${config_status}" -ne 0 ]]; then
     echo -e "${YELLOW}[INFO] 检测到尚未配置 CF 优选参数。${NC}"
-    echo -e "${CYAN}提示: 请选择菜单项 1 开始配置，系统将自动下载所需组件。${NC}"
     echo ""
-    read -r -p "按回车键继续..." || true
+    read -r -p "是否现在运行配置向导？[Y/n] (默认 Y): " confirm
+    confirm=${confirm:-Y}
+    
+    if [[ "$confirm" =~ ^[Yy]$ ]]; then
+        manage_config
+    else
+        echo -e "${CYAN}[INFO] 已取消配置${NC}"
+        exit 0
+    fi
 fi
 
 # 主循环
