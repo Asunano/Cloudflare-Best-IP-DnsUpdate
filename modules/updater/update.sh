@@ -116,6 +116,28 @@ get_local_version() {
     fi
 }
 
+# 从 version.txt 中提取第一个组件的版本号（用于显示）
+get_display_version() {
+    local version_content="$1"
+    
+    # 如果是 "unknown"，直接返回
+    if [[ "${version_content}" == "unknown" ]]; then
+        echo "unknown"
+        return
+    fi
+    
+    # 提取第一行非注释、非空行的版本号
+    local first_entry
+    first_entry=$(echo "${version_content}" | grep -v '^#' | grep -v '^$' | head -1)
+    
+    if [[ -n "${first_entry}" ]]; then
+        # 格式: KEY=VERSION:HASH
+        echo "${first_entry}" | cut -d'=' -f2 | cut -d':' -f1
+    else
+        echo "unknown"
+    fi
+}
+
 # 下载单个文件（支持镜像源优先和SHA256校验）
 download_file() {
     local local_path="$1"
@@ -294,8 +316,8 @@ perform_update() {
     echo ""
     
     # 获取版本信息
-    local local_version
-    local_version=$(get_local_version)
+    local local_versions
+    local_versions=$(get_local_version)
     
     echo -e "${CYAN}[INFO] 正在检查更新...${NC}"
     local remote_versions
@@ -308,9 +330,11 @@ perform_update() {
         return 1
     fi
     
-    # 提取版本号（第一行非注释内容）
+    # 提取版本号用于显示
+    local local_version
+    local_version=$(get_display_version "${local_versions}")
     local remote_version
-    remote_version=$(echo "${remote_versions}" | grep -v '^#' | grep -v '^$' | head -1 | cut -d'=' -f2 | cut -d':' -f1)
+    remote_version=$(get_display_version "${remote_versions}")
     
     echo -e "  本地版本: ${GRAY}${local_version}${NC}"
     echo -e "  远程版本: ${CYAN}${remote_version}${NC}"
@@ -328,8 +352,9 @@ perform_update() {
     
     local success_count=0
     local fail_count=0
+    local skip_count=0
     
-    # 更新所有组件
+    # 增量更新：只下载哈希值不同的组件
     for component in "${COMPONENTS[@]}"; do
         IFS=':' read -r key local_path remote_path display_name <<< "${component}"
         
@@ -337,6 +362,25 @@ perform_update() {
         local expected_hash
         expected_hash=$(get_component_hash "${key}" "${remote_versions}")
         
+        if [[ -z "${expected_hash}" ]]; then
+            continue
+        fi
+        
+        # 计算本地文件哈希值
+        local local_file="${ROOT_DIR}/${local_path}"
+        local local_hash=""
+        if [[ -f "${local_file}" ]]; then
+            local_hash=$(sha256sum "${local_file}" | awk '{print $1}')
+        fi
+        
+        # 对比哈希值，相同则跳过
+        if [[ "${local_hash}" == "${expected_hash}" ]]; then
+            echo -e "  ${GREEN}[SKIP]${NC} ${display_name} (已是最新)"
+            ((skip_count++))
+            continue
+        fi
+        
+        # 哈希值不同，执行下载
         if download_file "${local_path}" "${remote_path}" "${display_name}" "${expected_hash}"; then
             ((success_count++))
         else
@@ -348,6 +392,9 @@ perform_update() {
     echo -e "${CYAN}+------------------------------------------------------------+${NC}"
     echo -e "${GREEN}更新完成！${NC}"
     echo -e "  成功: ${success_count} 个组件"
+    if [[ ${skip_count} -gt 0 ]]; then
+        echo -e "  跳过: ${GRAY}${skip_count}${NC} 个组件 (已是最新)"
+    fi
     if [[ ${fail_count} -gt 0 ]]; then
         echo -e "  失败: ${RED}${fail_count}${NC} 个组件"
     fi
