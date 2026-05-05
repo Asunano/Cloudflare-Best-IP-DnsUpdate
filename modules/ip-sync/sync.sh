@@ -48,12 +48,12 @@ echo ""
 # ==================== 核心函数定义 ====================
 
 # 自动重新测速函数（用于同步失败时自动重试）
+# 最多重试5次，5次都失败才返回失败
 auto_retry_test() {
     local result_file="$1"
     local colo_nodes="$2"  # 测速节点，如 "HKG,NRT"
     local line_id="$3"     # 线路标识，用于进程锁
-    
-    echo -e "\n${CYAN}[INFO] 检测到测速数据无效，正在自动重新测速...${NC}"
+    local max_retries=5    # 最大重试次数
     
     # 检查测速程序是否存在
     local cfst_bin="${ROOT_DIR}/assets/cfst/cfst"
@@ -62,18 +62,34 @@ auto_retry_test() {
         return 1
     fi
     
-    # 调用 core.sh 执行测速
     cd "${ROOT_DIR}" || return 1
-    CF_OPT_ENTRY=1 bash "${ROOT_DIR}/modules/cf-ip/core.sh" "${colo_nodes}" "${result_file}" "${line_id}"
     
-    local exit_code=$?
-    if [[ ${exit_code} -eq 0 ]]; then
-        echo -e "${GREEN}[OK] 自动重新测速完成${NC}"
-        return 0
-    else
-        echo -e "${RED}[ERROR] 自动重新测速失败 (Exit Code: ${exit_code})${NC}"
-        return 1
-    fi
+    # 循环重试，最多5次
+    for ((i=1; i<=max_retries; i++)); do
+        echo -e "\n${CYAN}[INFO] 检测到测速数据无效，正在自动重新测速 (尝试 ${i}/${max_retries})...${NC}"
+        
+        # 调用 core.sh 执行测速
+        CF_OPT_ENTRY=1 bash "${ROOT_DIR}/modules/cf-ip/core.sh" "${colo_nodes}" "${result_file}" "${line_id}"
+        
+        local exit_code=$?
+        if [[ ${exit_code} -eq 0 ]]; then
+            echo -e "${GREEN}[OK] 自动重新测速完成 (尝试 ${i}/${max_retries})${NC}"
+            return 0
+        else
+            echo -e "${YELLOW}[WARN] 第 ${i} 次测速失败 (Exit Code: ${exit_code})${NC}"
+            
+            # 如果不是最后一次，等待一段时间后重试
+            if [[ ${i} -lt ${max_retries} ]]; then
+                local wait_time=$((i * 10))  # 递增等待时间：10s, 20s, 30s, 40s
+                echo -e "${CYAN}[INFO] 等待 ${wait_time} 秒后重试...${NC}"
+                sleep ${wait_time}
+            fi
+        fi
+    done
+    
+    # 5次都失败
+    echo -e "${RED}[ERROR] 自动重新测速失败，已重试 ${max_retries} 次${NC}"
+    return 1
 }
 
 # Cloudflare DNS IP 同步函数（支持多域名）
