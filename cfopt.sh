@@ -403,17 +403,31 @@ download_with_retry() {
             fi
             
             # 3. HTML 错误页检查（增强版）
-            if grep -q "403 Forbidden" "${output}" 2>/dev/null || \
-               grep -q "404 Not Found" "${output}" 2>/dev/null || \
-               grep -qi "<html" "${output}" 2>/dev/null || \
-               grep -qi "<!DOCTYPE" "${output}" 2>/dev/null || \
-               grep -qi "rate limit" "${output}" 2>/dev/null; then
-                echo -e "${YELLOW}[WARN] 下载到 HTML 错误页或受限内容，正在重试...${NC}"
-                # 显示前100个字符帮助调试
-                local preview
-                preview=$(head -c 100 "${output}" 2>/dev/null | tr -d '\n')
-                echo -e "${GRAY}[DEBUG] 响应预览: ${preview}...${NC}"
-                continue
+            # 先检查是否为有效的 Shell 脚本
+            local is_valid_script=false
+            if [[ "${output}" == *.sh ]]; then
+                local first_line
+                first_line="$(head -1 "${output}" 2>/dev/null | sed '1s/^\xEF\xBB\xBF//')"
+                if [[ "${first_line}" == "#!"* ]]; then
+                    is_valid_script=true
+                fi
+            fi
+            
+            # 如果是有效的 Shell 脚本，跳过 HTML 检查
+            if [[ "${is_valid_script}" = false ]]; then
+                # 非脚本文件才进行 HTML 检查
+                if grep -q "403 Forbidden" "${output}" 2>/dev/null || \
+                   grep -q "404 Not Found" "${output}" 2>/dev/null || \
+                   grep -qi "^<html" "${output}" 2>/dev/null || \
+                   grep -qi "^<!DOCTYPE" "${output}" 2>/dev/null || \
+                   grep -qi "rate limit" "${output}" 2>/dev/null; then
+                    echo -e "${YELLOW}[WARN] 下载到 HTML 错误页或受限内容，正在重试...${NC}"
+                    # 显示前100个字符帮助调试
+                    local preview
+                    preview=$(head -c 100 "${output}" 2>/dev/null | tr -d '\n')
+                    echo -e "${GRAY}[DEBUG] 响应预览: ${preview}...${NC}"
+                    continue
+                fi
             fi
             
             # 4. Shell 脚本基本语法检查（如果是 .sh 文件）
