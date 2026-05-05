@@ -236,7 +236,8 @@ select_colo_nodes() {
     echo -e "   7. 自定义节点（手动输入）"
     echo ""
     
-    read -r -p "${CYAN}请选择 [1-7] (默认 1):${NC} " colo_choice
+    echo -ne "${CYAN}请选择 [1-7] (默认 1):${NC} "
+    read -r colo_choice
     colo_choice=${colo_choice:-1}
     
     case "$colo_choice" in
@@ -254,7 +255,8 @@ select_colo_nodes() {
             echo -e "${YELLOW}请输入 IATA 机场代码，多个用逗号分隔${NC}"
             echo -e "${GRAY}示例: HKG,NRT,LAX 或 SIN,TYO,FRA${NC}"
             echo -e "${GRAY}常见代码: HKG(香港) NRT/TYO(东京) SIN(新加坡) LAX(洛杉矶) SJC(旧金山) FRA(法兰克福) LON(伦敦) SYD(悉尼)${NC}"
-            read -r -p "${CYAN}请输入节点代码:${NC} " custom_colo
+            echo -ne "${CYAN}请输入节点代码:${NC} "
+            read -r custom_colo
             if [[ -z "$custom_colo" ]]; then
                 echo -e "${YELLOW}[WARN] 未输入，使用默认值 HKG,NRT${NC}"
                 echo "HKG,NRT"
