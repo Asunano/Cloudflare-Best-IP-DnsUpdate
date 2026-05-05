@@ -24,12 +24,13 @@ RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 CYAN='\033[0;36m'
+MAGENTA='\033[0;35m'
 BOLD='\033[1m'
 NC='\033[0m'
 
 echo -e "${CYAN}+------------------------------------------------------------+${NC}"
 echo -e " ${BOLD}${YELLOW}Cloudflare-Best-IP-DnsUpdate v${SCRIPT_VERSION}${NC}"
-echo -e " ${CYAN}项目仓库: https://github.com/Asunano/Cloudflare-Best-IP-DnsUpdate${NC}"
+echo -e " ${MAGENTA}项目仓库: https://github.com/Asunano/Cloudflare-Best-IP-DnsUpdate${NC}"
 echo -e " 启动时间: $(date '+%Y-%m-%d %H:%M:%S')"
 echo -e "${CYAN}+------------------------------------------------------------+${NC}"
 
@@ -106,28 +107,25 @@ else
     # 【优化】单线路模式：扫描所有已配置的域名，为每个域名独立测速
     echo -e "${YELLOW}[INFO] 单线路模式，正在扫描已配置的域名...${NC}"
     
-    local has_cf_dns=false
-    local cf_dns_dir="${ROOT_DIR}/conf/cf-dns"
+    has_cf_dns=false
+    cf_dns_dir="${ROOT_DIR}/conf/cf-dns"
     
     if [[ -d "${cf_dns_dir}" ]]; then
         # 遍历所有 CF-DNS 配置文件
         while IFS= read -r -d '' json_file; do
-            local domain_name
             domain_name=$(basename "$json_file" .json)
             
             # 检查模块是否启用
-            local enabled
             enabled=$(jq -r '.enabled // false' "$json_file")
             if [[ "${enabled}" != "true" ]]; then
                 continue
             fi
             
             # 从配置中读取测速节点（如果有）
-            local colo_nodes
             colo_nodes=$(jq -r '.ip_source.colo_nodes // "HKG,NRT"' "$json_file")
             
             # 生成独立的测速结果文件路径
-            local result_file="${ROOT_DIR}/assets/data/cf-ip/result_${domain_name}.csv"
+            result_file="${ROOT_DIR}/assets/data/cf-ip/result_${domain_name}.csv"
             
             echo -e "${CYAN}  -> 正在为 ${domain_name} 执行测速 (节点: ${colo_nodes})...${NC}"
             bash "${ROOT_DIR}/modules/cf-ip/core.sh" "${colo_nodes}" "${result_file}" "${domain_name}" &
