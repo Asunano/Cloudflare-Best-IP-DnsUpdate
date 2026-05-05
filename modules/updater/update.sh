@@ -164,9 +164,23 @@ download_file() {
     if curl -s --max-time 30 -o "${temp_file}" "${mirror_url}" 2>/dev/null; then
         # 验证下载的文件非空且有效
         if [[ -s "${temp_file}" ]]; then
-            # 检查是否为 HTML 错误页
-            if ! grep -qi "<html\|404 Not Found\|403 Forbidden" "${temp_file}" 2>/dev/null; then
+            # 先检查是否为有效的 Shell 脚本
+            local is_valid_script=false
+            local first_line
+            first_line="$(head -1 "${temp_file}" 2>/dev/null | sed '1s/^\xEF\xBB\xBF//')"
+            if [[ "${first_line}" == "#!"* ]]; then
+                is_valid_script=true
+            fi
+            
+            # 如果是有效的 Shell 脚本，跳过 HTML 检查
+            if [[ "${is_valid_script}" = true ]]; then
                 download_success=true
+            else
+                # 非脚本文件才进行 HTML 检查
+                if ! grep -qi "^<html\|^<!DOCTYPE" "${temp_file}" 2>/dev/null && \
+                   ! grep -q "404 Not Found\|403 Forbidden" "${temp_file}" 2>/dev/null; then
+                    download_success=true
+                fi
             fi
         fi
     fi
@@ -180,8 +194,23 @@ download_file() {
         
         if curl -s --max-time 30 -o "${temp_file}" "${full_url}" 2>/dev/null; then
             if [[ -s "${temp_file}" ]]; then
-                if ! grep -qi "<html\|404 Not Found\|403 Forbidden" "${temp_file}" 2>/dev/null; then
+                # 先检查是否为有效的 Shell 脚本
+                local is_valid_script=false
+                local first_line
+                first_line="$(head -1 "${temp_file}" 2>/dev/null | sed '1s/^\xEF\xBB\xBF//')"
+                if [[ "${first_line}" == "#!"* ]]; then
+                    is_valid_script=true
+                fi
+                
+                # 如果是有效的 Shell 脚本，跳过 HTML 检查
+                if [[ "${is_valid_script}" = true ]]; then
                     download_success=true
+                else
+                    # 非脚本文件才进行 HTML 检查
+                    if ! grep -qi "^<html\|^<!DOCTYPE" "${temp_file}" 2>/dev/null && \
+                       ! grep -q "404 Not Found\|403 Forbidden" "${temp_file}" 2>/dev/null; then
+                        download_success=true
+                    fi
                 fi
             fi
         fi
