@@ -1200,7 +1200,6 @@ if [[ -d "${INSTALL_DIR}" ]]; then
     if [[ -d "${INSTALL_DIR}" ]]; then
         echo "[$(date)] 第6步: 使用 mount --bind 技巧" >> "${LOG_FILE}"
         # 创建一个空目录并挂载覆盖
-        local tmp_empty
         tmp_empty=$(mktemp -d)
         mount --bind "${tmp_empty}" "${INSTALL_DIR}" 2>/dev/null && {
             umount "${INSTALL_DIR}" 2>/dev/null
@@ -1227,8 +1226,16 @@ CLEANUP_EOF
         
         chmod +x "${cleanup_script}"
         
-        # 在后台执行清理脚本（输出日志到 /tmp/cfopt_cleanup.log）
-        nohup bash "${cleanup_script}" "${INSTALL_DIR}" >> /tmp/cfopt_cleanup.log 2>&1 &
+        # 【关键修复】使用 setsid 确保后台进程独立于当前会话
+        # 即使主脚本退出，清理进程也会继续运行
+        if command -v setsid >/dev/null 2>&1; then
+            # 优先使用 setsid（创建新会话）
+            setsid bash "${cleanup_script}" "${INSTALL_DIR}" >> /tmp/cfopt_cleanup.log 2>&1 &
+        else
+            # 备用方案：使用 nohup + disown
+            nohup bash "${cleanup_script}" "${INSTALL_DIR}" >> /tmp/cfopt_cleanup.log 2>&1 &
+            disown 2>/dev/null || true
+        fi
         local cleanup_pid=$!
         
         log_info "已启动后台清理进程 (PID: ${cleanup_pid})"
