@@ -39,7 +39,7 @@ fi
 show_header() {
     clear
     echo -e "${CYAN}+------------------------------------------------------------+${NC}"
-    echo -e " ${YELLOW}快速部署向导 v${SCRIPT_VERSION}${NC}"
+    echo -e " ${YELLOW}cfopt - Cloudflare 优选与 DNS 管理套件 v${SCRIPT_VERSION}${NC}"
     echo -e "${CYAN}+------------------------------------------------------------+${NC}"
     echo ""
 }
