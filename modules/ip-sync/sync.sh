@@ -82,13 +82,25 @@ sync_cf_dns_ips() {
             has_synced=true
         fi
         
-        # 从配置中读取限制数量和目标文件路径
-        local max_ips target_file
+        # 从配置中读取限制数量、目标文件路径和测速结果文件路径
+        local max_ips target_file result_file
         max_ips=$(jq -r '.dns.max_ips_per_record // 2' "$json_file")
         target_file=$(jq -r '.ip_source.file_path // empty' "$json_file")
+        result_file=$(jq -r '.ip_source.result_file // empty' "$json_file")
         
         if [[ -z "${target_file}" ]]; then
             echo -e "  ${YELLOW}[WARN]${NC} ${domain_name}: 未配置 ip_source.file_path，跳过"
+            continue
+        fi
+        
+        # 如果未配置 result_file，使用默认路径
+        if [[ -z "${result_file}" ]]; then
+            result_file="${RESULT_CSV}"
+        fi
+        
+        # 检查测速结果文件是否存在
+        if [[ ! -f "${result_file}" ]]; then
+            echo -e "  ${YELLOW}[WARN]${NC} ${domain_name}: 测速结果文件不存在 (${result_file})，跳过"
             continue
         fi
         
@@ -96,7 +108,7 @@ sync_cf_dns_ips() {
         mkdir -p "$(dirname "${target_file}")"
         
         # 从 CSV 中提取前 N 个最优 IP（跳过标题行）并写入目标文件
-        head -n $((max_ips + 1)) "${RESULT_CSV}" | tail -n "${max_ips}" | awk -F',' '{print $1}' > "${target_file}"
+        head -n $((max_ips + 1)) "${result_file}" | tail -n "${max_ips}" | awk -F',' '{print $1}' > "${target_file}"
         
         local actual_count
         actual_count="$(wc -l < "${target_file}")"
