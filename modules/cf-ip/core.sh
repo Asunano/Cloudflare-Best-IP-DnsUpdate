@@ -290,7 +290,7 @@ get_file_size() {
 }
 
 # ==================== 进度条显示函数 ====================
-# 参数：$1=当前值, $2=总值, $3=阶段提示文本
+# 参数：$1=当前值, $2=总值
 display_progress() {
     local current="$1"
     local total="$2"
@@ -310,7 +310,13 @@ display_progress() {
     bar=$(printf '%*s' "${filled}" '' | tr ' ' '█')
     bar+=$(printf '%*s' "${empty}" '' | tr ' ' '░')
     
-    echo -ne "\r${CYAN}  [${bar}] ${progress}% (${current}/${total})${NC}   "
+    # 修复：固定输出长度，结尾加空格补齐，防止字符残留
+    # 格式：[████████████████████████████████████████] 100% (5955/5955)   
+    # 最大长度：2 + 40 + 2 + 4 + 2 + 12 + 4 = 66 字符
+    local output
+    output=$(printf "${CYAN}  [%s] %3d%% (%d/%d)${NC}   " "${bar}" "${progress}" "${current}" "${total}")
+    # 补齐到 80 字符，确保覆盖干净
+    printf "\r%-80s" "${output}"
 }
 
 # ==================== 日志解析与进度显示函数 ====================
@@ -345,7 +351,8 @@ parse_and_display_progress() {
                 fi
             fi
         fi
-        echo -ne "\r${CYAN}  [进度] 正在测速中...${NC}   "
+        # 修复：默认提示也固定长度，防止字符残留
+        printf "\r%-80s" "${CYAN}  [进度] 正在测速中...${NC}   "
     else
         # 下载阶段：提取 "X / 10" 格式的进度
         # 优化：只读取最后 100 行
@@ -372,7 +379,8 @@ parse_and_display_progress() {
                 fi
             fi
         fi
-        echo -ne "\r${CYAN}  [进度] 正在测试下载速度...${NC}   "
+        # 修复：默认提示也固定长度，防止字符残留
+        printf "\r%-80s" "${CYAN}  [进度] 正在测试下载速度...${NC}   "
     fi
     
     return 1
@@ -387,6 +395,7 @@ monitor_progress() {
     
     local stage="ping"
     local last_log_size=0
+    local last_displayed_size=0  # 修复：跟踪上次显示的日志大小，避免重复打印
     local max_empty_loops=20
     local empty_loop_count=0
     
@@ -396,7 +405,8 @@ monitor_progress() {
             empty_loop_count=$((empty_loop_count + 1))
             
             if [[ ${empty_loop_count} -ge ${max_empty_loops} ]]; then
-                echo -e "\r${YELLOW}[WARN] 日志文件不存在或进程已退出，跳过进度监控${NC}   "
+                printf "\r%-80s" "${YELLOW}[WARN] 日志文件不存在或进程已退出，跳过进度监控${NC}"
+                echo ""
                 break
             fi
             
@@ -411,14 +421,17 @@ monitor_progress() {
         local current_log_size
         current_log_size=$(get_file_size "${log_file}")
         
-        if [[ "${current_log_size}" -gt "${last_log_size}" ]]; then
-            last_log_size=${current_log_size}
+        # 修复：仅当日志大小真正变化时才刷新进度，避免闪烁
+        if [[ "${current_log_size}" -gt "${last_displayed_size}" ]]; then
+            last_displayed_size=${current_log_size}
             
             # 检测是否进入第二阶段（下载测速）
             # 优化：只检查最后 100 行
             if [[ "${stage}" = "ping" ]] && tail -n 100 "${log_file}" 2>/dev/null | grep -q "开始下载测速"; then
                 stage="download"
-                echo -e "\r${CYAN}  [进度] 延迟测速完成，正在进行下载测速...          ${NC}"
+                # 修复：阶段切换时用 \n 换行，保持界面整洁
+                echo ""
+                echo -e "${CYAN}  [进度] 延迟测速完成，正在进行下载测速...${NC}"
                 echo -e "${GRAY}  第二阶段: 下载速度测试${NC}"
             fi
             
@@ -438,7 +451,9 @@ monitor_progress "${CFST_PID}" "${LOG_FILE}" "${progress_bar_width}"
 wait "${CFST_PID}" 2>/dev/null
 EXIT_CODE=$?
 
-echo -e "\r${CYAN}  [████████████████████████████████████████] 100% 测速完成！${NC}"
+# 修复：固定长度输出，确保覆盖干净
+echo ""
+printf "\r%-80s" "${CYAN}  [████████████████████████████████████████] 100% 测速完成！${NC}"
 echo ""
 
 # 【增强】测速结果验证与自动重试
@@ -486,7 +501,9 @@ for ((retry=1; retry<=MAX_RETRY; retry++)); do
         wait "${CFST_PID}" 2>/dev/null
         EXIT_CODE=$?
         
-        echo -e "\r${CYAN}  [████████████████████████████████████████] 100% 测速完成！${NC}"
+        # 修复：固定长度输出，确保覆盖干净
+        echo ""
+        printf "\r%-80s" "${CYAN}  [████████████████████████████████████████] 100% 测速完成！${NC}"
         echo ""
     fi
     
