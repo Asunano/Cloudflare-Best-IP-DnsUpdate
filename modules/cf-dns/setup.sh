@@ -494,18 +494,60 @@ full_config_wizard() {
         return 1
     fi
     
-    # 4. IP 文件路径
+    # 4. 选择测速节点
     echo ""
-    echo -e "${BLUE}步骤 4/6: 配置 IP 文件路径${NC}"
-    local default_ip_path="$ROOT_DIR/assets/data/cf-dns/ip_list.txt"
-    echo "默认: $default_ip_path"
+    echo -e "${BLUE}步骤 4/6: 选择测速节点（地区）${NC}"
     echo ""
-    local ip_file=""
-    read -r -p "请输入 IP_FILE (直接回车使用默认): " ip_file
-    ip_file=${ip_file:-"$default_ip_path"}
+    echo -e "${YELLOW}[说明]${NC}"
+    echo -e "  选择距离您服务器较近的地区可获得更优的延迟"
+    echo ""
+    echo -e " ${GREEN}常用节点推荐：${NC}"
+    echo -e "   1. 香港 + 东京 (HKG,NRT)          - 亚洲通用推荐"
+    echo -e "   2. 新加坡 + 东京 (SIN,NRT)         - 东南亚优化"
+    echo -e "   3. 洛杉矶 + 旧金山 (LAX,SJC)       - 北美优化"
+    echo -e "   4. 法兰克福 + 伦敦 (FRA,LON)       - 欧洲优化"
+    echo -e "   5. 悉尼 + 东京 (SYD,NRT)           - 大洋洲优化"
+    echo ""
+    echo -e " ${GRAY}其他选项：${NC}"
+    echo -e "   6. 自动检测（默认 HKG,NRT）"
+    echo -e "   7. 自定义节点（手动输入）"
+    echo ""
+    
+    read -r -p "${CYAN}请选择 [1-7] (默认 1):${NC} " colo_choice
+    colo_choice=${colo_choice:-1}
+    
+    local recommended_colo
+    case "$colo_choice" in
+        1) recommended_colo="HKG,NRT" ;;
+        2) recommended_colo="SIN,NRT" ;;
+        3) recommended_colo="LAX,SJC" ;;
+        4) recommended_colo="FRA,LON" ;;
+        5) recommended_colo="SYD,NRT" ;;
+        6) recommended_colo="HKG,NRT" ;;
+        7)
+            echo ""
+            echo -e "${YELLOW}请输入 IATA 机场代码，多个用逗号分隔${NC}"
+            echo -e "${GRAY}示例: HKG,NRT,LAX 或 SIN,TYO,FRA${NC}"
+            echo -e "${GRAY}常见代码: HKG(香港) NRT/TYO(东京) SIN(新加坡) LAX(洛杉矶) SJC(旧金山) FRA(法兰克福) LON(伦敦) SYD(悉尼)${NC}"
+            read -r -p "${CYAN}请输入节点代码:${NC} " custom_colo
+            if [[ -z "$custom_colo" ]]; then
+                echo -e "${YELLOW}[WARN] 未输入，使用默认值 HKG,NRT${NC}"
+                recommended_colo="HKG,NRT"
+            else
+                # 转换为大写并去除空格
+                recommended_colo=$(echo "$custom_colo" | tr '[:lower:]' '[:upper:]' | tr -d ' ')
+            fi
+            ;;
+        *)
+            echo -e "${YELLOW}[WARN] 无效选择，使用默认值 HKG,NRT${NC}"
+            recommended_colo="HKG,NRT"
+            ;;
+    esac
+    
+    echo -e "${GREEN}[OK] 已选择测速节点: ${recommended_colo}${NC}"
+    echo ""
     
     # 5. IP 数量限制
-    echo ""
     echo -e "${BLUE}步骤 5/6: 配置 IP 数量限制${NC}"
     echo ""
     echo -e "${YELLOW}说明:${NC}"
@@ -517,56 +559,15 @@ full_config_wizard() {
     read -r -p "请输入限制数量 (直接回车使用默认): " max_ips
     max_ips=${max_ips:-"2"}
     
-    # 创建配置文件（从模板生成）
+    # 创建配置文件（按域名独立存储）
     echo ""
     echo -e "${GREEN}正在创建配置文件...${NC}"
     
-    # 检查模板文件是否存在
-    local template_file="$ROOT_DIR/conf/templates/cf-dns.json.example"
-    if [ ! -f "$template_file" ]; then
-        echo -e "${RED}[ERROR] 配置文件模板不存在: ${template_file}${NC}"
-        echo -e "${YELLOW}[INFO] 请确保 conf/templates/cf-dns.json.example 文件存在${NC}"
-        return 1
-    fi
+    # 创建多域名配置目录
+    local config_dir="${ROOT_DIR}/conf/cf-dns"
+    mkdir -p "$config_dir"
     
-    # 复制模板文件
-    cp "$template_file" "$CONFIG_FILE"
-    
-    # 使用 jq 更新配置值
-    local temp_file
-    temp_file=$(mktemp)
-    
-    jq --arg token "$cf_api_token" \
-       --arg zone_id "$cf_zone_id" \
-       --arg dns_name "$cf_dns_name" \
-       --arg ip_file "$ip_file" \
-       --argjson max_ips "$max_ips" \
-       --arg log_dir "$ROOT_DIR/logs/cf-dns" \
-       '.enabled = true |
-        .api.token = $token |
-        .api.zone_id = $zone_id |
-        .dns.record_name = $dns_name |
-        .dns.domain = "" |
-        .ip_source.file_path = $ip_file |
-        .dns.max_ips_per_record = $max_ips |
-        .logging.log_dir = $log_dir' \
-       "$CONFIG_FILE" > "$temp_file" && mv "$temp_file" "$CONFIG_FILE"
-    
-    # 自动修复配置文件权限为 600
-    chmod 600 "$CONFIG_FILE"
-    
-    # 保存域名到配置文件（使用用户输入的域名）
-    local temp_file
-    temp_file=$(mktemp)
-    jq --arg domain "$cf_domain" '.dns.domain = $domain' "$CONFIG_FILE" > "$temp_file" && mv "$temp_file" "$CONFIG_FILE"
-    echo -e "${GREEN}[OK] 已保存域名: ${cf_domain}${NC}"
-    
-    # 6. 确认配置信息
-    echo ""
-    echo -e "${BLUE}步骤 6/6: 确认配置信息${NC}"
-    echo ""
-    
-    # 构建完整域名显示
+    # 构建完整域名（用于文件名）
     local full_domain
     if [[ "$cf_dns_name" == "@" ]]; then
         full_domain="$cf_domain"
@@ -574,11 +575,64 @@ full_config_wizard() {
         full_domain="${cf_dns_name}.${cf_domain}"
     fi
     
+    # 配置文件路径：conf/cf-dns/{full_domain}.json
+    CONFIG_FILE="${config_dir}/${full_domain}.json"
+    
+    # 按域名独立存储 IP 列表和测速结果
+    local ip_file="${ROOT_DIR}/assets/data/cf-dns/${full_domain}.txt"
+    local result_file="${ROOT_DIR}/assets/data/cf-ip/result_${full_domain}.csv"
+    
+    # 使用 jq 直接生成配置
+    local temp_file
+    temp_file=$(mktemp)
+    
+    jq -n \
+        --arg domain "$cf_domain" \
+        --arg token "$cf_api_token" \
+        --arg zone_id "$cf_zone_id" \
+        --arg record_name "$cf_dns_name" \
+        --arg ip_file "${ip_file}" \
+        --arg result_file "${result_file}" \
+        --arg colo_nodes "$recommended_colo" \
+        --argjson max_ips "$max_ips" \
+        '{
+            "_comment": "Cloudflare DNS 更新器配置",
+            "_version": "0.1",
+            "enabled": true,
+            "api": {
+                "token": $token,
+                "zone_id": $zone_id
+            },
+            "dns": {
+                "domain": $domain,
+                "record_name": $record_name,
+                "record_type": "A",
+                "ttl": 600,
+                "max_ips_per_record": $max_ips
+            },
+            "ip_source": {
+                "file_path": $ip_file,
+                "result_file": $result_file,
+                "colo_nodes": $colo_nodes
+            }
+        }' > "$temp_file"
+    
+    mv "$temp_file" "$CONFIG_FILE"
+    chmod 600 "$CONFIG_FILE"
+    
+    echo -e "${GREEN}[OK] Cloudflare DNS 配置已生成: ${CONFIG_FILE}${NC}"
+    
+    # 6. 确认配置信息
+    echo ""
+    echo -e "${BLUE}步骤 6/6: 确认配置信息${NC}"
+    echo ""
+    
     echo -e "${CYAN}配置摘要：${NC}"
     echo -e "  • 完整域名: ${GREEN}${full_domain}${NC}"
     echo -e "  • 主机记录: ${GREEN}${cf_dns_name}${NC}"
     echo -e "  • 根域名: ${GREEN}${cf_domain}${NC}"
     echo -e "  • Zone ID: ${GREEN}${cf_zone_id:0:8}...${cf_zone_id: -4}${NC}"
+    echo -e "  • 测速节点: ${GREEN}${recommended_colo}${NC}"
     echo -e "  • IP 文件: ${GREEN}${ip_file}${NC}"
     echo -e "  • IP 数量: ${GREEN}${max_ips}${NC}"
     echo ""
@@ -653,17 +707,32 @@ EOF
     echo ""
     echo -e "${GREEN}[OK] 配置完成!${NC}"
     echo -e "配置文件已保存到: ${CONFIG_FILE}"
-    echo -e "空白模板文件: ${template_file}"
     echo ""
     
-    # 如果是首次配置，询问是否继续
-    if [ ! -f "$CONFIG_FILE.bak" ]; then
-        echo -e "${CYAN}提示:${NC} 您已完成首次配置"
-        echo -e "  - 编辑 IP 文件: ${ip_file}"
-        echo -e "  - 运行更新器: bash $ROOT_DIR/modules/cf-dns/core.sh"
-        echo ""
+    # 询问是否执行首次测速
+    echo -e "${CYAN}提示:${NC} 您已完成首次配置"
+    echo -e "  - IP 文件: ${ip_file}"
+    echo -e "  - 测速节点: ${recommended_colo}"
+    echo ""
+    
+    read -r -p "是否立即执行首次测速？[Y/n] (默认 Y): " run_test
+    run_test=${run_test:-Y}
+    
+    if [[ "$run_test" =~ ^[Yy]$ ]]; then
+        echo -e "${YELLOW}提示: 首次测速可能需要 2-5 分钟，请耐心等待...${NC}"
+        cd "${ROOT_DIR}" || return 1
+        
+        # 为当前域名生成独立的测速结果文件
+        CF_OPT_ENTRY=1 bash "${ROOT_DIR}/modules/cf-ip/core.sh" "${recommended_colo}" "${result_file}" "${full_domain}" || true
+        echo -e "${GREEN}[OK] 测速完成${NC}"
+        
+        # 执行 IP 同步，将测速结果同步到 DNS 模块的 IP 文件
+        echo -e "${CYAN}正在同步 IP 数据...${NC}"
+        bash "${ROOT_DIR}/modules/ip-sync/sync.sh" || true
+        echo -e "${GREEN}[OK] IP 数据已同步到: ${ip_file}${NC}"
     fi
     
+    echo ""
     read -r -p "按回车键继续..."
 }
 
