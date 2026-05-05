@@ -1513,7 +1513,7 @@ main() {
                 ;;
             0)
                 # 退出子菜单，返回 cfopt 主菜单
-                break
+                exit 0
                 ;;
             *)
                 echo -e "${RED}无效选择${NC}"
@@ -1522,6 +1522,9 @@ main() {
         esac
     done
 }
+
+# 正常情况下不会到达这里，但为了安全起见
+exit 0
 
 # 执行主函数
 main
