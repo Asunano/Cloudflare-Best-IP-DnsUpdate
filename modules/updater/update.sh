@@ -19,6 +19,20 @@ CYAN='\033[0;36m'
 GRAY='\033[0;90m'
 NC='\033[0m'
 
+# ==================== 全局临时文件管理 ====================
+# 【修复】记录所有临时文件，确保脚本退出时自动清理
+declare -a TEMP_FILES=()
+
+# 注册清理函数
+cleanup_temp_files() {
+    for temp_file in "${TEMP_FILES[@]}"; do
+        rm -f "${temp_file}" 2>/dev/null || true
+    done
+}
+
+# 脚本退出时自动清理
+trap cleanup_temp_files EXIT INT TERM
+
 # ==================== 配置 ====================
 VERSION_FILE="${ROOT_DIR}/version.txt"
 GITHUB_REPO="Asunano/Cloudflare-Best-IP-DnsUpdate"
@@ -48,23 +62,42 @@ declare -a COMPONENTS=(
 # 获取远程版本信息（镜像源优先）
 get_remote_version() {
     local remote_version
+    local temp_version_file
+    temp_version_file=$(mktemp)
+    TEMP_FILES+=("${temp_version_file}")  # 【修复】注册临时文件
     
     # 【优先】尝试镜像源（国内加速）
-    remote_version=$(curl -s --max-time 10 "${MIRROR_BASE_URL}/version.txt" 2>/dev/null)
-    
-    if [[ $? -eq 0 ]] && [[ -n "${remote_version}" ]]; then
-        echo "${remote_version}"
-        return 0
+    # 【修复】添加 -L 参数支持重定向，-f 参数静默失败
+    if curl -sLf --max-time 10 -o "${temp_version_file}" "${MIRROR_BASE_URL}/version.txt" 2>/dev/null; then
+        # 【修复】校验文件内容，确保不是 HTML 错误页面
+        if [[ -s "${temp_version_file}" ]]; then
+            local first_line
+            first_line=$(head -1 "${temp_version_file}" 2>/dev/null)
+            # 检查是否为有效的 version.txt（以注释或 KEY= 开头）
+            if [[ "${first_line}" == "#"* ]] || [[ "${first_line}" == *"="* ]]; then
+                remote_version=$(cat "${temp_version_file}")
+                rm -f "${temp_version_file}"
+                echo "${remote_version}"
+                return 0
+            fi
+        fi
     fi
     
     # 【备用】尝试官方源
-    remote_version=$(curl -s --max-time 10 "${RAW_BASE_URL}/version.txt" 2>/dev/null)
-    
-    if [[ $? -eq 0 ]] && [[ -n "${remote_version}" ]]; then
-        echo "${remote_version}"
-        return 0
+    if curl -sLf --max-time 10 -o "${temp_version_file}" "${RAW_BASE_URL}/version.txt" 2>/dev/null; then
+        if [[ -s "${temp_version_file}" ]]; then
+            local first_line
+            first_line=$(head -1 "${temp_version_file}" 2>/dev/null)
+            if [[ "${first_line}" == "#"* ]] || [[ "${first_line}" == *"="* ]]; then
+                remote_version=$(cat "${temp_version_file}")
+                rm -f "${temp_version_file}"
+                echo "${remote_version}"
+                return 0
+            fi
+        fi
     fi
     
+    rm -f "${temp_version_file}"
     echo ""
     return 1
 }
@@ -163,47 +196,14 @@ download_file() {
     # 【优先】尝试使用镜像源下载（国内加速）
     local mirror_url="${MIRROR_BASE_URL}/${remote_path}"
     
-    if curl -s --max-time 30 -o "${temp_file}" "${mirror_url}" 2>/dev/null; then
-        # 验证下载的文件非空且有效
-        if [[ -s "${temp_file}" ]]; then
-            # 先检查是否为有效的 Shell 脚本
-            local is_valid_script=false
-            local first_line
-            first_line="$(head -1 "${temp_file}" 2>/dev/null | sed '1s/^\xEF\xBB\xBF//')"
-            if [[ "${first_line}" == "#!"* ]]; then
-                is_valid_script=true
-            fi
-            
-            # 【修复】如果是有效的 Shell 脚本，直接接受（不进行 HTML 检查）
-            # 如果不是脚本，才检查是否为 HTML 错误页面
-            if [[ "${is_valid_script}" = true ]]; then
-                download_success=true
-            else
-                # 非脚本文件才进行 HTML 检查（避免误判脚本中的 html 字符串）
-                # 同时检查文件大小，太小的文件可能是错误响应
-                local file_size
-                file_size=$(wc -c < "${temp_file}")
-                if [[ ${file_size} -lt 100 ]]; then
-                    # 文件太小，可能是错误响应
-                    download_success=false
-                elif grep -qi "^<html\|^<!DOCTYPE" "${temp_file}" 2>/dev/null; then
-                    # 明确的 HTML 文件
-                    download_success=false
-                else
-                    download_success=true
-                fi
-            fi
-        fi
-    fi
+    # 【修复】添加 -L 参数支持 302 重定向
+    # 【修复】添加重试逻辑（最多 3 次）
+    local max_retries=3
+    local retry_count=0
     
-    # 【备用】如果镜像源失败，尝试官方源
-    if [[ "${download_success}" = false ]]; then
-        echo -e "  ${YELLOW}[WARN]${NC} 镜像源失败，尝试官方源..."
-        local full_url="${RAW_BASE_URL}/${remote_path}"
-        rm -f "${temp_file}"
-        temp_file=$(mktemp)
-        
-        if curl -s --max-time 30 -o "${temp_file}" "${full_url}" 2>/dev/null; then
+    while [[ ${retry_count} -lt ${max_retries} ]]; do
+        if curl -sLf --max-time 30 -o "${temp_file}" "${mirror_url}" 2>/dev/null; then
+            # 验证下载的文件非空且有效
             if [[ -s "${temp_file}" ]]; then
                 # 先检查是否为有效的 Shell 脚本
                 local is_valid_script=false
@@ -217,6 +217,7 @@ download_file() {
                 # 如果不是脚本，才检查是否为 HTML 错误页面
                 if [[ "${is_valid_script}" = true ]]; then
                     download_success=true
+                    break  # 下载成功，跳出重试循环
                 else
                     # 非脚本文件才进行 HTML 检查（避免误判脚本中的 html 字符串）
                     # 同时检查文件大小，太小的文件可能是错误响应
@@ -225,15 +226,87 @@ download_file() {
                     if [[ ${file_size} -lt 100 ]]; then
                         # 文件太小，可能是错误响应
                         download_success=false
+                        retry_count=$((retry_count + 1))
+                        sleep 1  # 等待 1 秒后重试
+                        continue
                     elif grep -qi "^<html\|^<!DOCTYPE" "${temp_file}" 2>/dev/null; then
                         # 明确的 HTML 文件
                         download_success=false
+                        retry_count=$((retry_count + 1))
+                        sleep 1
+                        continue
                     else
                         download_success=true
+                        break
                     fi
                 fi
             fi
         fi
+        
+        retry_count=$((retry_count + 1))
+        if [[ ${retry_count} -lt ${max_retries} ]]; then
+            sleep 1  # 等待 1 秒后重试
+        fi
+    done
+    
+    # 【备用】如果镜像源失败，尝试官方源
+    if [[ "${download_success}" = false ]]; then
+        echo -e "  ${YELLOW}[WARN]${NC} 镜像源失败，尝试官方源..."
+        local full_url="${RAW_BASE_URL}/${remote_path}"
+        rm -f "${temp_file}"
+        temp_file=$(mktemp)
+        TEMP_FILES+=("${temp_file}")  # 【修复】注册临时文件
+        
+        # 【修复】添加 -L 参数支持 302 重定向
+        # 【修复】添加重试逻辑（最多 3 次）
+        retry_count=0
+        
+        while [[ ${retry_count} -lt ${max_retries} ]]; do
+            if curl -sLf --max-time 30 -o "${temp_file}" "${full_url}" 2>/dev/null; then
+                if [[ -s "${temp_file}" ]]; then
+                    # 先检查是否为有效的 Shell 脚本
+                    local is_valid_script=false
+                    local first_line
+                    first_line="$(head -1 "${temp_file}" 2>/dev/null | sed '1s/^\xEF\xBB\xBF//')"
+                    if [[ "${first_line}" == "#!"* ]]; then
+                        is_valid_script=true
+                    fi
+                    
+                    # 【修复】如果是有效的 Shell 脚本，直接接受（不进行 HTML 检查）
+                    # 如果不是脚本，才检查是否为 HTML 错误页面
+                    if [[ "${is_valid_script}" = true ]]; then
+                        download_success=true
+                        break
+                    else
+                        # 非脚本文件才进行 HTML 检查（避免误判脚本中的 html 字符串）
+                        # 同时检查文件大小，太小的文件可能是错误响应
+                        local file_size
+                        file_size=$(wc -c < "${temp_file}")
+                        if [[ ${file_size} -lt 100 ]]; then
+                            # 文件太小，可能是错误响应
+                            download_success=false
+                            retry_count=$((retry_count + 1))
+                            sleep 1
+                            continue
+                        elif grep -qi "^<html\|^<!DOCTYPE" "${temp_file}" 2>/dev/null; then
+                            # 明确的 HTML 文件
+                            download_success=false
+                            retry_count=$((retry_count + 1))
+                            sleep 1
+                            continue
+                        else
+                            download_success=true
+                            break
+                        fi
+                    fi
+                fi
+            fi
+            
+            retry_count=$((retry_count + 1))
+            if [[ ${retry_count} -lt ${max_retries} ]]; then
+                sleep 1
+            fi
+        done
     fi
     
     # 处理下载结果
@@ -301,7 +374,10 @@ check_updates() {
         echo -e "${RED}[ERROR] 无法获取远程版本信息${NC}"
         echo -e "${YELLOW}提示: 请检查网络连接或 GitHub 访问${NC}"
         echo ""
-        read -r -p "按回车键返回..."
+        # 【修复】非交互式环境直接退出，不等待输入
+        if [[ -t 0 ]]; then
+            read -r -p "按回车键返回..."
+        fi
         return 1
     fi
     
@@ -350,7 +426,10 @@ check_updates() {
     if [[ "${needs_update}" = false ]]; then
         echo -e "${GREEN}[OK] 所有组件已是最新版本${NC}"
         echo ""
-        read -r -p "按回车键返回..."
+        # 【修复】非交互式环境直接退出
+        if [[ -t 0 ]]; then
+            read -r -p "按回车键返回..."
+        fi
         return 0
     else
         echo -e "${YELLOW}[INFO] 发现 ${#update_list[@]} 个组件需要更新！${NC}"
@@ -365,7 +444,12 @@ check_updates() {
         echo -e "${YELLOW}运行以下命令进行更新：${NC}"
         echo -e "  ${CYAN}bash modules/updater/update.sh update${NC}"
         echo ""
-        read -r -p "是否立即执行更新？[Y/n] (默认 Y): " confirm_update
+        # 【修复】非交互式环境自动执行更新
+        if [[ -t 0 ]]; then
+            read -r -p "是否立即执行更新？[Y/n] (默认 Y): " confirm_update
+        else
+            confirm_update="Y"  # 非交互式环境默认执行
+        fi
         confirm_update="${confirm_update:-Y}"
         if [[ "${confirm_update}" =~ ^[Yy]$ ]] || [[ -z "${confirm_update}" ]]; then
             perform_update
@@ -393,7 +477,10 @@ perform_update() {
     if [[ -z "${remote_versions}" ]]; then
         echo -e "${RED}[ERROR] 无法获取远程版本信息${NC}"
         echo ""
-        read -r -p "按回车键返回..."
+        # 【修复】非交互式环境直接退出
+        if [[ -t 0 ]]; then
+            read -r -p "按回车键返回..."
+        fi
         return 1
     fi
     
@@ -546,7 +633,10 @@ perform_update() {
     fi
     
     echo ""
-    read -r -p "按回车键返回..."
+    # 【修复】非交互式环境直接退出
+    if [[ -t 0 ]]; then
+        read -r -p "按回车键返回..."
+    fi
     return 0
 }
 
@@ -569,7 +659,10 @@ show_help() {
     echo -e "  bash modules/updater/update.sh check"
     echo -e "  bash modules/updater/update.sh update"
     echo ""
-    read -r -p "按回车键返回..."
+    # 【修复】非交互式环境直接退出
+    if [[ -t 0 ]]; then
+        read -r -p "按回车键返回..."
+    fi
 }
 
 # 执行主函数
