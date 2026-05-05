@@ -265,14 +265,33 @@ CFST_PID=$!
 stage="ping"
 last_log_size=0
 progress_bar_width=40
+max_empty_loops=20  # 允许的最大空循环次数（防止无日志文件时死循环）
+empty_loop_count=0
 
 while kill -0 "${CFST_PID}" 2>/dev/null; do
-    # 检查日志文件是否有新内容
-    if [[ -f "${LOG_FILE}" ]]; then
-        current_log_size=$(wc -c < "${LOG_FILE}" 2>/dev/null || echo "0")
+    # 检查日志文件是否存在
+    if [[ ! -f "${LOG_FILE}" ]]; then
+        # 文件不存在，增加空循环计数
+        empty_loop_count=$((empty_loop_count + 1))
         
-        if [[ "${current_log_size}" -gt "${last_log_size}" ]]; then
-            last_log_size=${current_log_size}
+        # 如果空循环次数过多，提示并跳过
+        if [[ ${empty_loop_count} -ge ${max_empty_loops} ]]; then
+            echo -e "\r${YELLOW}[WARN] 日志文件不存在或进程已退出，跳过进度监控${NC}   "
+            break
+        fi
+        
+        sleep 0.5
+        continue
+    fi
+    
+    # 重置空循环计数
+    empty_loop_count=0
+    
+    # 检查日志文件是否有新内容
+    current_log_size=$(wc -c < "${LOG_FILE}" 2>/dev/null || echo "0")
+    
+    if [[ "${current_log_size}" -gt "${last_log_size}" ]]; then
+        last_log_size=${current_log_size}
             
             # 检测是否进入第二阶段（下载测速）
             if [[ "${stage}" = "ping" ]] && grep -q "开始下载测速" "${LOG_FILE}" 2>/dev/null; then
@@ -343,8 +362,8 @@ while kill -0 "${CFST_PID}" 2>/dev/null; do
     sleep 0.5
 done
 
-# 等待进程结束
-wait "${CFST_PID}"
+# 等待进程结束（屏蔽错误输出，防止进程已退出时报错）
+wait "${CFST_PID}" 2>/dev/null
 EXIT_CODE=$?
 
 echo -e "\r${CYAN}  [████████████████████████████████████████] 100% 测速完成！${NC}"
@@ -386,6 +405,8 @@ for ((retry=1; retry<=MAX_RETRY; retry++)); do
         stage="ping"
         last_log_size=0
         progress_bar_width=40
+        max_empty_loops=20  # 允许的最大空循环次数
+        empty_loop_count=0
         
         # 显示测速阶段标题
         echo -e "\n${CYAN}+------------------------------------------------------------+"
@@ -395,12 +416,26 @@ for ((retry=1; retry<=MAX_RETRY; retry++)); do
         echo -e "${GRAY}  第一阶段: 延迟测速 (TCP Ping)${NC}"
         
         while kill -0 "${CFST_PID}" 2>/dev/null; do
-            # 检查日志文件是否有新内容
-            if [[ -f "${LOG_FILE}" ]]; then
-                current_log_size=$(wc -c < "${LOG_FILE}" 2>/dev/null || echo "0")
+            # 检查日志文件是否存在
+            if [[ ! -f "${LOG_FILE}" ]]; then
+                empty_loop_count=$((empty_loop_count + 1))
                 
-                if [[ "${current_log_size}" -gt "${last_log_size}" ]]; then
-                    last_log_size=${current_log_size}
+                if [[ ${empty_loop_count} -ge ${max_empty_loops} ]]; then
+                    echo -e "\r${YELLOW}[WARN] 日志文件不存在或进程已退出，跳过进度监控${NC}   "
+                    break
+                fi
+                
+                sleep 0.5
+                continue
+            fi
+            
+            empty_loop_count=0
+            
+            # 检查日志文件是否有新内容
+            current_log_size=$(wc -c < "${LOG_FILE}" 2>/dev/null || echo "0")
+            
+            if [[ "${current_log_size}" -gt "${last_log_size}" ]]; then
+                last_log_size=${current_log_size}
                     
                     # 检测是否进入第二阶段（下载测速）
                     if [[ "${stage}" = "ping" ]] && grep -q "开始下载测速" "${LOG_FILE}" 2>/dev/null; then
@@ -462,8 +497,8 @@ for ((retry=1; retry<=MAX_RETRY; retry++)); do
             sleep 0.5
         done
         
-        # 5. 等待进程结束
-        wait "${CFST_PID}"
+        # 5. 等待进程结束（屏蔽错误输出）
+        wait "${CFST_PID}" 2>/dev/null
         EXIT_CODE=$?
         
         echo -e "\r${CYAN}  [████████████████████████████████████████] 100% 测速完成！${NC}"
