@@ -188,10 +188,10 @@ check_updates() {
     local_version=$(get_local_version)
     
     echo -e "${CYAN}[INFO] 正在检查更新...${NC}"
-    local remote_version
-    remote_version=$(get_remote_version)
+    local remote_versions
+    remote_versions=$(get_remote_version)
     
-    if [[ -z "${remote_version}" ]]; then
+    if [[ -z "${remote_versions}" ]]; then
         echo -e "${RED}[ERROR] 无法获取远程版本信息${NC}"
         echo -e "${YELLOW}提示: 请检查网络连接或 GitHub 访问${NC}"
         echo ""
@@ -199,23 +199,55 @@ check_updates() {
         return 1
     fi
     
+    # 提取版本号（第一行非注释内容）
+    local remote_version
+    remote_version=$(echo "${remote_versions}" | grep -v '^#' | grep -v '^$' | head -1 | cut -d'=' -f2 | cut -d':' -f1)
+    
     echo -e "  本地版本: ${GRAY}${local_version}${NC}"
     echo -e "  远程版本: ${CYAN}${remote_version}${NC}"
     echo ""
     
-    if [[ "${local_version}" == "${remote_version}" ]]; then
-        echo -e "${GREEN}[OK] 已是最新版本${NC}"
+    # 检查每个组件的哈希值
+    local needs_update=false
+    local update_list=()
+    
+    for component in "${COMPONENTS[@]}"; do
+        IFS=':' read -r key local_path remote_path display_name <<< "${component}"
+        
+        # 获取云端哈希值
+        local remote_hash
+        remote_hash=$(get_component_hash "${key}" "${remote_versions}")
+        
+        if [[ -z "${remote_hash}" ]]; then
+            continue
+        fi
+        
+        # 计算本地文件哈希值
+        local local_file="${ROOT_DIR}/${local_path}"
+        local local_hash=""
+        if [[ -f "${local_file}" ]]; then
+            local_hash=$(sha256sum "${local_file}" | awk '{print $1}')
+        fi
+        
+        # 对比哈希值
+        if [[ "${local_hash}" != "${remote_hash}" ]]; then
+            needs_update=true
+            update_list+=("${display_name}")
+        fi
+    done
+    
+    if [[ "${needs_update}" = false ]]; then
+        echo -e "${GREEN}[OK] 所有组件已是最新版本${NC}"
         echo ""
         read -r -p "按回车键返回..."
         return 0
     else
-        echo -e "${YELLOW}[INFO] 发现新版本！${NC}"
+        echo -e "${YELLOW}[INFO] 发现 ${#update_list[@]} 个组件需要更新！${NC}"
         echo ""
-        echo -e "${CYAN}可更新的组件：${NC}"
+        echo -e "${CYAN}需要更新的组件：${NC}"
         
-        for component in "${COMPONENTS[@]}"; do
-            IFS=':' read -r key local_path remote_path display_name <<< "${component}"
-            echo -e "  • ${display_name}"
+        for item in "${update_list[@]}"; do
+            echo -e "  • ${item}"
         done
         
         echo ""
