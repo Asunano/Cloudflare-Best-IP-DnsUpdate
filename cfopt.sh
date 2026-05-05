@@ -814,6 +814,11 @@ show_main_menu() {
         echo ""
         read -r -p "按回车键继续..."
         clear
+        # 【修复】clear后重新输出标题栏
+        echo -e "${CYAN}+------------------------------------------------------------+${NC}"
+        echo -e " ${BOLD}${YELLOW}Cloudflare-Best-IP-DnsUpdate v${SCRIPT_VERSION}${NC}"
+        echo -e " ${CYAN}项目仓库: https://github.com/Asunano/Cloudflare-Best-IP-DnsUpdate${NC}"
+        echo -e "${CYAN}+------------------------------------------------------------+${NC}"
     fi
     
     # 获取各模块状态
