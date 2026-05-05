@@ -1408,6 +1408,13 @@ init_cfopt() {
     # 4.1 下载 updater 模块（用于后续更新检查）
     echo -e "${CYAN}[INFO] 正在下载核心组件...${NC}"
     
+    # 【新增】先下载 version.txt 获取哈希值
+    local version_content
+    version_content=$(curl -s --max-time 10 "${REMOTE_URL_MIRROR}/version.txt" 2>/dev/null)
+    if [[ -z "${version_content}" ]]; then
+        version_content=$(curl -s --max-time 10 "${REMOTE_URL}/version.txt" 2>/dev/null)
+    fi
+    
     # 定义需要下载的核心模块列表
     local core_modules=(
         "modules/updater/update.sh"
@@ -1428,17 +1435,53 @@ init_cfopt() {
         module_name=$(basename "${module_path}")
         echo -e "  ${CYAN}[INFO] 正在下载 ${module_name}...${NC}"
         
-        # 优先使用镜像源
-        if ! download_with_retry "${REMOTE_URL_MIRROR}/${module_path}" \
-                                 "${INSTALL_DIR}/${module_path}"; then
-            # 镜像源失败，尝试官方源
-            if ! download_with_retry "${REMOTE_URL}/${module_path}" \
+        # 【新增】从 version.txt 中获取预期哈希值
+        local module_key
+        # 提取模块名称（例如：modules/cf-dns/core.sh -> CF_DNS_CORE）
+        # 特殊处理：对于 update.sh 和 setup.sh，使用目录名而非文件名
+        case "${module_path}" in
+            "modules/updater/update.sh") module_key="UPDATER" ;;
+            "modules/quick-deploy/setup.sh") module_key="QUICK_DEPLOY" ;;
+            "cfopt.sh") module_key="CFOPT" ;;
+            *)
+                # 其他文件：移除 modules/ 前缀，移除 .sh 后缀，将 / 和 - 替换为 _，转为大写
+                module_key=$(echo "${module_path}" | sed 's|^modules/||' | sed 's|\.sh$||' | sed 's|/|_|g' | sed 's|-|_|g' | tr '[:lower:]' '[:upper:]')
+                ;;
+        esac
+        
+        local expected_hash
+        expected_hash=$(echo "${version_content}" | grep "^${module_key}=" | head -1 | cut -d':' -f2)
+        
+        # 优先使用镜像源，并进行哈希校验
+        local download_ok=false
+        if [[ -n "${expected_hash}" ]]; then
+            # 有哈希值，进行校验
+            if download_with_retry "${REMOTE_URL_MIRROR}/${module_path}" \
+                                     "${INSTALL_DIR}/${module_path}" \
+                                     "${expected_hash}"; then
+                download_ok=true
+            elif download_with_retry "${REMOTE_URL}/${module_path}" \
+                                     "${INSTALL_DIR}/${module_path}" \
+                                     "${expected_hash}"; then
+                download_ok=true
+            fi
+        else
+            # 没有哈希值，只下载不校验（向后兼容）
+            if download_with_retry "${REMOTE_URL_MIRROR}/${module_path}" \
                                      "${INSTALL_DIR}/${module_path}"; then
-                log_warning "${module_name} 下载失败"
-                download_success=false
+                download_ok=true
+            elif download_with_retry "${REMOTE_URL}/${module_path}" \
+                                     "${INSTALL_DIR}/${module_path}"; then
+                download_ok=true
             fi
         fi
-        chmod +x "${INSTALL_DIR}/${module_path}" 2>/dev/null || true
+        
+        if [[ "${download_ok}" = true ]]; then
+            chmod +x "${INSTALL_DIR}/${module_path}" 2>/dev/null || true
+        else
+            log_warning "${module_name} 下载失败或校验失败"
+            download_success=false
+        fi
     done
     
     if [[ "${download_success}" = true ]]; then
