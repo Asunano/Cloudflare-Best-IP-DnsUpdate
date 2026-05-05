@@ -405,7 +405,8 @@ check_updates() {
         clear
     fi
     echo -e "${CYAN}+------------------------------------------------------------+${NC}"
-    echo -e " ${YELLOW}cfopt 组件更新检查${NC}"
+    echo -e " ${BOLD}${YELLOW}cfopt 组件更新检查 v${SCRIPT_VERSION}${NC}"
+    echo -e " ${MAGENTA}项目仓库: https://github.com/Asunano/Cloudflare-Best-IP-DnsUpdate${NC}"
     echo -e "${CYAN}+------------------------------------------------------------+${NC}"
     echo ""
     
@@ -508,7 +509,8 @@ perform_update() {
         clear
     fi
     echo -e "${CYAN}+------------------------------------------------------------+${NC}"
-    echo -e " ${YELLOW}cfopt 组件更新${NC}"
+    echo -e " ${BOLD}${YELLOW}cfopt 组件更新 v${SCRIPT_VERSION}${NC}"
+    echo -e " ${MAGENTA}项目仓库: https://github.com/Asunano/Cloudflare-Best-IP-DnsUpdate${NC}"
     echo -e "${CYAN}+------------------------------------------------------------+${NC}"
     echo ""
     
@@ -719,7 +721,8 @@ show_help() {
         clear
     fi
     echo -e "${CYAN}+------------------------------------------------------------+${NC}"
-    echo -e " ${YELLOW}cfopt 更新工具${NC}"
+    echo -e " ${BOLD}${YELLOW}cfopt 更新工具 v${SCRIPT_VERSION}${NC}"
+    echo -e " ${MAGENTA}项目仓库: https://github.com/Asunano/Cloudflare-Best-IP-DnsUpdate${NC}"
     echo -e "${CYAN}+------------------------------------------------------------+${NC}"
     echo ""
     echo -e "${CYAN}用法:${NC}"
