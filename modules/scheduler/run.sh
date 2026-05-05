@@ -27,7 +27,8 @@ CYAN='\033[0;36m'
 NC='\033[0m'
 
 echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
-echo -e " ${YELLOW}自动化调度中心 v${SCRIPT_VERSION}${NC}"
+echo -e " ${YELLOW}Cloudflare-Best-IP-DnsUpdate v${SCRIPT_VERSION}${NC}"
+echo -e " ${GRAY}https://github.com/Asunano/Cloudflare-Best-IP-DnsUpdate${NC}"
 echo -e " 启动时间: $(date '+%Y-%m-%d %H:%M:%S')"
 echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
 

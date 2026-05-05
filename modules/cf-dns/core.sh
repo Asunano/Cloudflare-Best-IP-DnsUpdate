@@ -629,7 +629,8 @@ main() {
     
     # 显示配置摘要
     echo -e "${CYAN}+--------------------------------------------------+"
-    echo -e " ${YELLOW}Cloudflare DNS 更新器 v${VERSION}${NC}"
+    echo -e " ${YELLOW}Cloudflare-Best-IP-DnsUpdate v${VERSION}${NC}"
+    echo -e " ${GRAY}https://github.com/Asunano/Cloudflare-Best-IP-DnsUpdate${NC}"
     echo -e " 域名: ${full_domain}"
     echo -e " IP限制: ${MAX_IPS_PER_RECORD} 个/记录"
     echo -e "${CYAN}+--------------------------------------------------+${NC}"

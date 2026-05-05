@@ -83,8 +83,9 @@ ROOT_DIR="$(cd "$SCRIPT_DIR/../.." && pwd)"
 clear 2>/dev/null || true
 
 echo -e "${CYAN}+------------------------------------------------------------+"
-echo -e " ${YELLOW}CF-IP 优选测速 v${SCRIPT_VERSION}${NC}"
+echo -e " ${YELLOW}Cloudflare-Best-IP-DnsUpdate v${SCRIPT_VERSION}${NC}"
 echo -e " ${GRAY}启动时间: $(date '+%Y-%m-%d %H:%M:%S')${NC}"
+echo -e " ${GRAY}https://github.com/Asunano/Cloudflare-Best-IP-DnsUpdate${NC}"
 echo -e "${CYAN}+------------------------------------------------------------+"
 
 # ==================== 配置加载与参数校验 ====================

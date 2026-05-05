@@ -228,7 +228,8 @@ show_help() {
 show_main_menu() {
     clear 2>/dev/null || true
     echo -e "${CYAN}+------------------------------------------------------------+"
-    echo -e " ${YELLOW}CF-IP 优选管理模块 v${SCRIPT_VERSION}"
+    echo -e " ${YELLOW}Cloudflare-Best-IP-DnsUpdate v${SCRIPT_VERSION}"
+    echo -e " ${GRAY}https://github.com/Asunano/Cloudflare-Best-IP-DnsUpdate${NC}"
     echo -e "${CYAN}+------------------------------------------------------------+"
     
     # 检查配置状态
