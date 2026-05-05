@@ -74,6 +74,7 @@ jobs:
         echo ""
         
         # 依次处理所有脚本文件
+        generate_entry "UPDATER" "modules/updater/update.sh"
         generate_entry "CFOPT" "cfopt.sh"
         generate_entry "QUICK_DEPLOY" "modules/quick-deploy/setup.sh"
         generate_entry "CF_IP_MENU" "modules/cf-ip/menu.sh"
