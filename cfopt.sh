@@ -1164,41 +1164,75 @@ uninstall_cfopt() {
         
         cat > "${cleanup_script}" << 'CLEANUP_EOF'
 #!/bin/bash
-# 等待 2 秒，确保主脚本已退出
-sleep 2
+# 等待 3 秒，确保主脚本已完全退出
+sleep 3
 
 # 强制删除整个目录
 INSTALL_DIR="$1"
+LOG_FILE="/tmp/cfopt_cleanup.log"
+
+echo "[$(date)] 开始清理: ${INSTALL_DIR}" >> "${LOG_FILE}"
+
 if [[ -d "${INSTALL_DIR}" ]]; then
-    # 第一遍：删除所有文件
-    find "${INSTALL_DIR}" -type f -delete 2>/dev/null || true
+    # 第一遍：尝试终止所有相关进程
+    echo "[$(date)] 第1步: 终止相关进程" >> "${LOG_FILE}"
+    pkill -9 -f "cfopt" 2>/dev/null || true
+    sleep 1
     
-    # 第二遍：删除空目录
-    find "${INSTALL_DIR}" -type d -empty -delete 2>/dev/null || true
+    # 第二遍：删除所有文件（包括隐藏文件）
+    echo "[$(date)] 第2步: 删除所有文件" >> "${LOG_FILE}"
+    find "${INSTALL_DIR}" -type f -exec rm -f {} \; 2>/dev/null || true
     
-    # 第三遍：强制删除根目录
+    # 第三遍：删除符号链接
+    echo "[$(date)] 第3步: 删除符号链接" >> "${LOG_FILE}"
+    find "${INSTALL_DIR}" -type l -delete 2>/dev/null || true
+    
+    # 第四遍：从内到外删除目录（深度优先）
+    echo "[$(date)] 第4步: 删除目录结构" >> "${LOG_FILE}"
+    find "${INSTALL_DIR}" -depth -type d -exec rmdir {} \; 2>/dev/null || true
+    
+    # 第五遍：强制删除根目录
+    echo "[$(date)] 第5步: 强制删除根目录" >> "${LOG_FILE}"
     rm -rf "${INSTALL_DIR}" 2>/dev/null || true
+    
+    # 第六遍：如果还存在，使用更暴力的方法
+    if [[ -d "${INSTALL_DIR}" ]]; then
+        echo "[$(date)] 第6步: 使用 mount --bind 技巧" >> "${LOG_FILE}"
+        # 创建一个空目录并挂载覆盖
+        local tmp_empty
+        tmp_empty=$(mktemp -d)
+        mount --bind "${tmp_empty}" "${INSTALL_DIR}" 2>/dev/null && {
+            umount "${INSTALL_DIR}" 2>/dev/null
+            rm -rf "${INSTALL_DIR}" 2>/dev/null
+        } || true
+        rm -rf "${tmp_empty}" 2>/dev/null || true
+    fi
     
     # 验证删除结果
     if [[ ! -d "${INSTALL_DIR}" ]]; then
-        echo "[OK] cfopt 目录已完全删除"
+        echo "[$(date)] [OK] cfopt 目录已完全删除" >> "${LOG_FILE}"
     else
-        echo "[WARN] 部分文件可能未删除，请手动执行: rm -rf ${INSTALL_DIR}"
+        echo "[$(date)] [ERROR] 目录仍然存在: $(ls -la ${INSTALL_DIR} 2>/dev/null)" >> "${LOG_FILE}"
+        echo "[$(date)] [WARN] 请手动执行: sudo rm -rf ${INSTALL_DIR}" >> "${LOG_FILE}"
     fi
+else
+    echo "[$(date)] [INFO] 目录不存在，无需清理" >> "${LOG_FILE}"
 fi
 
 # 清理临时脚本
 rm -f "$0" 2>/dev/null || true
+echo "[$(date)] 清理脚本执行完毕" >> "${LOG_FILE}"
 CLEANUP_EOF
         
         chmod +x "${cleanup_script}"
         
-        # 在后台执行清理脚本
-        nohup bash "${cleanup_script}" "${INSTALL_DIR}" >/dev/null 2>&1 &
+        # 在后台执行清理脚本（输出日志到 /tmp/cfopt_cleanup.log）
+        nohup bash "${cleanup_script}" "${INSTALL_DIR}" >> /tmp/cfopt_cleanup.log 2>&1 &
         local cleanup_pid=$!
         
         log_info "已启动后台清理进程 (PID: ${cleanup_pid})"
-        log_info "脚本将在 2 秒后自动退出并删除目录..."
+        log_info "脚本将在 3 秒后自动退出并删除目录..."
+        log_info "详细日志: /tmp/cfopt_cleanup.log"
         
         # 注意：删除是异步执行的，不在此处验证
         log_success "卸载指令已发送，目录将在后台清理"
