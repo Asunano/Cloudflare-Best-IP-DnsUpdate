@@ -18,11 +18,11 @@ YELLOW='\033[1;33m'
 CYAN='\033[0;36m'
 NC='\033[0m'
 
-echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+echo -e "${CYAN}+------------------------------------------------------------+${NC}"
 echo -e " ${YELLOW}Cloudflare-Best-IP-DnsUpdate v${SCRIPT_VERSION}${NC}"
 echo -e " ${GRAY}https://github.com/Asunano/Cloudflare-Best-IP-DnsUpdate${NC}"
 echo -e " 启动时间: $(date '+%Y-%m-%d %H:%M:%S')"
-echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+echo -e "${CYAN}+------------------------------------------------------------+${NC}"
 
 # ==================== 配置目录 ====================
 CONFIG_DIR="${ROOT_DIR}/conf/dnspod"
@@ -84,14 +84,14 @@ for config_file in "${CONFIG_FILES[@]}"; do
 done
 
 # ==================== 汇总报告 ====================
-echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+echo -e "${CYAN}+------------------------------------------------------------+${NC}"
 echo -e " ${YELLOW}批量更新完成报告${NC}"
-echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+echo -e "${CYAN}+------------------------------------------------------------+${NC}"
 echo -e " 总计配置: ${#CONFIG_FILES[@]}"
 echo -e " ${GREEN}成功: ${SUCCESS_COUNT}${NC}"
 echo -e " ${RED}失败: ${FAIL_COUNT}${NC}"
 echo -e " ${YELLOW}跳过: ${SKIP_COUNT}${NC}"
-echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+echo -e "${CYAN}+------------------------------------------------------------+${NC}"
 
 if [[ $FAIL_COUNT -gt 0 ]]; then
     exit 1

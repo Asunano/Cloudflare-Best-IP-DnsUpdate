@@ -22,10 +22,10 @@ NC='\033[0m'
 # 定义测速结果文件的绝对路径
 RESULT_CSV="${ROOT_DIR}/assets/data/cf-ip/result.csv"
 
-echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+echo -e "${CYAN}+------------------------------------------------------------+${NC}"
 echo -e " ${YELLOW}Cloudflare-Best-IP-DnsUpdate v${SCRIPT_VERSION}${NC}"
 echo -e " ${GRAY}https://github.com/Asunano/Cloudflare-Best-IP-DnsUpdate${NC}"
-echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+echo -e "${CYAN}+------------------------------------------------------------+${NC}"
 
 # ==================== 前置条件检查 ====================
 if [[ ! -f "${RESULT_CSV}" ]]; then
@@ -392,5 +392,5 @@ sync_cf_dns_ips
 # 2. 同步 DNSPod DNS 模块数据（支持多域名和多线路）
 sync_dnspod_ips
 
-echo -e "\n${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+echo -e "\n${CYAN}+------------------------------------------------------------+${NC}"
 echo -e "${GREEN}同步任务执行完毕！${NC}"
