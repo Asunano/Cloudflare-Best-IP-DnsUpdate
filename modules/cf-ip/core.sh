@@ -369,9 +369,9 @@ parse_and_display_progress() {
         printf "\r%-80s" "${CYAN}  [进度] 正在测速中...${NC}   "
     else
         # 下载阶段：提取 "X / 10" 格式的进度
-        # 优化：只读取最后 100 行
+        # 【修复】允许行首有空格，匹配 cfst 实际输出格式
         local download_line
-        download_line=$(tail -n 100 "${log_file}" 2>/dev/null | grep -E '^[0-9]+ / [0-9]+' | tail -1)
+        download_line=$(tail -n 100 "${log_file}" 2>/dev/null | grep -E '[0-9]+ / [0-9]+' | tail -1)
         
         if [[ -n "${download_line}" ]]; then
             # 使用 grep -oE 提取纯数字
