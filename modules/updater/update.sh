@@ -208,70 +208,77 @@ check_updates() {
     echo -e "  远程版本: ${CYAN}${remote_version}${NC}"
     echo ""
     
-    # 【第一步】对比版本号
-    if [[ "${local_version}" == "${remote_version}" ]]; then
-        echo -e "${GREEN}[OK] 已是最新版本，无需更新${NC}"
-        echo ""
-        read -r -p "按回车键返回..."
-        return 0
-    fi
-    
-    # 【第二步】版本号不同，逐个检查组件的 SHA256 哈希值
-    echo -e "${YELLOW}[INFO] 发现新版本，正在检查组件完整性...${NC}"
-    echo ""
-    
     local needs_update=false
     local update_list=()
     
-    for component in "${COMPONENTS[@]}"; do
-        IFS=':' read -r key local_path remote_path display_name <<< "${component}"
-        
-        # 获取云端哈希值
-        local remote_hash
-        remote_hash=$(get_component_hash "${key}" "${remote_versions}")
-        
-        if [[ -z "${remote_hash}" ]]; then
-            continue
-        fi
-        
-        # 计算本地文件哈希值
-        local local_file="${ROOT_DIR}/${local_path}"
-        local local_hash=""
-        if [[ -f "${local_file}" ]]; then
-            local_hash=$(sha256sum "${local_file}" | awk '{print $1}')
-        fi
-        
-        # 对比哈希值
-        if [[ "${local_hash}" != "${remote_hash}" ]]; then
-            needs_update=true
-            update_list+=("${display_name}")
-        fi
-    done
-    
-    if [[ "${needs_update}" = false ]]; then
-        echo -e "${GREEN}[OK] 所有组件已是最新版本${NC}"
-        echo ""
-        read -r -p "按回车键返回..."
-        return 0
-    else
-        echo -e "${YELLOW}[INFO] 发现 ${#update_list[@]} 个组件需要更新！${NC}"
+    # 【情况1】版本号不同 → 直接标记所有组件需要更新
+    if [[ "${local_version}" != "${remote_version}" ]]; then
+        echo -e "${YELLOW}[INFO] 发现新版本！${NC}"
         echo ""
         echo -e "${CYAN}需要更新的组件：${NC}"
         
-        for item in "${update_list[@]}"; do
-            echo -e "  • ${item}"
+        for component in "${COMPONENTS[@]}"; do
+            IFS=':' read -r key local_path remote_path display_name <<< "${component}"
+            echo -e "  • ${display_name}"
+            update_list+=("${display_name}")
         done
         
+        needs_update=true
+    else
+        # 【情况2】版本号相同 → 逐个检查 SHA256 哈希值
+        echo -e "${CYAN}[INFO] 版本号相同，正在检查文件完整性...${NC}"
         echo ""
-        echo -e "${YELLOW}运行以下命令进行更新：${NC}"
-        echo -e "  ${CYAN}bash modules/updater/update.sh update${NC}"
-        echo ""
-        read -r -p "是否立即执行更新？[y/N] (默认 N): " confirm_update
-        if [[ "${confirm_update}" =~ ^[Yy]$ ]]; then
-            perform_update
+        
+        for component in "${COMPONENTS[@]}"; do
+            IFS=':' read -r key local_path remote_path display_name <<< "${component}"
+            
+            # 获取云端哈希值
+            local remote_hash
+            remote_hash=$(get_component_hash "${key}" "${remote_versions}")
+            
+            if [[ -z "${remote_hash}" ]]; then
+                continue
+            fi
+            
+            # 计算本地文件哈希值
+            local local_file="${ROOT_DIR}/${local_path}"
+            local local_hash=""
+            if [[ -f "${local_file}" ]]; then
+                local_hash=$(sha256sum "${local_file}" | awk '{print $1}')
+            fi
+            
+            # 对比哈希值
+            if [[ "${local_hash}" != "${remote_hash}" ]]; then
+                needs_update=true
+                update_list+=("${display_name}")
+            fi
+        done
+        
+        if [[ "${needs_update}" = false ]]; then
+            echo -e "${GREEN}[OK] 所有组件已是最新版本${NC}"
+            echo ""
+            read -r -p "按回车键返回..."
+            return 0
+        else
+            echo -e "${YELLOW}[INFO] 发现 ${#update_list[@]} 个组件有变更！${NC}"
+            echo ""
+            echo -e "${CYAN}需要更新的组件：${NC}"
+            
+            for item in "${update_list[@]}"; do
+                echo -e "  • ${item}"
+            done
         fi
-        return 0
     fi
+    
+    echo ""
+    echo -e "${YELLOW}运行以下命令进行更新：${NC}"
+    echo -e "  ${CYAN}bash modules/updater/update.sh update${NC}"
+    echo ""
+    read -r -p "是否立即执行更新？[y/N] (默认 N): " confirm_update
+    if [[ "${confirm_update}" =~ ^[Yy]$ ]]; then
+        perform_update
+    fi
+    return 0
 }
 
 # 执行更新
