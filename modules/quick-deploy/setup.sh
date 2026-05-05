@@ -39,8 +39,8 @@ fi
 show_header() {
     clear
     echo -e "${CYAN}+------------------------------------------------------------+${NC}"
-    echo -e " ${BOLD}${YELLOW}Cloudflare-Best-IP-DnsUpdate${NC}"
-    echo -e " ${GRAY}版本: v${SCRIPT_VERSION}  |  项目仓库: ${CYAN}https://github.com/Asunano/Cloudflare-Best-IP-DnsUpdate${NC}"
+    echo -e " ${BOLD}${YELLOW}Cloudflare-Best-IP-DnsUpdate v${SCRIPT_VERSION}${NC}"
+    echo -e " ${CYAN}项目仓库: https://github.com/Asunano/Cloudflare-Best-IP-DnsUpdate${NC}"
     echo -e "${CYAN}+------------------------------------------------------------+${NC}"
     echo ""
 }
