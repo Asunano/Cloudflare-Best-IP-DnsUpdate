@@ -1299,16 +1299,19 @@ init_cfopt() {
     # 2. 智能启动检测
     STATUS_CONF="${INSTALL_DIR}/conf/status.conf"
     
-    # 核心判断：如果状态文件存在、标记为已安装、且核心模块目录齐全，则直接启动
+    # 核心判断：如果状态文件存在、标记为已安装、且核心模块文件齐全，则直接进入主菜单
     if [[ -f "${STATUS_CONF}" ]] && \
        grep -q '^INSTALL_CHECKED="true"' "${STATUS_CONF}" && \
-       [[ -d "${INSTALL_DIR}/modules/cf-ip" ]] && \
-       [[ -d "${INSTALL_DIR}/modules/scheduler" ]]; then
+       [[ -f "${INSTALL_DIR}/modules/cf-ip/menu.sh" ]] && \
+       [[ -f "${INSTALL_DIR}/modules/scheduler/run.sh" ]] && \
+       [[ -f "${INSTALL_DIR}/modules/updater/update.sh" ]]; then
+        # 已安装完成，直接进入主菜单循环
         while true; do
             show_main_menu
         done
-        return
     fi
+    
+    # 否则，继续执行初始化安装流程
     
     # 3. 安装前确认
     echo ""
