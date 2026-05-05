@@ -1310,6 +1310,17 @@ CLEANUP_EOF
 check_and_update_components() {
     clear
     bash "${INSTALL_DIR}/modules/updater/update.sh" update
+    
+    # 【修复】检查 updater 是否标记需要重启
+    if [[ -f "${INSTALL_DIR}/.restart_needed" ]]; then
+        rm -f "${INSTALL_DIR}/.restart_needed"
+        echo ""
+        log_info "检测到主程序已更新，正在重启..."
+        echo ""
+        # 使用 exec 替换当前进程，这是安全的，因为是在父进程中执行
+        exec bash "${INSTALL_DIR}/cfopt.sh"
+    fi
+    
     # updater 模块已有"按回车键返回"提示，无需重复
     show_main_menu
 }

@@ -466,11 +466,10 @@ perform_update() {
         fi
     fi
     
-    # 【关键】如果 cfopt.sh 需要更新，执行无感重启
+    # 【关键】如果 cfopt.sh 需要更新，标记并退出
     if [[ "${need_restart}" = true ]] && [[ -f "${ROOT_DIR}/cfopt.sh.new" ]]; then
         echo ""
-        echo -e "${CYAN}[INFO] 主程序已更新，正在重启以应用新版本...${NC}"
-        sleep 1
+        echo -e "${CYAN}[INFO] 主程序已更新${NC}"
         
         # 移动 .new 文件覆盖原文件
         mv "${ROOT_DIR}/cfopt.sh.new" "${ROOT_DIR}/cfopt.sh"
@@ -478,14 +477,16 @@ perform_update() {
         
         echo -e "${GREEN}[OK] cfopt.sh 已更新到最新版本${NC}"
         echo ""
-        echo -e "${YELLOW}[INFO] 3秒后自动重启...${NC}"
-        echo -e "${GRAY}(如需取消，请按 Ctrl+C)${NC}"
-        sleep 3
+        echo -e "${YELLOW}[INFO] 请重新启动 cfopt 以应用新版本${NC}"
+        echo -e "${GRAY}(如果您是通过 'cfopt' 命令运行的，建议重新执行该命令)${NC}"
+        echo ""
         
-        # 【修复】使用 exec 替换当前进程，避免进程套娃
-        # exec 会替换当前 shell 进程，不会产生新的子进程
-        exec bash "${ROOT_DIR}/cfopt.sh"
-        exit 0  # 这行理论上不会执行，但作为保险
+        # 【修复】不再使用 exec，而是创建标记文件通知父进程
+        # 这样避免了在子shell中exec导致的进程套娃问题
+        touch "${ROOT_DIR}/.restart_needed"
+        
+        read -r -p "按回车键返回..."
+        exit 0
     fi
     
     echo ""
