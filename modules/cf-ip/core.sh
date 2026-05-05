@@ -229,7 +229,8 @@ CMD=(./cfst "-n" "${CFST_THREADS}" "-t" "${CFST_PING_TIMES}")
 if [[ -n "${TARGET_COLO}" ]]; then CMD+=("-cfcolo" "${TARGET_COLO}"); fi
 if [[ -n "${IP_DATA_FILE}" ]]; then CMD+=("-f" "${IP_DATA_FILE}"); fi
 CMD+=("-dn" "${CFST_DOWNLOAD_COUNT}" "-dt" "${CFST_DOWNLOAD_TIME}")
-CMD+=("-tp" "${CFST_PORT}" "-url" "${CFST_URL}")
+CMD+=("-tp" "${CFST_PORT}")
+if [[ -n "${CFST_URL}" ]]; then CMD+=("-url" "${CFST_URL}"); fi
 if [[ "${CFST_HTTPING}" = "true" ]]; then CMD+=("-httping"); fi
 CMD+=("-tl" "${CFST_LATENCY_MAX}" "-tlr" "${CFST_PACKET_LOSS_MAX}" "-sl" "${CFST_SPEED_MIN}")
 CMD+=("-p" "${CFST_SHOW_COUNT}")
@@ -364,7 +365,8 @@ for ((retry=1; retry<=MAX_RETRY; retry++)); do
         if [[ -n "${TARGET_COLO}" ]]; then RETRY_CMD+=("-cfcolo" "${TARGET_COLO}"); fi
         if [[ -n "${IP_DATA_FILE}" ]]; then RETRY_CMD+=("-f" "${IP_DATA_FILE}"); else RETRY_CMD+=("-f" "${CFST_DIR}/ip.txt"); fi
         RETRY_CMD+=("-dn" "${CFST_DOWNLOAD_COUNT}" "-dt" "${CFST_DOWNLOAD_TIME}")
-        RETRY_CMD+=("-tp" "${CFST_PORT}" "-url" "${CFST_URL}")
+        RETRY_CMD+=("-tp" "${CFST_PORT}")
+        if [[ -n "${CFST_URL}" ]]; then RETRY_CMD+=("-url" "${CFST_URL}"); fi
         if [[ "${CFST_HTTPING}" = "true" ]]; then RETRY_CMD+=("-httping"); fi
         RETRY_CMD+=("-tl" "${CFST_LATENCY_MAX}" "-tlr" "${CFST_PACKET_LOSS_MAX}" "-sl" "${CFST_SPEED_MIN}")
         RETRY_CMD+=("-p" "${CFST_SHOW_COUNT}")
