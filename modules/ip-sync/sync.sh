@@ -122,11 +122,19 @@ sync_cf_dns_ips() {
         local actual_count
         actual_count="$(wc -l < "${target_file}")"
         
-        # 如果没有找到有效 IP（所有 IP 下载速度都为 0），回退到仅按延迟排序
+        # 【关键】如果没有找到有效 IP（所有 IP 下载速度都为 0），说明测速有问题
+        # 不应该回退到仅按延迟排序，而应该提示用户重新测速
         if [[ "${actual_count}" -eq 0 ]]; then
-            echo -e "  ${YELLOW}[WARN]${NC} ${domain_name}: 所有 IP 下载速度均为 0，回退到仅按延迟排序"
-            head -n $((max_ips + 1)) "${result_file}" | tail -n "${max_ips}" | awk -F',' '{print $1}' > "${target_file}"
-            actual_count="$(wc -l < "${target_file}")"
+            echo -e "  ${RED}[ERROR]${NC} ${domain_name}: 所有 IP 下载速度均为 0，测速数据无效"
+            echo -e "  ${YELLOW}[提示]${NC} 这可能是以下原因导致："
+            echo -e "    1. 下载测速地址有问题（默认地址可能不可用）"
+            echo -e "    2. 测速的 IP 地址有问题"
+            echo -e "    3. 网络环境有问题"
+            echo -e "  ${CYAN}[建议]${NC} 请重新运行测速，或检查 CF-IP 配置中的测速地址"
+            echo -e "  ${YELLOW}[跳过]${NC} ${domain_name}: 跳过本次同步"
+            # 不写入空文件，保持原有 IP 列表
+            rm -f "${target_file}" 2>/dev/null
+            continue
         fi
         
         echo -e "  ${GREEN}[OK]${NC} ${domain_name}: 已写入 ${actual_count} 个最优 IP 到: ${target_file} (限制: ${max_ips})"
@@ -195,11 +203,17 @@ sync_dnspod_ips() {
             local actual_count
             actual_count="$(wc -l < "${target_file}")"
             
-            # 如果没有找到有效 IP，回退到仅按延迟排序
+            # 【关键】如果没有找到有效 IP（所有 IP 下载速度都为 0），说明测速有问题
             if [[ "${actual_count}" -eq 0 ]]; then
-                echo -e "    ${YELLOW}[WARN]${NC} ${domain_name}: 所有 IP 下载速度均为 0，回退到仅按延迟排序"
-                head -n $((max_ips + 1)) "${RESULT_CSV}" | tail -n "${max_ips}" | awk -F',' '{print $1}' > "${target_file}"
-                actual_count="$(wc -l < "${target_file}")"
+                echo -e "    ${RED}[ERROR]${NC} ${domain_name}: 所有 IP 下载速度均为 0，测速数据无效"
+                echo -e "    ${YELLOW}[提示]${NC} 这可能是以下原因导致："
+                echo -e "      1. 下载测速地址有问题（默认地址可能不可用）"
+                echo -e "      2. 测速的 IP 地址有问题"
+                echo -e "      3. 网络环境有问题"
+                echo -e "    ${CYAN}[建议]${NC} 请重新运行测速，或检查 CF-IP 配置中的测速地址"
+                echo -e "    ${YELLOW}[跳过]${NC} ${domain_name}: 跳过本次同步"
+                rm -f "${target_file}" 2>/dev/null
+                continue
             fi
             
             echo -e "  ${GREEN}[OK]${NC} ${domain_name}(单线路): 已写入 ${actual_count} 个最优 IP 到: ${target_file} (限制: ${max_ips})"
@@ -241,11 +255,17 @@ sync_dnspod_ips() {
                     local actual_count
                     actual_count="$(wc -l < "${target_file}")"
                     
-                    # 如果没有找到有效 IP，回退到仅按延迟排序
+                    # 【关键】如果没有找到有效 IP（所有 IP 下载速度都为 0），说明测速有问题
                     if [[ "${actual_count}" -eq 0 ]]; then
-                        echo -e "      ${YELLOW}[WARN]${NC} ${isp} 线路: 所有 IP 下载速度均为 0，回退到仅按延迟排序"
-                        head -n $((max_ips + 1)) "${src_file}" | tail -n "${max_ips}" | awk -F',' '{print $1}' > "${target_file}"
-                        actual_count="$(wc -l < "${target_file}")"
+                        echo -e "      ${RED}[ERROR]${NC} ${isp} 线路: 所有 IP 下载速度均为 0，测速数据无效"
+                        echo -e "      ${YELLOW}[提示]${NC} 这可能是以下原因导致："
+                        echo -e "        1. 下载测速地址有问题（默认地址可能不可用）"
+                        echo -e "        2. 测速的 IP 地址有问题"
+                        echo -e "        3. 网络环境有问题"
+                        echo -e "      ${CYAN}[建议]${NC} 请重新运行测速，或检查 CF-IP 配置中的测速地址"
+                        echo -e "      ${YELLOW}[跳过]${NC} ${isp} 线路: 跳过本次同步"
+                        rm -f "${target_file}" 2>/dev/null
+                        continue
                     fi
                     
                     echo -e "    ${GREEN}[OK]${NC} ${isp} 线路: 已写入 ${actual_count} 个最优 IP 到: ${target_file} (限制: ${max_ips})"
