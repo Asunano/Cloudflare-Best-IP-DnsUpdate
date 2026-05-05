@@ -243,7 +243,7 @@ show_menu() {
     
     echo -e "${CYAN}${MENU_BORDER}"
     echo -e " ${BOLD}${YELLOW}Cloudflare-Best-IP-DnsUpdate v${VERSION}${NC}"
-    echo -e " ${CYAN}项目仓库: https://github.com/Asunano/Cloudflare-Best-IP-DnsUpdate${NC}"
+    echo -e " ${MAGENTA}项目仓库: https://github.com/Asunano/Cloudflare-Best-IP-DnsUpdate${NC}"
     echo -e " 当前时间: ${NOW}"
     if [[ -n "$lines_info" ]]; then
         echo -e "$lines_info"
