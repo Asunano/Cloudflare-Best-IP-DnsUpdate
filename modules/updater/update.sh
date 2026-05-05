@@ -328,8 +328,9 @@ check_updates() {
         echo -e "${YELLOW}运行以下命令进行更新：${NC}"
         echo -e "  ${CYAN}bash modules/updater/update.sh update${NC}"
         echo ""
-        read -r -p "是否立即执行更新？[y/N] (默认 N): " confirm_update
-        if [[ "${confirm_update}" =~ ^[Yy]$ ]]; then
+        read -r -p "是否立即执行更新？[Y/n] (默认 Y): " confirm_update
+        confirm_update="${confirm_update:-Y}"
+        if [[ "${confirm_update}" =~ ^[Yy]$ ]] || [[ -z "${confirm_update}" ]]; then
             perform_update
         fi
         return 0
