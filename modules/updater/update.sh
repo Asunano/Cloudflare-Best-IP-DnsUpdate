@@ -470,7 +470,7 @@ perform_update() {
     if [[ "${need_restart}" = true ]] && [[ -f "${ROOT_DIR}/cfopt.sh.new" ]]; then
         echo ""
         echo -e "${CYAN}[INFO] 主程序已更新，正在重启以应用新版本...${NC}"
-        sleep 2
+        sleep 1
         
         # 移动 .new 文件覆盖原文件
         mv "${ROOT_DIR}/cfopt.sh.new" "${ROOT_DIR}/cfopt.sh"
@@ -478,10 +478,14 @@ perform_update() {
         
         echo -e "${GREEN}[OK] cfopt.sh 已更新到最新版本${NC}"
         echo ""
-        echo -e "${YELLOW}[INFO] 正在重新启动...${NC}"
+        echo -e "${YELLOW}[INFO] 3秒后自动重启...${NC}"
+        echo -e "${GRAY}(如需取消，请按 Ctrl+C)${NC}"
+        sleep 3
         
-        # 使用 exec 替换当前进程，重新启动 cfopt.sh
+        # 【修复】使用 exec 替换当前进程，避免进程套娃
+        # exec 会替换当前 shell 进程，不会产生新的子进程
         exec bash "${ROOT_DIR}/cfopt.sh"
+        exit 0  # 这行理论上不会执行，但作为保险
     fi
     
     echo ""
