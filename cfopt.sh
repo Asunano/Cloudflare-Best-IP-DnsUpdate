@@ -1155,19 +1155,53 @@ uninstall_cfopt() {
         echo ""
         
         # 执行删除
-        if ! safe_remove_dir "${INSTALL_DIR}" "卸载清理"; then
-            log_error "卸载失败，请手动删除: ${INSTALL_DIR}"
-            exit 1
-        fi
+        log_info "正在删除安装目录..."
         
-        # 验证删除是否成功
-        if [[ -d "${INSTALL_DIR}" ]]; then
-            log_error "目录删除失败，可能存在权限问题"
-            log_warning "请手动执行: rm -rf ${INSTALL_DIR}"
-            exit 1
-        else
-            log_success "安装目录已完全删除"
-        fi
+        # 【关键修复】使用后台延迟删除，避免脚本文件被占用
+        # 先创建一个临时脚本，在后台执行删除
+        local cleanup_script
+        cleanup_script=$(mktemp /tmp/cfopt_cleanup.XXXXXX.sh)
+        
+        cat > "${cleanup_script}" << 'CLEANUP_EOF'
+#!/bin/bash
+# 等待 2 秒，确保主脚本已退出
+sleep 2
+
+# 强制删除整个目录
+INSTALL_DIR="$1"
+if [[ -d "${INSTALL_DIR}" ]]; then
+    # 第一遍：删除所有文件
+    find "${INSTALL_DIR}" -type f -delete 2>/dev/null || true
+    
+    # 第二遍：删除空目录
+    find "${INSTALL_DIR}" -type d -empty -delete 2>/dev/null || true
+    
+    # 第三遍：强制删除根目录
+    rm -rf "${INSTALL_DIR}" 2>/dev/null || true
+    
+    # 验证删除结果
+    if [[ ! -d "${INSTALL_DIR}" ]]; then
+        echo "[OK] cfopt 目录已完全删除"
+    else
+        echo "[WARN] 部分文件可能未删除，请手动执行: rm -rf ${INSTALL_DIR}"
+    fi
+fi
+
+# 清理临时脚本
+rm -f "$0" 2>/dev/null || true
+CLEANUP_EOF
+        
+        chmod +x "${cleanup_script}"
+        
+        # 在后台执行清理脚本
+        nohup bash "${cleanup_script}" "${INSTALL_DIR}" >/dev/null 2>&1 &
+        local cleanup_pid=$!
+        
+        log_info "已启动后台清理进程 (PID: ${cleanup_pid})"
+        log_info "脚本将在 2 秒后自动退出并删除目录..."
+        
+        # 注意：删除是异步执行的，不在此处验证
+        log_success "卸载指令已发送，目录将在后台清理"
     else
         log_info "安装目录不存在，跳过"
     fi
