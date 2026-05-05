@@ -360,7 +360,7 @@ for ((retry=1; retry<=MAX_RETRY; retry++)); do
         sleep ${wait_time}
         
         # 重新执行测速
-        bash "${CFST_BIN}" \
+        "${CFST_BIN}" \
             -f "${CFST_DIR}/ip.txt" \
             -n "${TARGET_COLO}" \
             -t "${CFST_THREADS}" \
