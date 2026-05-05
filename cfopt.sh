@@ -577,8 +577,8 @@ system_health_check() {
     local has_issues=false
     
     echo -e "${CYAN}+------------------------------------------------------------+${NC}"
-    echo -e " ${BOLD}${YELLOW}Cloudflare-Best-IP-DnsUpdate${NC}"
-    echo -e " ${GRAY}版本: v${SCRIPT_VERSION}  |  项目仓库: ${CYAN}https://github.com/Asunano/Cloudflare-Best-IP-DnsUpdate${NC}"
+    echo -e " ${BOLD}${YELLOW}Cloudflare-Best-IP-DnsUpdate v${SCRIPT_VERSION}${NC}"
+    echo -e " ${CYAN}项目仓库: https://github.com/Asunano/Cloudflare-Best-IP-DnsUpdate${NC}"
     echo -e "${CYAN}+------------------------------------------------------------+${NC}"
     echo -e " ${YELLOW}系统健康检测与修复${NC}"
     echo -e "${CYAN}+------------------------------------------------------------+${NC}"
@@ -770,8 +770,8 @@ system_health_check() {
 show_main_menu() {
     clear
     echo -e "${CYAN}+------------------------------------------------------------+${NC}"
-    echo -e " ${BOLD}${YELLOW}Cloudflare-Best-IP-DnsUpdate${NC}"
-    echo -e " ${GRAY}版本: v${SCRIPT_VERSION}  |  项目仓库: ${CYAN}https://github.com/Asunano/Cloudflare-Best-IP-DnsUpdate${NC}"
+    echo -e " ${BOLD}${YELLOW}Cloudflare-Best-IP-DnsUpdate v${SCRIPT_VERSION}${NC}"
+    echo -e " ${CYAN}项目仓库: https://github.com/Asunano/Cloudflare-Best-IP-DnsUpdate${NC}"
     echo -e "${CYAN}+------------------------------------------------------------+${NC}"
     
     # 加载状态配置
