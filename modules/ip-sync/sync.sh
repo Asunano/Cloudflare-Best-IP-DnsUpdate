@@ -66,7 +66,7 @@ auto_retry_test() {
     
     cd "${ROOT_DIR}" || return 1
     
-    # 循环重试，最多5次
+    # 循环重试，最备5次
     for ((i=1; i<=max_retries; i++)); do
         echo -e "\n${CYAN}[INFO] 检测到测速数据无效，正在自动重新测速 (尝试 ${i}/${max_retries})...${NC}"
         
@@ -74,18 +74,26 @@ auto_retry_test() {
         CF_OPT_ENTRY=1 bash "${ROOT_DIR}/modules/cf-ip/core.sh" "${colo_nodes}" "${result_file}" "${line_id}"
         
         local exit_code=$?
-        if [[ ${exit_code} -eq 0 ]]; then
-            echo -e "${GREEN}[OK] 自动重新测速完成 (尝试 ${i}/${max_retries})${NC}"
-            return 0
+        if [[ ${exit_code} -eq 0 ]] && [[ -f "${result_file}" ]]; then
+            # 【增强】验证测速结果是否有效：检查是否有下载速度 > 0 的 IP
+            local valid_ip_count
+            valid_ip_count=$(awk -F',' 'NR>1 && $6>0 {count++} END {print count+0}' "${result_file}")
+            
+            if [[ "${valid_ip_count}" -gt 0 ]]; then
+                echo -e "${GREEN}[OK] 自动重新测速完成 (尝试 ${i}/${max_retries})，找到 ${valid_ip_count} 个有效 IP${NC}"
+                return 0
+            else
+                echo -e "${YELLOW}[WARN] 第 ${i} 次测速完成，但所有 IP 下载速度仍为 0，数据无效${NC}"
+            fi
         else
             echo -e "${YELLOW}[WARN] 第 ${i} 次测速失败 (Exit Code: ${exit_code})${NC}"
-            
-            # 如果不是最后一次，等待一段时间后重试
-            if [[ ${i} -lt ${max_retries} ]]; then
-                local wait_time=$((i * 10))  # 递增等待时间：10s, 20s, 30s, 40s
-                echo -e "${CYAN}[INFO] 等待 ${wait_time} 秒后重试...${NC}"
-                sleep ${wait_time}
-            fi
+        fi
+        
+        # 如果不是最后一次，等待一段时间后重试
+        if [[ ${i} -lt ${max_retries} ]]; then
+            local wait_time=$((i * 10))  # 递增等待时间：10s, 20s, 30s, 40s
+            echo -e "${CYAN}[INFO] 等待 ${wait_time} 秒后重试...${NC}"
+            sleep ${wait_time}
         fi
     done
     
