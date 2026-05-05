@@ -107,11 +107,28 @@ sync_cf_dns_ips() {
         # 确保目标文件所在的目录存在
         mkdir -p "$(dirname "${target_file}")"
         
-        # 从 CSV 中提取前 N 个最优 IP（跳过标题行）并写入目标文件
-        head -n $((max_ips + 1)) "${result_file}" | tail -n "${max_ips}" | awk -F',' '{print $1}' > "${target_file}"
+        # 【优化】从 CSV 中提取最优 IP（综合考虑下载速度和延迟）
+        # 策略：
+        #   1. 跳过标题行
+        #   2. 过滤掉下载速度为 0 的 IP（无效数据）
+        #   3. 按下载速度降序排序（优先高速 IP）
+        #   4. 如果下载速度相同，按延迟升序排序
+        #   5. 提取前 max_ips 个 IP
+        awk -F',' 'NR>1 && $6>0 {print $0}' "${result_file}" | \
+            sort -t',' -k6,6 -rn -k5,5 -n | \
+            head -n "${max_ips}" | \
+            awk -F',' '{print $1}' > "${target_file}"
         
         local actual_count
         actual_count="$(wc -l < "${target_file}")"
+        
+        # 如果没有找到有效 IP（所有 IP 下载速度都为 0），回退到仅按延迟排序
+        if [[ "${actual_count}" -eq 0 ]]; then
+            echo -e "  ${YELLOW}[WARN]${NC} ${domain_name}: 所有 IP 下载速度均为 0，回退到仅按延迟排序"
+            head -n $((max_ips + 1)) "${result_file}" | tail -n "${max_ips}" | awk -F',' '{print $1}' > "${target_file}"
+            actual_count="$(wc -l < "${target_file}")"
+        fi
+        
         echo -e "  ${GREEN}[OK]${NC} ${domain_name}: 已写入 ${actual_count} 个最优 IP 到: ${target_file} (限制: ${max_ips})"
         
     done < <(find "${config_dir}" -name "*.json" -type f -print0 2>/dev/null)
@@ -168,10 +185,23 @@ sync_dnspod_ips() {
             fi
             
             mkdir -p "$(dirname "${target_file}")"
-            head -n $((max_ips + 1)) "${RESULT_CSV}" | tail -n "${max_ips}" | awk -F',' '{print $1}' > "${target_file}"
+            
+            # 【优化】从 CSV 中提取最优 IP（综合考虑下载速度和延迟）
+            awk -F',' 'NR>1 && $6>0 {print $0}' "${RESULT_CSV}" | \
+                sort -t',' -k6,6 -rn -k5,5 -n | \
+                head -n "${max_ips}" | \
+                awk -F',' '{print $1}' > "${target_file}"
             
             local actual_count
             actual_count="$(wc -l < "${target_file}")"
+            
+            # 如果没有找到有效 IP，回退到仅按延迟排序
+            if [[ "${actual_count}" -eq 0 ]]; then
+                echo -e "    ${YELLOW}[WARN]${NC} ${domain_name}: 所有 IP 下载速度均为 0，回退到仅按延迟排序"
+                head -n $((max_ips + 1)) "${RESULT_CSV}" | tail -n "${max_ips}" | awk -F',' '{print $1}' > "${target_file}"
+                actual_count="$(wc -l < "${target_file}")"
+            fi
+            
             echo -e "  ${GREEN}[OK]${NC} ${domain_name}(单线路): 已写入 ${actual_count} 个最优 IP 到: ${target_file} (限制: ${max_ips})"
             
         else
@@ -201,10 +231,23 @@ sync_dnspod_ips() {
                     fi
                     
                     mkdir -p "$(dirname "${target_file}")"
-                    head -n $((max_ips + 1)) "${src_file}" | tail -n "${max_ips}" | awk -F',' '{print $1}' > "${target_file}"
+                    
+                    # 【优化】从 CSV 中提取最优 IP（综合考虑下载速度和延迟）
+                    awk -F',' 'NR>1 && $6>0 {print $0}' "${src_file}" | \
+                        sort -t',' -k6,6 -rn -k5,5 -n | \
+                        head -n "${max_ips}" | \
+                        awk -F',' '{print $1}' > "${target_file}"
                     
                     local actual_count
                     actual_count="$(wc -l < "${target_file}")"
+                    
+                    # 如果没有找到有效 IP，回退到仅按延迟排序
+                    if [[ "${actual_count}" -eq 0 ]]; then
+                        echo -e "      ${YELLOW}[WARN]${NC} ${isp} 线路: 所有 IP 下载速度均为 0，回退到仅按延迟排序"
+                        head -n $((max_ips + 1)) "${src_file}" | tail -n "${max_ips}" | awk -F',' '{print $1}' > "${target_file}"
+                        actual_count="$(wc -l < "${target_file}")"
+                    fi
+                    
                     echo -e "    ${GREEN}[OK]${NC} ${isp} 线路: 已写入 ${actual_count} 个最优 IP 到: ${target_file} (限制: ${max_ips})"
                 else
                     echo -e "    ${YELLOW}[WARN]${NC} ${isp} 线路: 未找到测速结果: ${src_file}"
