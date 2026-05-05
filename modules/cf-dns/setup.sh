@@ -391,6 +391,12 @@ full_config_wizard() {
         -H "Authorization: Bearer ${cf_api_token}" \
         -H "Content-Type: application/json")
     
+    clear
+    echo -e "${CYAN}+--------------------------------------------------+"
+    echo -e " ${YELLOW}Cloudflare DNS 完整配置向导${NC}"
+    echo -e "${CYAN}+--------------------------------------------------+${NC}"
+    echo ""
+    
     local zones_count
     zones_count=$(echo "$zones_response" | jq -r '.result_info.total_count // 0')
     
@@ -432,6 +438,11 @@ full_config_wizard() {
     echo ""
     
     # 2. 选择域名（自动获取 Zone ID）
+    clear
+    echo -e "${CYAN}+--------------------------------------------------+"
+    echo -e " ${YELLOW}Cloudflare DNS 完整配置向导${NC}"
+    echo -e "${CYAN}+--------------------------------------------------+${NC}"
+    echo ""
     echo -e "${BLUE}步骤 2/6: 选择要配置的域名${NC}"
     echo ""
     echo -e "${YELLOW}[说明]${NC}"
@@ -472,6 +483,10 @@ full_config_wizard() {
     echo ""
     
     # 3. DNS 名称
+    clear
+    echo -e "${CYAN}+--------------------------------------------------+"
+    echo -e " ${YELLOW}Cloudflare DNS 完整配置向导${NC}"
+    echo -e "${CYAN}+--------------------------------------------------+${NC}"
     echo ""
     echo -e "${BLUE}步骤 3/6: 配置 DNS 记录名称 (主机记录)${NC}"
     echo ""
@@ -517,6 +532,10 @@ full_config_wizard() {
     fi
     
     # 4. 选择测速节点
+    clear
+    echo -e "${CYAN}+--------------------------------------------------+"
+    echo -e " ${YELLOW}Cloudflare DNS 完整配置向导${NC}"
+    echo -e "${CYAN}+--------------------------------------------------+${NC}"
     echo ""
     echo -e "${BLUE}步骤 4/6: 选择测速节点（地区）${NC}"
     echo ""
@@ -572,6 +591,11 @@ full_config_wizard() {
     echo ""
     
     # 5. IP 数量限制
+    clear
+    echo -e "${CYAN}+--------------------------------------------------+"
+    echo -e " ${YELLOW}Cloudflare DNS 完整配置向导${NC}"
+    echo -e "${CYAN}+--------------------------------------------------+${NC}"
+    echo ""
     echo -e "${BLUE}步骤 5/6: 配置 IP 数量限制${NC}"
     echo ""
     echo -e "${YELLOW}说明:${NC}"
@@ -647,6 +671,10 @@ full_config_wizard() {
     echo -e "${GREEN}[OK] Cloudflare DNS 配置已生成: ${CONFIG_FILE}${NC}"
     
     # 6. 确认配置信息
+    clear
+    echo -e "${CYAN}+--------------------------------------------------+"
+    echo -e " ${YELLOW}Cloudflare DNS 完整配置向导${NC}"
+    echo -e "${CYAN}+--------------------------------------------------+${NC}"
     echo ""
     echo -e "${BLUE}步骤 6/6: 确认配置信息${NC}"
     echo ""
