@@ -360,7 +360,8 @@ for ((retry=1; retry<=MAX_RETRY; retry++)); do
         echo -e "${YELLOW}[等待] ${wait_time} 秒后重试...${NC}"
         sleep ${wait_time}
         
-        # 重新执行测速（使用与第一次测速相同的参数构建方式）
+        # 重新执行测速（使用与首次测速相同的后台运行 + 实时进度监控方式）
+        # 1. 构建命令
         RETRY_CMD=("${CFST_BIN}" "-n" "${CFST_THREADS}" "-t" "${CFST_PING_TIMES}")
         if [[ -n "${TARGET_COLO}" ]]; then RETRY_CMD+=("-cfcolo" "${TARGET_COLO}"); fi
         if [[ -n "${IP_DATA_FILE}" ]]; then RETRY_CMD+=("-f" "${IP_DATA_FILE}"); else RETRY_CMD+=("-f" "${CFST_DIR}/ip.txt"); fi
@@ -374,9 +375,99 @@ for ((retry=1; retry<=MAX_RETRY; retry++)); do
         if [[ "${CFST_ALL_IP}" = "true" ]]; then RETRY_CMD+=("-allip"); fi
         RETRY_CMD+=("-o" "${OUTPUT_CSV}")
         
-        "${RETRY_CMD[@]}" 2>&1 | tee -a "${LOG_FILE}"
+        # 2. 切换到 cfst 所在目录
+        cd "$(dirname "${CFST_BIN}")" || exit 1
         
-        EXIT_CODE=${PIPESTATUS[0]}
+        # 3. 启动测速程序（后台运行）
+        "${RETRY_CMD[@]}" > "${LOG_FILE}" 2>&1 &
+        CFST_PID=$!
+        
+        # 4. 实时显示进度（通过监控日志文件）
+        stage="ping"
+        last_log_size=0
+        progress_bar_width=40
+        
+        # 显示测速阶段标题
+        echo -e "\n${CYAN}+------------------------------------------------------------+"
+        echo -e " ${YELLOW}第 ${retry} 次重试测速中...${NC}"
+        echo -e "${CYAN}+------------------------------------------------------------+"
+        echo ""
+        echo -e "${GRAY}  第一阶段: 延迟测速 (TCP Ping)${NC}"
+        
+        while kill -0 "${CFST_PID}" 2>/dev/null; do
+            # 检查日志文件是否有新内容
+            if [[ -f "${LOG_FILE}" ]]; then
+                current_log_size=$(wc -c < "${LOG_FILE}" 2>/dev/null || echo "0")
+                
+                if [[ "${current_log_size}" -gt "${last_log_size}" ]]; then
+                    last_log_size=${current_log_size}
+                    
+                    # 检测是否进入第二阶段（下载测速）
+                    if [[ "${stage}" = "ping" ]] && grep -q "开始下载测速" "${LOG_FILE}" 2>/dev/null; then
+                        stage="download"
+                        echo -e "\r${CYAN}  [进度] 延迟测速完成，正在进行下载测速...          ${NC}"
+                        echo -e "${GRAY}  第二阶段: 下载速度测试${NC}"
+                    fi
+                    
+                    # 从日志中提取当前进度
+                    if [[ "${stage}" = "ping" ]]; then
+                        # 延迟阶段：提取 "可用: XXXX / YYYY" 格式
+                        ping_line=$(grep '可用:' "${LOG_FILE}" 2>/dev/null | tail -1)
+                        if [[ -n "${ping_line}" ]]; then
+                            available_count=$(echo "${ping_line}" | sed -n 's/.*可用:\s*\([0-9]*\).*/\1/p' | tr -d '[:space:]')
+                            total_count=$(echo "${ping_line}" | sed -n 's/.*[0-9]\s*\/\s*\([0-9]*\).*/\1/p' | tr -d '[:space:]')
+                                            
+                            if [[ -n "${available_count}" ]] && [[ -n "${total_count}" ]] && [[ "${available_count}" =~ ^[0-9]+$ ]] && [[ "${total_count}" =~ ^[0-9]+$ ]] && [[ "${total_count}" -gt 0 ]]; then
+                                progress=$((available_count * 100 / total_count))
+                                filled=$((progress * progress_bar_width / 100))
+                                empty=$((progress_bar_width - filled))
+                                
+                                bar=""
+                                for ((i=0; i<filled; i++)); do bar+="█"; done
+                                for ((i=0; i<empty; i++)); do bar+="░"; done
+                                
+                                echo -ne "\r${CYAN}  [${bar}] ${progress}% (${available_count}/${total_count})${NC}   "
+                            else
+                                echo -ne "\r${CYAN}  [进度] 正在测速中...${NC}   "
+                            fi
+                        else
+                            echo -ne "\r${CYAN}  [进度] 正在测速中...${NC}   "
+                        fi
+                    else
+                        # 下载阶段：提取 "X / 10" 格式的进度
+                        download_line=$(grep -A 100 "开始下载测速" "${LOG_FILE}" 2>/dev/null | grep -E '^[0-9]+ / [0-9]+' | tail -1)
+                        if [[ -n "${download_line}" ]]; then
+                            download_current=$(echo "${download_line}" | awk '{print $1}' | tr -d '[:space:]')
+                            download_total=$(echo "${download_line}" | awk '{print $3}' | tr -d '[:space:]')
+                            
+                            if [[ -n "${download_current}" ]] && [[ -n "${download_total}" ]] && [[ "${download_current}" =~ ^[0-9]+$ ]] && [[ "${download_total}" =~ ^[0-9]+$ ]] && [[ "${download_total}" -gt 0 ]]; then
+                                progress=$((download_current * 100 / download_total))
+                                filled=$((progress * progress_bar_width / 100))
+                                empty=$((progress_bar_width - filled))
+                                
+                                bar=""
+                                for ((i=0; i<filled; i++)); do bar+="█"; done
+                                for ((i=0; i<empty; i++)); do bar+="░"; done
+                                
+                                echo -ne "\r${CYAN}  [${bar}] ${progress}% (${download_current}/${download_total})${NC}   "
+                            else
+                                echo -ne "\r${CYAN}  [进度] 正在测试下载速度...${NC}   "
+                            fi
+                        else
+                            echo -ne "\r${CYAN}  [进度] 正在测试下载速度...${NC}   "
+                        fi
+                    fi
+                fi
+            fi
+            sleep 0.5
+        done
+        
+        # 5. 等待进程结束
+        wait "${CFST_PID}"
+        EXIT_CODE=$?
+        
+        echo -e "\r${CYAN}  [████████████████████████████████████████] 100% 测速完成！${NC}"
+        echo ""
     fi
     
     if [[ "${EXIT_CODE}" -eq 0 ]] && [[ -f "${OUTPUT_CSV}" ]]; then
