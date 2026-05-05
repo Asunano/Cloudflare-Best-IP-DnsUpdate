@@ -69,6 +69,25 @@ get_remote_version() {
     return 1
 }
 
+# 从 version.txt 中获取指定组件的哈希值
+get_component_hash() {
+    local component_key="$1"
+    local version_content="$2"
+    
+    # 从 version.txt 中提取对应组件的哈希值
+    local hash_line
+    hash_line=$(echo "${version_content}" | grep "^${component_key}=" | head -1)
+    
+    if [[ -n "${hash_line}" ]]; then
+        # 格式: KEY=VERSION:HASH
+        echo "${hash_line}" | cut -d':' -f2
+        return 0
+    fi
+    
+    echo ""
+    return 1
+}
+
 # 获取本地版本号
 get_local_version() {
     if [[ -f "${VERSION_FILE}" ]]; then
@@ -78,11 +97,12 @@ get_local_version() {
     fi
 }
 
-# 下载单个文件（支持镜像源回退）
+# 下载单个文件（支持镜像源回退和SHA256校验）
 download_file() {
     local local_path="$1"
     local remote_path="$2"
     local display_name="$3"
+    local expected_hash="${4:-}"  # 可选参数：预期的 SHA256 哈希值
     
     local target_file="${ROOT_DIR}/${local_path}"
     local temp_file
@@ -127,6 +147,20 @@ download_file() {
     
     # 处理下载结果
     if [[ "${download_success}" = true ]]; then
+        # 【新增】SHA256 哈希校验
+        if [[ -n "${expected_hash}" ]]; then
+            local actual_hash
+            actual_hash=$(sha256sum "${temp_file}" | awk '{print $1}')
+            
+            if [[ "${actual_hash}" != "${expected_hash}" ]]; then
+                echo -e "  ${RED}[FAIL]${NC} ${display_name} (哈希校验失败)"
+                echo -e "    预期: ${expected_hash}"
+                echo -e "    实际: ${actual_hash}"
+                rm -f "${temp_file}"
+                return 1
+            fi
+        fi
+        
         # 如果不是 updater.sh 自身，直接移动到目标位置
         if [[ "${remote_path}" != "modules/updater/update.sh" ]]; then
             mv "${temp_file}" "${target_file}"
@@ -209,15 +243,19 @@ perform_update() {
     local_version=$(get_local_version)
     
     echo -e "${CYAN}[INFO] 正在检查更新...${NC}"
-    local remote_version
-    remote_version=$(get_remote_version)
+    local remote_versions
+    remote_versions=$(get_remote_version)
     
-    if [[ -z "${remote_version}" ]]; then
+    if [[ -z "${remote_versions}" ]]; then
         echo -e "${RED}[ERROR] 无法获取远程版本信息${NC}"
         echo ""
         read -r -p "按回车键返回..."
         return 1
     fi
+    
+    # 提取版本号（第一行非注释内容）
+    local remote_version
+    remote_version=$(echo "${remote_versions}" | grep -v '^#' | grep -v '^$' | head -1 | cut -d'=' -f2 | cut -d':' -f1)
     
     echo -e "  本地版本: ${GRAY}${local_version}${NC}"
     echo -e "  远程版本: ${CYAN}${remote_version}${NC}"
@@ -240,7 +278,11 @@ perform_update() {
     for component in "${COMPONENTS[@]}"; do
         IFS=':' read -r key local_path remote_path display_name <<< "${component}"
         
-        if download_file "${local_path}" "${remote_path}" "${display_name}"; then
+        # 获取该组件的预期哈希值
+        local expected_hash
+        expected_hash=$(get_component_hash "${key}" "${remote_versions}")
+        
+        if download_file "${local_path}" "${remote_path}" "${display_name}" "${expected_hash}"; then
             ((success_count++))
         else
             ((fail_count++))
@@ -259,7 +301,7 @@ perform_update() {
     echo ""
     
     # 更新 version.txt
-    echo "${remote_version}" > "${VERSION_FILE}"
+    echo "${remote_versions}" > "${VERSION_FILE}"
     echo -e "${GREEN}[OK] 版本号文件已更新${NC}"
     
     # 提示用户重启或重新运行
