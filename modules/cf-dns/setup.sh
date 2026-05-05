@@ -394,6 +394,15 @@ full_config_wizard() {
     echo -e "${GREEN}[OK] 找到 ${zones_count} 个域名${NC}"
     echo ""
     
+    # 【新增】API Token 权限说明
+    echo -e "${YELLOW}[重要说明]${NC}"
+    echo -e "  ${YELLOW}⚠ 此处显示的域名是基于您当前 API Token 的权限范围${NC}"
+    echo -e "  ${YELLOW} Cloudflare 支持精细化令牌权限，一个令牌可能只能操作部分域名${NC}"
+    echo -e "  ${YELLOW} 如果此处未显示您的全部域名，请检查 API Token 权限设置${NC}"
+    echo ""
+    echo -e "${GRAY}如需操作其他域名，请重新创建包含该域名权限的 API Token${NC}"
+    echo ""
+    
     # 显示域名列表（带编号）
     echo -e "${CYAN}可用域名列表：${NC}"
     local domain_array=()
