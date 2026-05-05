@@ -74,12 +74,13 @@ get_component_hash() {
     local component_key="$1"
     local version_content="$2"
     
-    # 从 version.txt 中提取对应组件的哈希值
+    # 【修复】使用固定字符串匹配（-F），避免正则表达式问题
+    # 格式: KEY=VERSION:HASH
     local hash_line
-    hash_line=$(echo "${version_content}" | grep "^${component_key}=" | head -1)
+    hash_line=$(echo "${version_content}" | grep -F "${component_key}=" | grep "^${component_key}=" | head -1)
     
     if [[ -n "${hash_line}" ]]; then
-        # 格式: KEY=VERSION:HASH
+        # 提取 HASH 部分（第二个冒号后）
         echo "${hash_line}" | cut -d':' -f2
         return 0
     fi
@@ -93,12 +94,13 @@ get_component_version() {
     local component_key="$1"
     local version_content="$2"
     
-    # 从 version.txt 中提取对应组件的版本号
+    # 【修复】使用固定字符串匹配（-F），避免正则表达式问题
+    # 格式: KEY=VERSION:HASH
     local version_line
-    version_line=$(echo "${version_content}" | grep "^${component_key}=" | head -1)
+    version_line=$(echo "${version_content}" | grep -F "${component_key}=" | grep "^${component_key}=" | head -1)
     
     if [[ -n "${version_line}" ]]; then
-        # 格式: KEY=VERSION:HASH
+        # 提取 VERSION 部分（= 和 : 之间）
         echo "${version_line}" | cut -d'=' -f2 | cut -d':' -f1
         return 0
     fi
@@ -172,13 +174,22 @@ download_file() {
                 is_valid_script=true
             fi
             
-            # 如果是有效的 Shell 脚本，跳过 HTML 检查
+            # 【修复】如果是有效的 Shell 脚本，直接接受（不进行 HTML 检查）
+            # 如果不是脚本，才检查是否为 HTML 错误页面
             if [[ "${is_valid_script}" = true ]]; then
                 download_success=true
             else
-                # 非脚本文件才进行 HTML 检查
-                if ! grep -qi "^<html\|^<!DOCTYPE" "${temp_file}" 2>/dev/null && \
-                   ! grep -q "404 Not Found\|403 Forbidden" "${temp_file}" 2>/dev/null; then
+                # 非脚本文件才进行 HTML 检查（避免误判脚本中的 html 字符串）
+                # 同时检查文件大小，太小的文件可能是错误响应
+                local file_size
+                file_size=$(wc -c < "${temp_file}")
+                if [[ ${file_size} -lt 100 ]]; then
+                    # 文件太小，可能是错误响应
+                    download_success=false
+                elif grep -qi "^<html\|^<!DOCTYPE" "${temp_file}" 2>/dev/null; then
+                    # 明确的 HTML 文件
+                    download_success=false
+                else
                     download_success=true
                 fi
             fi
@@ -202,13 +213,22 @@ download_file() {
                     is_valid_script=true
                 fi
                 
-                # 如果是有效的 Shell 脚本，跳过 HTML 检查
+                # 【修复】如果是有效的 Shell 脚本，直接接受（不进行 HTML 检查）
+                # 如果不是脚本，才检查是否为 HTML 错误页面
                 if [[ "${is_valid_script}" = true ]]; then
                     download_success=true
                 else
-                    # 非脚本文件才进行 HTML 检查
-                    if ! grep -qi "^<html\|^<!DOCTYPE" "${temp_file}" 2>/dev/null && \
-                       ! grep -q "404 Not Found\|403 Forbidden" "${temp_file}" 2>/dev/null; then
+                    # 非脚本文件才进行 HTML 检查（避免误判脚本中的 html 字符串）
+                    # 同时检查文件大小，太小的文件可能是错误响应
+                    local file_size
+                    file_size=$(wc -c < "${temp_file}")
+                    if [[ ${file_size} -lt 100 ]]; then
+                        # 文件太小，可能是错误响应
+                        download_success=false
+                    elif grep -qi "^<html\|^<!DOCTYPE" "${temp_file}" 2>/dev/null; then
+                        # 明确的 HTML 文件
+                        download_success=false
+                    else
                         download_success=true
                     fi
                 fi
@@ -235,8 +255,26 @@ download_file() {
         
         # 如果不是 updater.sh 自身，直接移动到目标位置
         if [[ "${remote_path}" != "modules/updater/update.sh" ]]; then
+            # 【修复】确保目标目录存在
+            local target_dir
+            target_dir=$(dirname "${target_file}")
+            if [[ ! -d "${target_dir}" ]]; then
+                mkdir -p "${target_dir}" 2>/dev/null || {
+                    echo -e "  ${RED}[FAIL]${NC} ${display_name} (无法创建目录: ${target_dir})"
+                    rm -f "${temp_file}"
+                    return 1
+                }
+            fi
+            
             mv "${temp_file}" "${target_file}"
-            chmod +x "${target_file}" 2>/dev/null || true
+            # 【修复】确保文件有执行权限
+            chmod +x "${target_file}" 2>/dev/null || {
+                echo -e "  ${RED}[FAIL]${NC} ${display_name} (无法设置执行权限)"
+                return 1
+            }
+        else
+            # updater.sh 自身，确保 .new 文件有执行权限
+            chmod +x "${temp_file}" 2>/dev/null || true
         fi
         echo -e "  ${GREEN}[OK]${NC} ${display_name}"
         return 0
@@ -421,6 +459,17 @@ perform_update() {
         
         # 【特殊处理】cfopt.sh 需要更新时，标记并延迟处理
         if [[ "${remote_path}" = "cfopt.sh" ]]; then
+            # 【修复】确保目录存在
+            local target_dir
+            target_dir=$(dirname "${ROOT_DIR}/cfopt.sh.new")
+            if [[ ! -d "${target_dir}" ]]; then
+                mkdir -p "${target_dir}" 2>/dev/null || {
+                    echo -e "  ${RED}[FAIL]${NC} ${display_name} (无法创建目录)"
+                    ((fail_count++))
+                    continue
+                }
+            fi
+            
             echo -e "  ${CYAN}[INFO]${NC} ${display_name} (将在重启后应用)"
             need_restart=true
             # 先下载到 .new 文件
@@ -454,6 +503,9 @@ perform_update() {
     echo "${remote_versions}" > "${VERSION_FILE}"
     echo -e "${GREEN}[OK] 版本号文件已更新${NC}"
     
+    # 【修复】清理残留文件
+    rm -f "${ROOT_DIR}/.restart_needed" 2>/dev/null || true
+    
     # 提示用户重启或重新运行
     if [[ ${success_count} -gt 0 ]]; then
         echo ""
@@ -484,6 +536,10 @@ perform_update() {
         # 【修复】不再使用 exec，而是创建标记文件通知父进程
         # 这样避免了在子shell中exec导致的进程套娃问题
         touch "${ROOT_DIR}/.restart_needed"
+        
+        # 【修复】同时清理旧的 .new 文件，避免被错误覆盖
+        rm -f "${ROOT_DIR}/modules/updater/update.sh.new" 2>/dev/null || true
+        rm -f "${ROOT_DIR}/cfopt.sh.new" 2>/dev/null || true
         
         read -r -p "按回车键返回..."
         exit 0
