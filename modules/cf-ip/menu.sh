@@ -456,15 +456,6 @@ configure_simple() {
         echo -e "${GREEN}[OK] 日志记录已禁用${NC}"
     fi
     
-    # 询问是否配置多线路分流
-    echo ""
-    echo -e "${YELLOW}【高级选项】运营商分流测速${NC}"
-    echo -e "${GRAY}如果您使用 DNSPod 等多线路解析服务，可以为不同运营商设置不同的测速节点${NC}"
-    read -r -p "是否配置多线路分流？(y/n，默认 n): " MULTI_LINE_INPUT
-    if [[ "${MULTI_LINE_INPUT}" = "y" ]] || [[ "${MULTI_LINE_INPUT}" = "Y" ]]; then
-        configure_multi_line_params
-    fi
-    
     if ! generate_config_simple; then
         echo -e "${RED}[ERROR] 配置生成失败，请重试${NC}"
         return 1
@@ -491,15 +482,6 @@ configure_advanced() {
     
     read -r -p "是否启用日志记录？(true/false，默认: false): " ENABLE_LOG
     ENABLE_LOG=${ENABLE_LOG:-"false"}
-    
-    # 询问是否配置多线路分流
-    echo ""
-    echo -e "${YELLOW}[INFO] 是否配置运营商分流测速？${NC}"
-    echo "  如果您使用 DNSPod 等多线路解析服务，建议开启此功能。"
-    read -r -p "是否开启？(y/n，默认n): " MULTI_LINE_INPUT
-    if [[ "${MULTI_LINE_INPUT}" = "y" ]] || [[ "${MULTI_LINE_INPUT}" = "Y" ]]; then
-        configure_multi_line_params
-    fi
     
     echo ""
     echo -e "${YELLOW}【CFST 测速参数】${NC}"
@@ -634,67 +616,6 @@ generate_config_simple() {
 }
 
 # ====================== 【函数：多线路参数配置】 ======================
-configure_multi_line_params() {
-    echo ""
-    echo -e "${CYAN}━━━ 运营商分流测速配置 ━━━${NC}"
-    echo "请为不同运营商选择最优的 Cloudflare 数据中心 (Colo)"
-    echo -e "${YELLOW}提示:${NC} Cloudflare DNS 更新将统一使用【默认/移动】线路的结果。"
-    echo ""
-    
-    # 定义常用节点选项
-    local options=("HKG(香港)" "SIN(新加坡)" "TYO(东京)" "LAX(洛杉矶)" "SJC(圣何塞)" "LON(伦敦)" "SEA(西雅图)")
-    
-    # 辅助函数：显示选择菜单并处理自定义输入
-    select_colo() {
-        local line_name=$1
-        local default_val=$2
-        echo -e "\n${YELLOW}请选择 ${line_name} 的最佳节点:${NC}"
-        for i in "${!options[@]}"; do
-            echo "  $((i+1))) ${options[$i]}"
-        done
-        echo -e "  ${GREEN}0) 手动输入自定义节点代码 (如: HKG,SJC)${NC}"
-        read -r -p "请输入编号或直接回车使用默认 (${default_val}): " selection
-        
-        if [[ -z "${selection}" ]]; then
-            echo "${default_val}"
-        elif [[ "${selection}" = "0" ]]; then
-            read -r -p "请输入 Colo 代码 (用逗号分隔): " custom_input
-            echo "${custom_input:-${default_val}}"
-        else
-            local result=""
-            for num in ${selection}; do
-                local idx=$((num-1))
-                if [[ -n "${options[$idx]+x}" ]]; then
-                    local code
-                    code="$(echo "${options[$idx]}" | cut -d'(' -f1)"
-                    result="${result}${code},"
-                fi
-            done
-            echo "${result%,}" # 去掉末尾逗号
-        fi
-    }
-
-    COLO_MOBILE=$(select_colo "移动/默认线路" "HKG,SIN,TYO,LON")
-    COLO_UNICOM=$(select_colo "联通线路" "SJC,LAX,SIN,TYO")
-    COLO_TELECOM=$(select_colo "电信线路" "SJC,LAX,TYO,SIN")
-    
-    # 将多线路配置写入 cf-ip.json
-    local temp_file
-    temp_file=$(mktemp)
-    jq --argjson enabled true \
-       --arg mobile "$COLO_MOBILE" \
-       --arg unicom "$COLO_UNICOM" \
-       --arg telecom "$COLO_TELECOM" \
-       '.multi_line.enabled = $enabled |
-        .multi_line.colo_mobile = $mobile |
-        .multi_line.colo_unicom = $unicom |
-        .multi_line.colo_telecom = $telecom' \
-       "$CONFIG_FILE" > "$temp_file" && mv "$temp_file" "$CONFIG_FILE"
-    chmod 600 "$CONFIG_FILE"
-    
-    echo -e "\n${GREEN}[OK] 多线路配置已保存至主配置文件。${NC}"
-}
-
 # ====================== 【函数：生成高级配置】 ======================
 generate_config_advanced() {
     # 使用 jq 创建完整的 JSON 配置文件
