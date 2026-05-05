@@ -526,6 +526,11 @@ main() {
         chmod +x "${ROOT_DIR}/modules/updater/update.sh"
         echo -e "${GREEN}[OK] updater.sh 已更新！${NC}"
         echo ""
+        
+        # 【关键】应用后立即重启，使用新版本执行
+        echo -e "${YELLOW}[INFO] 正在使用新版本重新启动...${NC}"
+        exec bash "${ROOT_DIR}/modules/updater/update.sh" "$@"
+        exit 0  # 这行不会执行，作为保险
     fi
     
     local command="${1:-help}"
