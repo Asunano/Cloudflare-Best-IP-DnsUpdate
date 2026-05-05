@@ -15,6 +15,7 @@ RED='\033[0;31m'
 BLUE='\033[0;34m'
 CYAN='\033[0;36m'
 GRAY='\033[0;90m'
+MAGENTA='\033[0;35m'
 BOLD='\033[1m'
 NC='\033[0m'
 
@@ -578,7 +579,7 @@ system_health_check() {
     
     echo -e "${CYAN}+------------------------------------------------------------+${NC}"
     echo -e " ${BOLD}${YELLOW}Cloudflare-Best-IP-DnsUpdate v${SCRIPT_VERSION}${NC}"
-    echo -e " ${CYAN}项目仓库: https://github.com/Asunano/Cloudflare-Best-IP-DnsUpdate${NC}"
+    echo -e " ${MAGENTA}项目仓库: https://github.com/Asunano/Cloudflare-Best-IP-DnsUpdate${NC}"
     echo -e "${CYAN}+------------------------------------------------------------+${NC}"
     echo -e " ${YELLOW}系统健康检测与修复${NC}"
     echo -e "${CYAN}+------------------------------------------------------------+${NC}"
@@ -771,7 +772,7 @@ show_main_menu() {
     clear
     echo -e "${CYAN}+------------------------------------------------------------+${NC}"
     echo -e " ${BOLD}${YELLOW}Cloudflare-Best-IP-DnsUpdate v${SCRIPT_VERSION}${NC}"
-    echo -e " ${CYAN}项目仓库: https://github.com/Asunano/Cloudflare-Best-IP-DnsUpdate${NC}"
+    echo -e " ${MAGENTA}项目仓库: https://github.com/Asunano/Cloudflare-Best-IP-DnsUpdate${NC}"
     echo -e "${CYAN}+------------------------------------------------------------+${NC}"
     
     # 加载状态配置
@@ -817,7 +818,7 @@ show_main_menu() {
         # 【修复】clear后重新输出标题栏
         echo -e "${CYAN}+------------------------------------------------------------+${NC}"
         echo -e " ${BOLD}${YELLOW}Cloudflare-Best-IP-DnsUpdate v${SCRIPT_VERSION}${NC}"
-        echo -e " ${CYAN}项目仓库: https://github.com/Asunano/Cloudflare-Best-IP-DnsUpdate${NC}"
+        echo -e " ${MAGENTA}项目仓库: https://github.com/Asunano/Cloudflare-Best-IP-DnsUpdate${NC}"
         echo -e "${CYAN}+------------------------------------------------------------+${NC}"
     fi
     
