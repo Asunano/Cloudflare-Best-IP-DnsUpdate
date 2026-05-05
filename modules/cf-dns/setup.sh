@@ -392,9 +392,10 @@ full_config_wizard() {
         -H "Content-Type: application/json")
     
     clear
-    echo -e "${CYAN}+--------------------------------------------------+"
-    echo -e " ${YELLOW}Cloudflare DNS 完整配置向导${NC}"
-    echo -e "${CYAN}+--------------------------------------------------+${NC}"
+    echo -e "${CYAN}+------------------------------------------------------------+${NC}"
+    echo -e " ${BOLD}${YELLOW}Cloudflare DNS 完整配置向导 v${SCRIPT_VERSION}${NC}"
+    echo -e " ${MAGENTA}项目仓库: https://github.com/Asunano/Cloudflare-Best-IP-DnsUpdate${NC}"
+    echo -e "${CYAN}+------------------------------------------------------------+${NC}"
     echo ""
     
     local zones_count
@@ -439,9 +440,10 @@ full_config_wizard() {
     
     # 2. 选择域名（自动获取 Zone ID）
     clear
-    echo -e "${CYAN}+--------------------------------------------------+"
-    echo -e " ${YELLOW}Cloudflare DNS 完整配置向导${NC}"
-    echo -e "${CYAN}+--------------------------------------------------+${NC}"
+    echo -e "${CYAN}+------------------------------------------------------------+${NC}"
+    echo -e " ${BOLD}${YELLOW}Cloudflare DNS 完整配置向导 v${SCRIPT_VERSION}${NC}"
+    echo -e " ${MAGENTA}项目仓库: https://github.com/Asunano/Cloudflare-Best-IP-DnsUpdate${NC}"
+    echo -e "${CYAN}+------------------------------------------------------------+${NC}"
     echo ""
     echo -e "${BLUE}步骤 2/6: 选择要配置的域名${NC}"
     echo ""
@@ -484,9 +486,10 @@ full_config_wizard() {
     
     # 3. DNS 名称
     clear
-    echo -e "${CYAN}+--------------------------------------------------+"
-    echo -e " ${YELLOW}Cloudflare DNS 完整配置向导${NC}"
-    echo -e "${CYAN}+--------------------------------------------------+${NC}"
+    echo -e "${CYAN}+------------------------------------------------------------+${NC}"
+    echo -e " ${BOLD}${YELLOW}Cloudflare DNS 完整配置向导 v${SCRIPT_VERSION}${NC}"
+    echo -e " ${MAGENTA}项目仓库: https://github.com/Asunano/Cloudflare-Best-IP-DnsUpdate${NC}"
+    echo -e "${CYAN}+------------------------------------------------------------+${NC}"
     echo ""
     echo -e "${BLUE}步骤 3/6: 配置 DNS 记录名称 (主机记录)${NC}"
     echo ""
@@ -533,9 +536,10 @@ full_config_wizard() {
     
     # 4. 选择测速节点
     clear
-    echo -e "${CYAN}+--------------------------------------------------+"
-    echo -e " ${YELLOW}Cloudflare DNS 完整配置向导${NC}"
-    echo -e "${CYAN}+--------------------------------------------------+${NC}"
+    echo -e "${CYAN}+------------------------------------------------------------+${NC}"
+    echo -e " ${BOLD}${YELLOW}Cloudflare DNS 完整配置向导 v${SCRIPT_VERSION}${NC}"
+    echo -e " ${MAGENTA}项目仓库: https://github.com/Asunano/Cloudflare-Best-IP-DnsUpdate${NC}"
+    echo -e "${CYAN}+------------------------------------------------------------+${NC}"
     echo ""
     echo -e "${BLUE}步骤 4/6: 选择测速节点（地区）${NC}"
     echo ""
@@ -592,9 +596,10 @@ full_config_wizard() {
     
     # 5. IP 数量限制
     clear
-    echo -e "${CYAN}+--------------------------------------------------+"
-    echo -e " ${YELLOW}Cloudflare DNS 完整配置向导${NC}"
-    echo -e "${CYAN}+--------------------------------------------------+${NC}"
+    echo -e "${CYAN}+------------------------------------------------------------+${NC}"
+    echo -e " ${BOLD}${YELLOW}Cloudflare DNS 完整配置向导 v${SCRIPT_VERSION}${NC}"
+    echo -e " ${MAGENTA}项目仓库: https://github.com/Asunano/Cloudflare-Best-IP-DnsUpdate${NC}"
+    echo -e "${CYAN}+------------------------------------------------------------+${NC}"
     echo ""
     echo -e "${BLUE}步骤 5/6: 配置 IP 数量限制${NC}"
     echo ""
@@ -672,9 +677,10 @@ full_config_wizard() {
     
     # 6. 确认配置信息
     clear
-    echo -e "${CYAN}+--------------------------------------------------+"
-    echo -e " ${YELLOW}Cloudflare DNS 完整配置向导${NC}"
-    echo -e "${CYAN}+--------------------------------------------------+${NC}"
+    echo -e "${CYAN}+------------------------------------------------------------+${NC}"
+    echo -e " ${BOLD}${YELLOW}Cloudflare DNS 完整配置向导 v${SCRIPT_VERSION}${NC}"
+    echo -e " ${MAGENTA}项目仓库: https://github.com/Asunano/Cloudflare-Best-IP-DnsUpdate${NC}"
+    echo -e "${CYAN}+------------------------------------------------------------+${NC}"
     echo ""
     echo -e "${BLUE}步骤 6/6: 确认配置信息${NC}"
     echo ""
