@@ -1276,16 +1276,46 @@ init_cfopt() {
              "${INSTALL_DIR}/logs"
 
     # 4.1 下载 updater 模块（用于后续更新检查）
-    echo -e "${CYAN}[INFO] 正在下载更新组件...${NC}"
-    if ! download_with_retry "${REMOTE_URL_MIRROR}/modules/updater/update.sh" \
-                             "${INSTALL_DIR}/modules/updater/update.sh"; then
-        # 镜像源失败，尝试官方源
-        if ! download_with_retry "${REMOTE_URL}/modules/updater/update.sh" \
-                                 "${INSTALL_DIR}/modules/updater/update.sh"; then
-            log_warning "更新组件下载失败，稍后可通过菜单手动更新"
+    echo -e "${CYAN}[INFO] 正在下载核心组件...${NC}"
+    
+    # 定义需要下载的核心模块列表
+    local core_modules=(
+        "modules/updater/update.sh"
+        "modules/quick-deploy/setup.sh"
+        "modules/cf-ip/menu.sh"
+        "modules/cf-ip/core.sh"
+        "modules/cf-dns/core.sh"
+        "modules/cf-dns/setup.sh"
+        "modules/dnspod-dns/core.sh"
+        "modules/dnspod-dns/setup.sh"
+        "modules/scheduler/run.sh"
+        "modules/ip-sync/sync.sh"
+    )
+    
+    local download_success=true
+    for module_path in "${core_modules[@]}"; do
+        local module_name
+        module_name=$(basename "${module_path}")
+        echo -e "  ${CYAN}[INFO] 正在下载 ${module_name}...${NC}"
+        
+        # 优先使用镜像源
+        if ! download_with_retry "${REMOTE_URL_MIRROR}/${module_path}" \
+                                 "${INSTALL_DIR}/${module_path}"; then
+            # 镜像源失败，尝试官方源
+            if ! download_with_retry "${REMOTE_URL}/${module_path}" \
+                                     "${INSTALL_DIR}/${module_path}"; then
+                log_warning "${module_name} 下载失败"
+                download_success=false
+            fi
         fi
+        chmod +x "${INSTALL_DIR}/${module_path}" 2>/dev/null || true
+    done
+    
+    if [[ "${download_success}" = true ]]; then
+        log_success "所有核心组件下载完成"
+    else
+        log_warning "部分组件下载失败，稍后可通过菜单手动更新"
     fi
-    chmod +x "${INSTALL_DIR}/modules/updater/update.sh" 2>/dev/null || true
 
     # 初始化状态配置文件 (如果不存在)
     STATUS_CONF="${INSTALL_DIR}/conf/status.conf"
