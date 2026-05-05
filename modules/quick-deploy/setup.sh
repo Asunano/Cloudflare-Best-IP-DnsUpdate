@@ -210,6 +210,58 @@ delete_domain_config() {
     echo -e "  [OK] 已删除部署记录"
 }
 
+select_colo_nodes() {
+    local domain="$1"
+    
+    echo -e "${CYAN}请选择测速节点（地区）：${NC}"
+    echo -e " ${YELLOW}提示: 选择距离您服务器较近的地区可获得更优的延迟${NC}"
+    echo ""
+    echo -e " ${GREEN}常用节点推荐：${NC}"
+    echo -e "   1. 香港 + 东京 (HKG,NRT)          - 亚洲通用推荐"
+    echo -e "   2. 新加坡 + 东京 (SIN,NRT)         - 东南亚优化"
+    echo -e "   3. 洛杉矶 + 旧金山 (LAX,SJC)       - 北美优化"
+    echo -e "   4. 法兰克福 + 伦敦 (FRA,LON)       - 欧洲优化"
+    echo -e "   5. 悉尼 + 东京 (SYD,NRT)           - 大洋洲优化"
+    echo ""
+    echo -e " ${GRAY}其他选项：${NC}"
+    echo -e "   6. 自动检测（默认 HKG,NRT）"
+    echo -e "   7. 自定义节点（手动输入）"
+    echo ""
+    
+    read -r -p "请选择 [1-7] (默认 1): " colo_choice
+    colo_choice=${colo_choice:-1}
+    
+    case "$colo_choice" in
+        1) echo "HKG,NRT" ;;
+        2) echo "SIN,NRT" ;;
+        3) echo "LAX,SJC" ;;
+        4) echo "FRA,LON" ;;
+        5) echo "SYD,NRT" ;;
+        6)
+            # 自动检测（当前逻辑）
+            detect_optimal_colo
+            ;;
+        7)
+            echo ""
+            echo -e "${YELLOW}请输入 IATA 机场代码，多个用逗号分隔${NC}"
+            echo -e "${GRAY}示例: HKG,NRT,LAX 或 SIN,TYO,FRA${NC}"
+            echo -e "${GRAY}常见代码: HKG(香港) NRT/TYO(东京) SIN(新加坡) LAX(洛杉矶) SJC(旧金山) FRA(法兰克福) LON(伦敦) SYD(悉尼)${NC}"
+            read -r -p "请输入节点代码: " custom_colo
+            if [[ -z "$custom_colo" ]]; then
+                echo -e "${YELLOW}[WARN] 未输入，使用默认值 HKG,NRT${NC}"
+                echo "HKG,NRT"
+            else
+                # 转换为大写并去除空格
+                echo "$custom_colo" | tr '[:lower:]' '[:upper:]' | tr -d ' '
+            fi
+            ;;
+        *)
+            echo -e "${YELLOW}[WARN] 无效选择，使用默认值 HKG,NRT${NC}"
+            echo "HKG,NRT"
+            ;;
+    esac
+}
+
 detect_optimal_colo() {
     # 简单检测：根据常见网络环境推荐
     # 实际可以扩展为 ping 测试或 traceroute 分析
@@ -1125,8 +1177,11 @@ deploy_cloudflare_dns() {
     # 第3步：生成配置
     show_step_header 3 5 "生成配置文件"
     
+    # 让用户选择测速节点
     local recommended_colo
-    recommended_colo=$(detect_optimal_colo)
+    recommended_colo=$(select_colo_nodes "$domain")
+    echo -e "${GREEN}[OK] 已选择测速节点: ${recommended_colo}${NC}"
+    echo ""
     
     echo -e "${CYAN}正在生成 CF-IP 配置...${NC}"
     generate_cf_ip_config "single" "$recommended_colo" "" "" ""
@@ -1341,8 +1396,11 @@ deploy_dnspod_single() {
     # 第3步：生成配置
     show_step_header 3 5 "生成配置文件"
     
+    # 让用户选择测速节点
     local recommended_colo
-    recommended_colo=$(detect_optimal_colo)
+    recommended_colo=$(select_colo_nodes "$domain")
+    echo -e "${GREEN}[OK] 已选择测速节点: ${recommended_colo}${NC}"
+    echo ""
     
     echo -e "${CYAN}正在生成 CF-IP 配置...${NC}"
     generate_cf_ip_config "single" "$recommended_colo" "" "" ""
