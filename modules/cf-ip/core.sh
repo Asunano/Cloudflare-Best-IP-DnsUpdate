@@ -349,94 +349,139 @@ EXIT_CODE=$?
 echo -e "\r${CYAN}  [████████████████████████████████████████] 100% 测速完成！${NC}"
 echo ""
 
-if [[ "${EXIT_CODE}" -eq 0 ]] && [[ -f "${OUTPUT_CSV}" ]]; then
-    # 清屏，显示结果
-    clear 2>/dev/null || true
+# 【增强】测速结果验证与自动重试
+MAX_RETRY=5
+for ((retry=1; retry<=MAX_RETRY; retry++)); do
+    if [[ ${retry} -gt 1 ]]; then
+        echo -e "\n${CYAN}[INFO] 第 ${retry} 次自动重试测速...${NC}"
+        # 递增等待时间：10s, 20s, 30s, 40s
+        wait_time=$(( (retry - 1) * 10 ))
+        echo -e "${YELLOW}[等待] ${wait_time} 秒后重试...${NC}"
+        sleep ${wait_time}
+        
+        # 重新执行测速
+        bash "${CFST_BIN}" \
+            -f "${CFST_DIR}/ip.txt" \
+            -n "${TARGET_COLO}" \
+            -t "${CFST_THREADS}" \
+            -p "${CFST_PING_TIMES}" \
+            -dn "${CFST_DOWNLOAD_COUNT}" \
+            -dt "${CFST_DOWNLOAD_TIME}" \
+            -tl "${CFST_LATENCY_MAX}" \
+            -pl "${CFST_PACKET_LOSS_MAX}" \
+            -sl "${CFST_SPEED_MIN}" \
+            -sc "${CFST_SHOW_COUNT}" \
+            -tp "${CFST_PORT}" \
+            -u "${CFST_URL}" \
+            -http "${CFST_HTTPING}" \
+            -dd "${CFST_DISABLE_DOWNLOAD}" \
+            -all "${CFST_ALL_IP}" \
+            -o "${OUTPUT_CSV}" 2>&1 | tee -a "${LOG_FILE}"
+        
+        EXIT_CODE=${PIPESTATUS[0]}
+    fi
     
-    echo ""
-    echo -e "${GREEN}[OK] 测速完成！${NC}"
-    echo ""
-    
-    # 【增强】验证测速结果是否有效
-    if [[ -f "${OUTPUT_CSV}" ]]; then
+    if [[ "${EXIT_CODE}" -eq 0 ]] && [[ -f "${OUTPUT_CSV}" ]]; then
+        # 验证测速结果是否有效
         valid_ip_count=$(awk -F',' 'NR>1 && $6>0 {count++} END {print count+0}' "${OUTPUT_CSV}")
         
-        if [[ "${valid_ip_count}" -eq 0 ]]; then
-            echo -e "${RED}[ERROR] 测速结果无效：所有 IP 的下载速度均为 0${NC}"
-            echo -e "${YELLOW}[提示] 可能的原因：${NC}"
-            echo -e "  • 测速地址不可达或网络问题"
-            echo -e "  • 防火墙阻止了下载测试"
-            echo -e "  • Cloudflare CDN 暂时异常"
-            echo ""
-            echo -e "${CYAN}[建议] 请检查网络连接后重新运行测速${NC}"
+        if [[ "${valid_ip_count}" -gt 0 ]]; then
+            # 测速成功且有有效数据
+            if [[ ${retry} -gt 1 ]]; then
+                echo -e "${GREEN}[OK] 第 ${retry} 次重试成功！找到 ${valid_ip_count} 个有效 IP${NC}"
+            fi
+            break  # 退出重试循环
+        else
+            # 数据无效，继续重试
+            if [[ ${retry} -lt ${MAX_RETRY} ]]; then
+                echo -e "${YELLOW}[WARN] 第 ${retry} 次测速完成，但所有 IP 下载速度均为 0，数据无效${NC}"
+            else
+                echo -e "${RED}[ERROR] 已重试 ${MAX_RETRY} 次，所有测速结果均无效${NC}"
+                echo -e "${YELLOW}[提示] 可能的原因：${NC}"
+                echo -e "  • 测速地址不可达或网络问题"
+                echo -e "  • 防火墙阻止了下载测试"
+                echo -e "  • Cloudflare CDN 暂时异常"
+                echo ""
+                echo -e "${CYAN}[建议] 请检查网络连接后重新运行测速${NC}"
+                exit 1
+            fi
+        fi
+    else
+        # 测速程序执行失败
+        if [[ ${retry} -lt ${MAX_RETRY} ]]; then
+            echo -e "${YELLOW}[WARN] 第 ${retry} 次测速失败 (Exit Code: ${EXIT_CODE})${NC}"
+        else
+            echo -e "${RED}[ERROR] 测速程序执行失败 (Exit Code: ${EXIT_CODE})${NC}"
+            if [[ "${ENABLE_LOG}" = "true" ]] && [[ -f "${LOG_FILE:-}" ]]; then
+                echo -e "${YELLOW}[提示] 详细错误信息请查看: ${LOG_FILE}${NC}"
+            fi
             exit 1
-        else
-            echo -e "${GREEN}[验证] 找到 ${valid_ip_count} 个有效 IP（下载速度 > 0）${NC}"
         fi
     fi
-    
-    # 展示测速结果摘要（从配置文件读取）
-    total_ips=$(wc -l < "${OUTPUT_CSV}")
-    total_ips=$((total_ips - 1))  # 减去表头
-    available_ips=$((total_ips > TAKE_IP_NUM ? TAKE_IP_NUM : total_ips))
-    
-    # 转换 Colo 代码为中文
-    colo_names=""
-    IFS=',' read -ra COLO_ARRAY <<< "${TARGET_COLO}"
-    for colo in "${COLO_ARRAY[@]}"; do
-        colo_name=$(convert_colo_to_name "${colo}")
-        if [[ -n "${colo_names}" ]]; then
-            colo_names="${colo_names}, ${colo_name}"
-        else
-            colo_names="${colo_name}"
-        fi
-    done
-    
-    # 获取最优 IP 的详细信息
-    best_ip_line=$(head -n 2 "${OUTPUT_CSV}" | tail -n 1)
-    
-    # 使用 awk 解析 CSV，更健壮地处理字段
-    best_ip=$(echo "$best_ip_line" | awk -F',' '{print $1}' | xargs)
-    delay=$(echo "$best_ip_line" | awk -F',' '{print $5}' | xargs)
-    speed=$(echo "$best_ip_line" | awk -F',' '{print $6}' | xargs)
-    region=$(echo "$best_ip_line" | awk -F',' '{print $7}' | xargs | tr -d '\r')
-    
-    best_region_name=$(convert_colo_to_name "${region}")
-    
-    echo -e "${CYAN}+------------------------------------------------------------+"
-    echo -e " ${YELLOW}测速结果摘要${NC}"
-    echo -e "${CYAN}+------------------------------------------------------------+"
-    echo -e "  ${CYAN}测试节点:${NC}   ${colo_names} (${TARGET_COLO})"
-    echo -e "  ${CYAN}线程数量:${NC}   ${CFST_THREADS}"
-    echo -e "  ${CYAN}测试结果:${NC}"
-    echo -e "    • 测试总数: ${total_ips} 个 IP"
-    echo -e "    • 可用数量: ${available_ips} 个 IP"
-    echo -e "    • 选取策略: 保留前 ${TAKE_IP_NUM} 个最优"
-    echo ""
-    echo -e " ${GREEN}[最佳] 最优 IP:${NC}"
-    echo -e "  ${GREEN}➤${NC} ${best_ip}"
-    echo -e "    延迟: ${delay}ms | 下载: ${speed}MB/s | 地区: ${best_region_name}"
-    echo ""
-    echo -e " ${GREEN}Top 3 推荐 IP:${NC}"
-    head -n 4 "${OUTPUT_CSV}" | tail -n 3 | while IFS= read -r line; do
-        ip=$(echo "$line" | awk -F',' '{print $1}' | xargs)
-        delay=$(echo "$line" | awk -F',' '{print $5}' | xargs)
-        speed=$(echo "$line" | awk -F',' '{print $6}' | xargs)
-        region=$(echo "$line" | awk -F',' '{print $7}' | xargs | tr -d '\r')
-        region_name=$(convert_colo_to_name "${region}")
-        echo -e "  ${GREEN}➤${NC} ${ip}  (延迟: ${delay}ms, 下载: ${speed}MB/s, 地区: ${region_name})"
-    done
-    echo -e "${CYAN}+------------------------------------------------------------+"
-    echo ""
-    echo -e "${GRAY}文件位置:${NC}"
-    echo -e "  • 完整结果: ${OUTPUT_CSV}"
-    if [[ "${ENABLE_LOG}" = "true" ]] && [[ -f "${LOG_FILE:-}" ]]; then
-        echo -e "  • 运行日志: ${LOG_FILE}"
+done
+
+# 清屏，显示结果
+clear 2>/dev/null || true
+
+echo ""
+echo -e "${GREEN}[OK] 测速完成！${NC}"
+echo ""
+
+# 展示测速结果摘要（从配置文件读取）
+total_ips=$(wc -l < "${OUTPUT_CSV}")
+total_ips=$((total_ips - 1))  # 减去表头
+available_ips=$((total_ips > TAKE_IP_NUM ? TAKE_IP_NUM : total_ips))
+
+# 转换 Colo 代码为中文
+colo_names=""
+IFS=',' read -ra COLO_ARRAY <<< "${TARGET_COLO}"
+for colo in "${COLO_ARRAY[@]}"; do
+    colo_name=$(convert_colo_to_name "${colo}")
+    if [[ -n "${colo_names}" ]]; then
+        colo_names="${colo_names}, ${colo_name}"
+    else
+        colo_names="${colo_name}"
     fi
-else
-    echo -e "${RED}[ERROR] 测速程序执行失败 (Exit Code: ${EXIT_CODE})${NC}"
-    if [[ "${ENABLE_LOG}" = "true" ]] && [[ -f "${LOG_FILE:-}" ]]; then
-        echo -e "${YELLOW}[提示] 详细错误信息请查看: ${LOG_FILE}${NC}"
-    fi
-    exit 1
+done
+
+# 获取最优 IP 的详细信息
+best_ip_line=$(head -n 2 "${OUTPUT_CSV}" | tail -n 1)
+
+# 使用 awk 解析 CSV，更健壮地处理字段
+best_ip=$(echo "$best_ip_line" | awk -F',' '{print $1}' | xargs)
+delay=$(echo "$best_ip_line" | awk -F',' '{print $5}' | xargs)
+speed=$(echo "$best_ip_line" | awk -F',' '{print $6}' | xargs)
+region=$(echo "$best_ip_line" | awk -F',' '{print $7}' | xargs | tr -d '\r')
+
+best_region_name=$(convert_colo_to_name "${region}")
+
+echo -e "${CYAN}+------------------------------------------------------------+"
+echo -e " ${YELLOW}测速结果摘要${NC}"
+echo -e "${CYAN}+------------------------------------------------------------+"
+echo -e "  ${CYAN}测试节点:${NC}   ${colo_names} (${TARGET_COLO})"
+echo -e "  ${CYAN}线程数量:${NC}   ${CFST_THREADS}"
+echo -e "  ${CYAN}测试结果:${NC}"
+echo -e "    • 测试总数: ${total_ips} 个 IP"
+echo -e "    • 可用数量: ${available_ips} 个 IP"
+echo -e "    • 选取策略: 保留前 ${TAKE_IP_NUM} 个最优"
+echo ""
+echo -e " ${GREEN}[最佳] 最优 IP:${NC}"
+echo -e "  ${GREEN}➤${NC} ${best_ip}"
+echo -e "    延迟: ${delay}ms | 下载: ${speed}MB/s | 地区: ${best_region_name}"
+echo ""
+echo -e " ${GREEN}Top 3 推荐 IP:${NC}"
+head -n 4 "${OUTPUT_CSV}" | tail -n 3 | while IFS= read -r line; do
+    ip=$(echo "$line" | awk -F',' '{print $1}' | xargs)
+    delay=$(echo "$line" | awk -F',' '{print $5}' | xargs)
+    speed=$(echo "$line" | awk -F',' '{print $6}' | xargs)
+    region=$(echo "$line" | awk -F',' '{print $7}' | xargs | tr -d '\r')
+    region_name=$(convert_colo_to_name "${region}")
+    echo -e "  ${GREEN}➤${NC} ${ip}  (延迟: ${delay}ms, 下载: ${speed}MB/s, 地区: ${region_name})"
+done
+echo -e "${CYAN}+------------------------------------------------------------+"
+echo ""
+echo -e "${GRAY}文件位置:${NC}"
+echo -e "  • 完整结果: ${OUTPUT_CSV}"
+if [[ "${ENABLE_LOG}" = "true" ]] && [[ -f "${LOG_FILE:-}" ]]; then
+    echo -e "  • 运行日志: ${LOG_FILE}"
 fi
