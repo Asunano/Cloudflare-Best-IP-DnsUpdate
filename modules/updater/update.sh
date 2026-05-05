@@ -374,12 +374,13 @@ perform_update() {
         echo -e "${YELLOW}[INFO] 检测到首次安装或版本文件损坏，执行全量更新...${NC}"
         echo ""
     else
-        # 版本号相同，无需更新
-        if [[ "${local_version}" == "${remote_version}" ]]; then
-            echo -e "${GREEN}[OK] 已是最新版本，无需更新${NC}"
+        # 版本号不同，直接全量更新
+        if [[ "${local_version}" != "${remote_version}" ]]; then
+            echo -e "${YELLOW}[INFO] 发现新版本！${NC}"
             echo ""
-            read -r -p "按回车键返回..."
-            return 0
+        else
+            # 版本号相同，但仍需检查每个组件的哈希值
+            echo -e "${CYAN}[INFO] 版本号相同，正在检查文件完整性...${NC}"
         fi
     fi
     
