@@ -101,8 +101,48 @@ if [[ "${ENABLE_MULTI_LINE:-false}" = "true" ]]; then
     echo -e "${YELLOW}[INFO] 等待所有线路测速任务完成...${NC}"
     wait
 else
-    # 单线路模式：仅执行一次通用测速
-    bash "${ROOT_DIR}/modules/cf-ip/core.sh" || exit 1
+    # 【优化】单线路模式：扫描所有已配置的域名，为每个域名独立测速
+    echo -e "${YELLOW}[INFO] 单线路模式，正在扫描已配置的域名...${NC}"
+    
+    local has_cf_dns=false
+    local cf_dns_dir="${ROOT_DIR}/conf/cf-dns"
+    
+    if [[ -d "${cf_dns_dir}" ]]; then
+        # 遍历所有 CF-DNS 配置文件
+        while IFS= read -r -d '' json_file; do
+            local domain_name
+            domain_name=$(basename "$json_file" .json)
+            
+            # 检查模块是否启用
+            local enabled
+            enabled=$(jq -r '.enabled // false' "$json_file")
+            if [[ "${enabled}" != "true" ]]; then
+                continue
+            fi
+            
+            # 从配置中读取测速节点（如果有）
+            local colo_nodes
+            colo_nodes=$(jq -r '.ip_source.colo_nodes // "HKG,NRT"' "$json_file")
+            
+            # 生成独立的测速结果文件路径
+            local result_file="${ROOT_DIR}/assets/data/cf-ip/result_${domain_name}.csv"
+            
+            echo -e "${CYAN}  -> 正在为 ${domain_name} 执行测速 (节点: ${colo_nodes})...${NC}"
+            bash "${ROOT_DIR}/modules/cf-ip/core.sh" "${colo_nodes}" "${result_file}" "${domain_name}" &
+            has_cf_dns=true
+            
+        done < <(find "${cf_dns_dir}" -name "*.json" -type f -print0 2>/dev/null)
+    fi
+    
+    # 如果没有找到任何 CF-DNS 配置，执行默认测速
+    if [[ "${has_cf_dns}" = false ]]; then
+        echo -e "${YELLOW}[WARN] 未找到已启用的 CF-DNS 配置，执行默认测速...${NC}"
+        bash "${ROOT_DIR}/modules/cf-ip/core.sh" || exit 1
+    else
+        # 等待所有后台测速任务完成
+        echo -e "${YELLOW}[INFO] 等待所有域名测速任务完成...${NC}"
+        wait
+    fi
 fi
 echo -e "${GREEN}[OK] IP 优选测速执行成功。${NC}"
 
