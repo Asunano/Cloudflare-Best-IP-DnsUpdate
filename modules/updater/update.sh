@@ -281,6 +281,7 @@ check_updates() {
         remote_hash=$(get_component_hash "${key}" "${remote_versions}")
         
         if [[ -z "${remote_version}" ]] || [[ -z "${remote_hash}" ]]; then
+            echo -e "  ${GRAY}[SKIP]${NC} ${display_name} (云端信息缺失)"
             continue
         fi
         
@@ -289,27 +290,24 @@ check_updates() {
         local local_hash=""
         if [[ -f "${local_file}" ]]; then
             local_hash=$(sha256sum "${local_file}" | awk '{print $1}')
-        fi
-        
-        # 【策略】先对比版本号，再对比哈希值
-        local should_update=false
-        
-        if [[ "${local_hash}" != "${remote_hash}" ]]; then
-            # 哈希值不同，需要进一步判断
-            if [[ "${remote_version}" != "0.1" ]]; then
-                # 云端版本号不是 0.1，说明是正式发布，直接更新
-                should_update=true
-            else
-                # 云端版本号是 0.1，可能是开发中的变化，也更新
-                should_update=true
-            fi
-        fi
-        
-        if [[ "${should_update}" = true ]]; then
+        else
+            echo -e "  ${YELLOW}[MISS]${NC} ${display_name} (文件不存在)"
             needs_update=true
             update_list+=("${display_name}")
+            continue
+        fi
+        
+        # 【策略】对比哈希值
+        if [[ "${local_hash}" != "${remote_hash}" ]]; then
+            echo -e "  ${YELLOW}[UPDATE]${NC} ${display_name}"
+            needs_update=true
+            update_list+=("${display_name}")
+        else
+            echo -e "  ${GREEN}[OK]${NC} ${display_name}"
         fi
     done
+    
+    echo ""
     
     if [[ "${needs_update}" = false ]]; then
         echo -e "${GREEN}[OK] 所有组件已是最新版本${NC}"

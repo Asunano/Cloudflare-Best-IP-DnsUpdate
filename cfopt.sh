@@ -1404,26 +1404,33 @@ EOF
     fi
 
     # 5. 静默版本检测与更新（委托给 updater 模块）
-    echo -e "${CYAN}[INFO] 正在检查组件更新...${NC}"
-    bash "${INSTALL_DIR}/modules/updater/update.sh" check
-    
-    local update_available=$?
-    if [[ ${update_available} -eq 0 ]]; then
-        # 有可用更新，询问用户是否执行
-        echo ""
-        read -r -p "${YELLOW}是否立即执行更新？[y/N] (默认 N): ${NC}" confirm_update
-        if [[ "${confirm_update}" =~ ^[Yy]$ ]]; then
+    # 【重要】初次安装时跳过更新检查，因为刚下载的文件就是最新的
+    if [[ -f "${STATUS_CONF}" ]] && grep -q '^INSTALL_CHECKED="true"' "${STATUS_CONF}"; then
+        # 非初次安装，才检查更新
+        echo -e "${CYAN}[INFO] 正在检查组件更新...${NC}"
+        bash "${INSTALL_DIR}/modules/updater/update.sh" check
+        
+        local update_available=$?
+        if [[ ${update_available} -eq 0 ]]; then
+            # 有可用更新，询问用户是否执行
             echo ""
-            bash "${INSTALL_DIR}/modules/updater/update.sh" update
-            
-            # 如果更新了 cfopt.sh 或 updater.sh，提示用户重启
-            if [[ -f "${INSTALL_DIR}/cfopt.sh.new" ]] || [[ -f "${INSTALL_DIR}/modules/updater/update.sh.new" ]]; then
+            read -r -p "${YELLOW}是否立即执行更新？[Y/n] (默认 Y): ${NC}" confirm_update
+            confirm_update="${confirm_update:-Y}"
+            if [[ "${confirm_update}" =~ ^[Yy]$ ]] || [[ -z "${confirm_update}" ]]; then
                 echo ""
-                echo -e "${GREEN}[OK] 主程序已更新，请重新运行 ./cfopt.sh 以应用新版本${NC}"
+                bash "${INSTALL_DIR}/modules/updater/update.sh" update
+                
+                # 如果更新了 cfopt.sh 或 updater.sh，提示用户重启
+                if [[ -f "${INSTALL_DIR}/cfopt.sh.new" ]] || [[ -f "${INSTALL_DIR}/modules/updater/update.sh.new" ]]; then
+                    echo ""
+                    echo -e "${GREEN}[OK] 主程序已更新，请重新运行 ./cfopt.sh 以应用新版本${NC}"
+                fi
             fi
+        else
+            echo -e "${RED}[ERROR] 更新检查失败${NC}"
         fi
     else
-        echo -e "${RED}[ERROR] 更新检查失败${NC}"
+        log_info "初次安装，跳过更新检查"
     fi
 
     # 7. 进入主菜单循环
