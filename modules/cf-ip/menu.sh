@@ -246,8 +246,6 @@ show_main_menu() {
     # 检查测速程序状态
     if [[ -f "${CFST_BIN}" ]]; then
         echo -e " ${GREEN}[OK] 测速程序: cfst 已就绪"
-    else
-        echo -e " ${RED}[NONE] 测速程序: cfst 缺失（请重新运行 cfopt 初始化）"
     fi
     
     echo -e "${CYAN}+------------------------------------------------------------+"
