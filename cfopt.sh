@@ -248,23 +248,9 @@ if [[ "${CURRENT_SCRIPT_PATH}" != "${TARGET_SCRIPT_PATH}" ]]; then
             if bash -n "${TARGET_SCRIPT_PATH}" 2>/tmp/cfopt_syntax_check.log; then
                 log_info "语法检查通过，正在启动..."
                 
-                # 【关键修复】不使用 exec，而是直接启动新进程并退出
-                # 原因：当通过 'bash cfopt.sh' 运行时，当前 bash 持有原文件的 fd
-                # 移动文件后，exec 可能因为 fd 问题而失败
-                bash "${TARGET_SCRIPT_PATH}" "$@" &
-                NEW_PID=$!
-                
-                # 等待新进程启动
-                sleep 0.1
-                
-                # 检查新进程是否成功启动
-                if kill -0 "$NEW_PID" 2>/dev/null; then
-                    log_info "新进程已启动 (PID: ${NEW_PID})"
-                    exit 0
-                else
-                    log_error "新进程启动失败"
-                    exit 1
-                fi
+                # 【标准做法】使用 exec 替换当前进程
+                # exec 会用新进程完全替换当前进程，包括文件描述符
+                exec bash "${TARGET_SCRIPT_PATH}" "$@"
             else
                 log_error "目标文件语法检查失败:"
                 cat /tmp/cfopt_syntax_check.log >&2
@@ -300,23 +286,9 @@ if [[ "${CURRENT_SCRIPT_PATH}" != "${TARGET_SCRIPT_PATH}" ]]; then
             if bash -n "${TARGET_SCRIPT_PATH}" 2>/tmp/cfopt_syntax_check.log; then
                 log_info "语法检查通过，正在启动..."
                 
-                # 【关键修复】不使用 exec，而是直接启动新进程并退出
-                # 原因：当通过 'bash cfopt.sh' 运行时，当前 bash 持有原文件的 fd
-                # 移动文件后，exec 可能因为 fd 问题而失败
-                bash "${TARGET_SCRIPT_PATH}" "$@" &
-                NEW_PID=$!
-                
-                # 等待新进程启动
-                sleep 0.1
-                
-                # 检查新进程是否成功启动
-                if kill -0 "$NEW_PID" 2>/dev/null; then
-                    log_info "新进程已启动 (PID: ${NEW_PID})"
-                    exit 0
-                else
-                    log_error "新进程启动失败"
-                    exit 1
-                fi
+                # 【标准做法】使用 exec 替换当前进程
+                # exec 会用新进程完全替换当前进程，包括文件描述符
+                exec bash "${TARGET_SCRIPT_PATH}" "$@"
             else
                 log_error "目标文件语法检查失败:"
                 cat /tmp/cfopt_syntax_check.log >&2
