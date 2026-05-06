@@ -28,6 +28,26 @@ echo -e " ${BOLD}${YELLOW}Cloudflare-Best-IP-DnsUpdate v${SCRIPT_VERSION}${NC}"
 echo -e " ${CYAN}项目仓库: https://github.com/Asunano/Cloudflare-Best-IP-DnsUpdate${NC}"
 echo -e "${CYAN}+------------------------------------------------------------+${NC}"
 
+# ==================== 配置加载 ====================
+CONFIG_FILE="${ROOT_DIR}/conf/cf-ip.json"
+
+# 检查 jq 是否可用
+if ! command -v jq &>/dev/null; then
+    echo -e "${RED}[ERROR] jq 未安装 (必需工具)${NC}"
+    exit 1
+fi
+
+# 从配置文件读取 MAX_RETRY，与 cf-ip/core.sh 保持一致
+if [[ -f "${CONFIG_FILE}" ]]; then
+    export MAX_RETRY=$(jq -r '.speed_test.max_retry // 3' "${CONFIG_FILE}")
+else
+    # 如果配置文件不存在，使用默认值
+    export MAX_RETRY=3
+fi
+
+echo -e "${GREEN}[INFO] 最大重试次数: ${MAX_RETRY}${NC}"
+echo ""
+
 # ==================== 前置条件检查 ====================
 if [[ ! -f "${RESULT_CSV}" ]]; then
     echo -e "${RED}[ERROR] 未找到测速结果文件: ${RESULT_CSV}${NC}"
@@ -50,12 +70,12 @@ echo ""
 # ==================== 核心函数定义 ====================
 
 # 自动重新测速函数（用于同步失败时自动重试）
-# 最多重试5次，5次都失败才返回失败
+# 【修复】从配置文件读取 MAX_RETRY，与 cf-ip/core.sh 保持一致
 auto_retry_test() {
     local result_file="$1"
     local colo_nodes="$2"  # 测速节点，如 "HKG,NRT"
     local line_id="$3"     # 线路标识，用于进程锁
-    local max_retries=5    # 最大重试次数
+    local max_retries=${MAX_RETRY:-3}  # 【修复】使用配置文件中的值，默认3次
     
     # 检查测速程序是否存在
     local cfst_bin="${ROOT_DIR}/assets/cfst/cfst"
@@ -66,7 +86,7 @@ auto_retry_test() {
     
     cd "${ROOT_DIR}" || return 1
     
-    # 循环重试，最备5次
+    # 循环重试，最多 ${max_retries} 次
     for ((i=1; i<=max_retries; i++)); do
         echo -e "\n${CYAN}[INFO] 检测到测速数据无效，正在自动重新测速 (尝试 ${i}/${max_retries})...${NC}"
         
@@ -97,7 +117,7 @@ auto_retry_test() {
         fi
     done
     
-    # 5次都失败
+    # 所有重试都失败
     echo -e "${RED}[ERROR] 自动重新测速失败，已重试 ${max_retries} 次${NC}"
     return 1
 }
