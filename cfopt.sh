@@ -1372,7 +1372,7 @@ CLEANUP_EOF
 # --- 组件更新逻辑（委托给 updater 模块）---
 check_and_update_components() {
     clear
-    bash "${INSTALL_DIR}/modules/updater/update.sh" update
+    bash "${INSTALL_DIR}/modules/updater/update.sh" update || true
     
     # 【修复】检查 updater 是否标记需要重启
     if [[ -f "${INSTALL_DIR}/.restart_needed" ]]; then
@@ -1384,8 +1384,9 @@ check_and_update_components() {
         exec bash "${INSTALL_DIR}/cfopt.sh"
     fi
     
-    # updater 模块已有"按回车键返回"提示，无需重复
-    show_main_menu
+    # 【安全修复】删除 show_main_menu 的递归调用
+    # updater 模块已有“按回车键返回”提示，由外层 while 循环继续显示菜单
+    # 避免长期运行导致的栈溢出问题
 }
 
 # --- 初始化流程 ---
@@ -1607,8 +1608,8 @@ EOF
     clear
     while true; do
         show_main_menu
-        # show_main_menu 是递归函数，选择 0 时会 exit
-        # 其他选项执行完毕后会自动继续循环
+        # show_main_menu 执行完毕后返回，由 while 循环继续显示菜单
+        # 选择 0 时会 exit 退出程序
     done
 }
 
