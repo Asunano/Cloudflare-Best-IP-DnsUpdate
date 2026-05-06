@@ -71,18 +71,28 @@ run_task() {
 # 第一阶段：IP 优选测速（根据 CF-IP 模块配置决定是单线路还是多线路测速）
 echo -e "\n${CYAN}[TASK] 正在执行: IP 优选测速${NC}"
 
-# 加载 CF-IP 模块配置以获取分流策略
+# 【性能优化】一次性读取 CF-IP 配置，避免重复解析
+declare -A CF_IP_CFG
 if [[ -f "${ROOT_DIR}/conf/cf-ip.json" ]]; then
-    # 从 JSON 读取多线路配置
-    ENABLE_MULTI_LINE=$(jq -r '.multi_line.enabled // false' "${ROOT_DIR}/conf/cf-ip.json")
-    COLO_MOBILE=$(jq -r '.multi_line.colo_mobile // "HKG,SIN,TYO,LON"' "${ROOT_DIR}/conf/cf-ip.json")
-    COLO_UNICOM=$(jq -r '.multi_line.colo_unicom // "SJC,LAX,SIN,TYO"' "${ROOT_DIR}/conf/cf-ip.json")
-    COLO_TELECOM=$(jq -r '.multi_line.colo_telecom // "SJC,LAX,TYO,SIN"' "${ROOT_DIR}/conf/cf-ip.json")
+    while IFS='=' read -r key value; do
+        [[ -n "$key" ]] && CF_IP_CFG["$key"]="$value"
+    done < <(jq -r '
+        [
+            "multi_line_enabled=\(.multi_line.enabled // false)",
+            "colo_mobile=\(.multi_line.colo_mobile // \"HKG,SIN,TYO,LON\")",
+            "colo_unicom=\(.multi_line.colo_unicom // \"SJC,LAX,SIN,TYO\")",
+            "colo_telecom=\(.multi_line.colo_telecom // \"SJC,LAX,TYO,SIN\")"
+        ] | .[]
+    ' "${ROOT_DIR}/conf/cf-ip.json")
 fi
 
 # 检查是否开启多线路测速
-if [[ "${ENABLE_MULTI_LINE:-false}" = "true" ]]; then
-    echo -e "${YELLOW}[INFO] 检测到已开启多线路分流测速...${NC}"
+ENABLE_MULTI_LINE="${CF_IP_CFG[multi_line_enabled]:-false}"
+COLO_MOBILE="${CF_IP_CFG[colo_mobile]:-HKG,SIN,TYO,LON}"
+COLO_UNICOM="${CF_IP_CFG[colo_unicom]:-SJC,LAX,SIN,TYO}"
+COLO_TELECOM="${CF_IP_CFG[colo_telecom]:-SJC,LAX,TYO,SIN}"
+
+if [[ "${ENABLE_MULTI_LINE}" = "true" ]]; then
     
     # 定义各运营商的 Colo 列表 (优先使用 menu.sh 中配置的参数)
     declare -A ISP_COLOS
@@ -95,6 +105,12 @@ if [[ "${ENABLE_MULTI_LINE:-false}" = "true" ]]; then
         colo_list="${ISP_COLOS[$isp]}"
         output_file="${ROOT_DIR}/assets/data/cf-ip/result_${isp}.csv"
         echo -e "${CYAN}  -> 正在后台启动 ${isp} 线路测速 (Colo: ${colo_list})...${NC}"
+        # 【优化】通过环境变量传递配置，避免 core.sh 重复读取文件
+        export CF_IP_CFG_LOADED="true"
+        export CFG_MULTI_LINE_ENABLED="${ENABLE_MULTI_LINE}"
+        export CFG_COLO_MOBILE="${COLO_MOBILE}"
+        export CFG_COLO_UNICOM="${COLO_UNICOM}"
+        export CFG_COLO_TELECOM="${COLO_TELECOM}"
         # 传入第三个参数作为线路标识，用于进程锁隔离
         # 使用 & 符号让其在后台运行，实现多线程并发测速
         bash "${ROOT_DIR}/modules/cf-ip/core.sh" "${colo_list}" "${output_file}" "${isp}" &
@@ -128,6 +144,8 @@ else
             result_file="${ROOT_DIR}/assets/data/cf-ip/result_${domain_name}.csv"
             
             echo -e "${CYAN}  -> 正在为 ${domain_name} 执行测速 (节点: ${colo_nodes})...${NC}"
+            # 【优化】通过环境变量传递配置，避免 core.sh 重复读取文件
+            export CF_IP_CFG_LOADED="true"
             bash "${ROOT_DIR}/modules/cf-ip/core.sh" "${colo_nodes}" "${result_file}" "${domain_name}" &
             has_cf_dns=true
             
@@ -137,6 +155,8 @@ else
     # 如果没有找到任何 CF-DNS 配置，执行默认测速
     if [[ "${has_cf_dns}" = false ]]; then
         echo -e "${YELLOW}[WARN] 未找到已启用的 CF-DNS 配置，执行默认测速...${NC}"
+        # 【优化】通过环境变量传递配置，避免 core.sh 重复读取文件
+        export CF_IP_CFG_LOADED="true"
         bash "${ROOT_DIR}/modules/cf-ip/core.sh" || exit 1
     else
         # 等待所有后台测速任务完成

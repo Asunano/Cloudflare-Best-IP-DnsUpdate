@@ -122,33 +122,43 @@ fi
 
 # ==================== 【性能优化】一次性读取配置文件 ====================
 # 从 JSON 读取配置（【优化】只调用 1 次 jq，避免 20 次 fork + 文件 I/O）
-declare -A CFG
-while IFS='=' read -r key value; do
-    [[ -n "$key" ]] && CFG["$key"]="$value"
-done < <(jq -r '
-    [
-        "cfst_dir=\(.cfst.directory // \"\")",
-        "take_ip_num=\(.speed_test.take_ip_num // 5)",
-        "cfst_threads=\(.cfst.threads // 200)",
-        "cfst_colo=\(.cfst.colo // \"HKG,NRT\")",
-        "cfst_ping_times=\(.cfst.ping_times // 4)",
-        "cfst_download_count=\(.cfst.download_count // 10)",
-        "cfst_download_time=\(.cfst.download_time // 10)",
-        "cfst_port=\(.cfst.port // 443)",
-        "cfst_url=\(.cfst.url // \"https://cf-ns.com/cdn-cgi/trace\")",
-        "cfst_httping=\(.cfst.httping // false)",
-        "cfst_latency_max=\(.cfst.latency_max // 9999)",
-        "cfst_packet_loss_max=\(.cfst.packet_loss_max // 100)",
-        "cfst_speed_min=\(.cfst.speed_min // 0)",
-        "cfst_show_count=\(.cfst.show_count // 20)",
-        "cfst_ip_file=\(.cfst.ip_file // \"\")",
-        "cfst_disable_download=\(.cfst.disable_download // false)",
-        "cfst_all_ip=\(.cfst.all_ip // false)",
-        "output_html=\(.speed_test.output_html // true)",
-        "max_retry=\(.speed_test.max_retry // 3)",
-        "enable_log=\(.speed_test.enable_log // true)"
-    ] | .[]
-' "$CONFIG_FILE")
+# 【优化】如果 scheduler 已通过环境变量传递配置，则跳过文件读取
+if [[ "${CF_IP_CFG_LOADED:-}" != "true" ]]; then
+    declare -A CFG
+    while IFS='=' read -r key value; do
+        [[ -n "$key" ]] && CFG["$key"]="$value"
+    done < <(jq -r '
+        [
+            "cfst_dir=\(.cfst.directory // \"\")",
+            "take_ip_num=\(.speed_test.take_ip_num // 5)",
+            "cfst_threads=\(.cfst.threads // 200)",
+            "cfst_colo=\(.cfst.colo // \"HKG,NRT\")",
+            "cfst_ping_times=\(.cfst.ping_times // 4)",
+            "cfst_download_count=\(.cfst.download_count // 10)",
+            "cfst_download_time=\(.cfst.download_time // 10)",
+            "cfst_port=\(.cfst.port // 443)",
+            "cfst_url=\(.cfst.url // \"https://cf-ns.com/cdn-cgi/trace\")",
+            "cfst_httping=\(.cfst.httping // false)",
+            "cfst_latency_max=\(.cfst.latency_max // 9999)",
+            "cfst_packet_loss_max=\(.cfst.packet_loss_max // 100)",
+            "cfst_speed_min=\(.cfst.speed_min // 0)",
+            "cfst_show_count=\(.cfst.show_count // 20)",
+            "cfst_ip_file=\(.cfst.ip_file // \"\")",
+            "cfst_disable_download=\(.cfst.disable_download // false)",
+            "cfst_all_ip=\(.cfst.all_ip // false)",
+            "output_html=\(.speed_test.output_html // true)",
+            "max_retry=\(.speed_test.max_retry // 3)",
+            "enable_log=\(.speed_test.enable_log // true)"
+        ] | .[]
+    ' "$CONFIG_FILE")
+else
+    # 从环境变量恢复配置（scheduler 传递）
+    declare -A CFG
+    CFG["multi_line_enabled"]="${CFG_MULTI_LINE_ENABLED:-false}"
+    CFG["colo_mobile"]="${CFG_COLO_MOBILE:-HKG,SIN,TYO,LON}"
+    CFG["colo_unicom"]="${CFG_COLO_UNICOM:-SJC,LAX,SIN,TYO}"
+    CFG["colo_telecom"]="${CFG_COLO_TELECOM:-SJC,LAX,TYO,SIN}"
+fi
 
 # 导出配置变量（保持向后兼容）
 export CFST_DIR="${CFG[cfst_dir]}"
