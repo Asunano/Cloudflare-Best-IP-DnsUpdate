@@ -1728,15 +1728,15 @@ manage_ip_content() {
                 
                 local temp_file
                 temp_file=$(mktemp)
-                local valid_count=0
                 # shellcheck disable=SC2034
                 local invalid_count=0
                 
                 while IFS= read -r line; do
                     [[ -z "$line" ]] && break
                     
-                    # 将逗号、分号分隔转换为换行，并逐个验证
-                    echo "$line" | tr ',;' '\n' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//' | grep -v '^$' | while read -r ip; do
+                    # 【修复】使用进程替换 < <(...) 避免管道创建的子 shell
+                    while read -r ip; do
+                        [[ -z "$ip" ]] && continue
                         # 实时验证 IP 格式
                         if [[ "$ip" =~ ^([0-9]{1,3}\.){3}[0-9]{1,3}$ ]]; then
                             # 进一步验证每个段是否 <= 255
@@ -1758,7 +1758,7 @@ manage_ip_content() {
                         else
                             echo -e "  ${RED}[ERROR] $ip ${YELLOW}(格式错误)"
                         fi
-                    done
+                    done < <(echo "$line" | tr ',;' '\n' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//' | grep -v '^$')
                 done
                 
                 # 统计结果
