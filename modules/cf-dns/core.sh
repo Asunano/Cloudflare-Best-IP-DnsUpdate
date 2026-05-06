@@ -130,17 +130,17 @@ if [ ! -f "$CONFIG_FILE" ]; then
     fi
 fi
 
-# 从 JSON 读取配置并导出为环境变量
-export ENABLED=$(jq -r '.enabled // false' "$CONFIG_FILE")
-export CF_API_TOKEN=$(jq -r '.api.token // empty' "$CONFIG_FILE")
-export CF_ZONE_ID=$(jq -r '.api.zone_id // empty' "$CONFIG_FILE")
-export CF_DNS_NAME=$(jq -r '.dns.record_name // empty' "$CONFIG_FILE")
-export CF_DOMAIN=$(jq -r '.dns.domain // empty' "$CONFIG_FILE")
-export IP_FILE=$(jq -r '.ip_source.file_path // empty' "$CONFIG_FILE")
-export MAX_IPS_PER_RECORD=$(jq -r '.dns.max_ips_per_record // 2' "$CONFIG_FILE")
-export REQUEST_TIMEOUT=$(jq -r '.api.timeout // 10' "$CONFIG_FILE")
-export MAX_RETRIES=$(jq -r '.api.max_retries // 5' "$CONFIG_FILE")
-export LOG_DIR=$(jq -r '.logging.log_dir // empty' "$CONFIG_FILE")
+# 从 JSON 读取配置（【安全修复】不要 export，避免通过 /proc/<pid>/environ 泄露）
+ENABLED=$(jq -r '.enabled // false' "$CONFIG_FILE")
+CF_API_TOKEN=$(jq -r '.api.token // empty' "$CONFIG_FILE")
+CF_ZONE_ID=$(jq -r '.api.zone_id // empty' "$CONFIG_FILE")
+CF_DNS_NAME=$(jq -r '.dns.record_name // empty' "$CONFIG_FILE")
+CF_DOMAIN=$(jq -r '.dns.domain // empty' "$CONFIG_FILE")
+IP_FILE=$(jq -r '.ip_source.file_path // empty' "$CONFIG_FILE")
+MAX_IPS_PER_RECORD=$(jq -r '.dns.max_ips_per_record // 2' "$CONFIG_FILE")
+REQUEST_TIMEOUT=$(jq -r '.api.timeout // 10' "$CONFIG_FILE")
+MAX_RETRIES=$(jq -r '.api.max_retries // 5' "$CONFIG_FILE")
+LOG_DIR=$(jq -r '.logging.log_dir // empty' "$CONFIG_FILE")
 
 # 检查启用状态
 if [ "${ENABLED:-false}" != "true" ]; then

@@ -1507,6 +1507,8 @@ SCHEDULER_ENABLED="false"
 LAST_UPDATE_TIME=""
 INSTALL_CHECKED="true"
 EOF
+        # 【安全修复】设置严格权限，防止敏感信息泄露
+        chmod 600 "${STATUS_CONF}"
     else
         # 如果文件已存在但未标记，则追加标记
         if ! grep -q '^INSTALL_CHECKED=' "${STATUS_CONF}"; then
