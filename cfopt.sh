@@ -228,6 +228,19 @@ if [[ "${CURRENT_SCRIPT_PATH}" != "${TARGET_SCRIPT_PATH}" ]]; then
         if safe_copy "${CURRENT_SCRIPT_PATH}" "${TARGET_SCRIPT_PATH}" "脚本更新"; then
             chmod +x "${TARGET_SCRIPT_PATH}"
             log_success "更新成功，正在从新位置启动..."
+            
+            # 【安全修复】验证目标文件是否可执行
+            if [[ ! -x "${TARGET_SCRIPT_PATH}" ]]; then
+                log_error "目标文件不可执行，尝试修复权限..."
+                chmod 755 "${TARGET_SCRIPT_PATH}"
+            fi
+            
+            # 【调试】输出文件信息，帮助诊断问题
+            log_info "目标文件: ${TARGET_SCRIPT_PATH}"
+            log_info "文件大小: $(wc -c < "${TARGET_SCRIPT_PATH}") 字节"
+            log_info "文件权限: $(stat -c '%a' "${TARGET_SCRIPT_PATH}" 2>/dev/null || stat -f '%Lp' "${TARGET_SCRIPT_PATH}" 2>/dev/null)"
+            log_info "文件头: $(head -1 "${TARGET_SCRIPT_PATH}")"
+            
             # 设置环境变量标记，防止 exec 失败时的循环
             export CFOPT_RELOCATED=1
             exec bash "${TARGET_SCRIPT_PATH}" "$@"
@@ -243,12 +256,24 @@ if [[ "${CURRENT_SCRIPT_PATH}" != "${TARGET_SCRIPT_PATH}" ]]; then
         if safe_move "${CURRENT_SCRIPT_PATH}" "${TARGET_SCRIPT_PATH}" "脚本迁移"; then
             chmod +x "${TARGET_SCRIPT_PATH}"
             log_success "迁移成功，正在从新位置启动..."
+            
+            # 【安全修复】验证目标文件是否可执行
+            if [[ ! -x "${TARGET_SCRIPT_PATH}" ]]; then
+                log_error "目标文件不可执行，尝试修复权限..."
+                chmod 755 "${TARGET_SCRIPT_PATH}"
+            fi
+            
+            # 【调试】输出文件信息，帮助诊断问题
+            log_info "目标文件: ${TARGET_SCRIPT_PATH}"
+            log_info "文件大小: $(wc -c < "${TARGET_SCRIPT_PATH}") 字节"
+            log_info "文件权限: $(stat -c '%a' "${TARGET_SCRIPT_PATH}" 2>/dev/null || stat -f '%Lp' "${TARGET_SCRIPT_PATH}" 2>/dev/null)"
+            log_info "文件头: $(head -1 "${TARGET_SCRIPT_PATH}")"
+            
             # 设置环境变量标记，防止 exec 失败时的循环
             export CFOPT_RELOCATED=1
+            
+            # 【安全修复】使用 bash 显式执行，确保兼容性
             exec bash "${TARGET_SCRIPT_PATH}" "$@"
-            # exec 不会返回，如果到达此处说明 exec 失败
-            echo -e "${RED}[ERROR] exec 失败，请手动运行: ${TARGET_SCRIPT_PATH}${NC}"
-            exit 1
         else
             log_error "迁移失败，请检查权限。"
             exit 1
