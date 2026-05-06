@@ -371,9 +371,19 @@ full_config_wizard() {
     echo ""
     read -r -p "请输入 CF_API_TOKEN: " cf_api_token
     
+    # 【功能增强】支持返回上一步
+    if [[ "$cf_api_token" == "b" ]] || [[ "$cf_api_token" == "B" ]]; then
+        echo -e "${YELLOW}[INFO] 返回主菜单${NC}"
+        return 2  # 特殊返回值表示用户主动返回
+    fi
+    
     if [ -z "$cf_api_token" ]; then
         echo -e "${RED}错误: API Token 不能为空${NC}"
-        read -r -p "按回车键继续..."
+        echo -e "${YELLOW}[提示] 输入 'b' 可返回上一步${NC}"
+        read -r -p "按回车键重新输入，或输入 'b' 返回..." retry_choice
+        if [[ "$retry_choice" == "b" ]] || [[ "$retry_choice" == "B" ]]; then
+            return 2
+        fi
         return 1
     fi
     
@@ -454,6 +464,12 @@ full_config_wizard() {
     echo ""
     read -r -p "请选择域名 [1-$((index-1))] 或直接输入域名: " cf_domain_input
     
+    # 【功能增强】支持返回上一步
+    if [[ "$cf_domain_input" == "b" ]] || [[ "$cf_domain_input" == "B" ]]; then
+        echo -e "${YELLOW}[INFO] 返回上一步（重新输入 API Token）${NC}"
+        return 2
+    fi
+    
     local cf_domain
     if [[ "$cf_domain_input" =~ ^[0-9]+$ ]] && [[ "$cf_domain_input" -ge 1 ]] && [[ "$cf_domain_input" -lt "$index" ]]; then
         # 用户选择了编号
@@ -466,7 +482,11 @@ full_config_wizard() {
     
     if [ -z "$cf_domain" ]; then
         echo -e "${RED}错误: 域名不能为空${NC}"
-        read -r -p "按回车键继续..."
+        echo -e "${YELLOW}[提示] 输入 'b' 可返回上一步${NC}"
+        read -r -p "按回车键重新输入，或输入 'b' 返回..." retry_choice
+        if [[ "$retry_choice" == "b" ]] || [[ "$retry_choice" == "B" ]]; then
+            return 2
+        fi
         return 1
     fi
     
@@ -504,9 +524,19 @@ full_config_wizard() {
     echo ""
     read -r -p "请输入 DNS 记录名称 (例如 dns、cf 或 @): " cf_dns_name
     
+    # 【功能增强】支持返回上一步
+    if [[ "$cf_dns_name" == "b" ]] || [[ "$cf_dns_name" == "B" ]]; then
+        echo -e "${YELLOW}[INFO] 返回上一步（重新选择域名）${NC}"
+        return 2
+    fi
+    
     if [ -z "$cf_dns_name" ]; then
         echo -e "${RED}错误: DNS 记录名称不能为空${NC}"
-        read -r -p "按回车键继续..."
+        echo -e "${YELLOW}[提示] 输入 'b' 可返回上一步${NC}"
+        read -r -p "按回车键重新输入，或输入 'b' 返回..." retry_choice
+        if [[ "$retry_choice" == "b" ]] || [[ "$retry_choice" == "B" ]]; then
+            return 2
+        fi
         return 1
     fi
     
@@ -611,6 +641,13 @@ full_config_wizard() {
     echo ""
     echo "默认: 2"
     read -r -p "请输入限制数量 (直接回车使用默认): " max_ips
+    
+    # 【功能增强】支持返回上一步
+    if [[ "$max_ips" == "b" ]] || [[ "$max_ips" == "B" ]]; then
+        echo -e "${YELLOW}[INFO] 返回上一步（重新选择测速节点）${NC}"
+        return 2
+    fi
+    
     max_ips=${max_ips:-"2"}
     
     # 创建配置文件（按域名独立存储）
@@ -695,6 +732,15 @@ full_config_wizard() {
     echo -e "  • IP 文件: ${GREEN}${ip_file}${NC}"
     echo -e "  • IP 数量: ${GREEN}${max_ips}${NC}"
     echo ""
+    
+    # 【功能增强】提供返回上一步选项
+    echo -e "${YELLOW}[提示]${NC} 如果配置有误，可以输入 'b' 返回上一步修改"
+    read -r -p "按回车键保存配置，或输入 'b' 返回上一步: " confirm_choice
+    
+    if [[ "$confirm_choice" == "b" ]] || [[ "$confirm_choice" == "B" ]]; then
+        echo -e "${YELLOW}[INFO] 返回上一步（重新配置 IP 数量）${NC}"
+        return 2
+    fi
     
     # 创建 IP 数据目录
     mkdir -p "$(dirname "$ip_file")"
