@@ -624,23 +624,20 @@ main() {
     # 检测并去重 IP 文件中的重复 IP
     local original_count=${#ip_addresses[@]}
     if [ "$original_count" -gt 0 ]; then
+        # 【性能优化】使用关联数组去重，时间复杂度从 O(n²) 降低到 O(n)
+        local -A seen_ips=()  # 关联数组用于快速查找
         local -a unique_ips=()
         local -a duplicate_ips=()
         
         for ip in "${ip_addresses[@]}"; do
-            # 检查是否已存在
-            local is_duplicate=false
-            for existing_ip in "${unique_ips[@]}"; do
-                if [ "$ip" = "$existing_ip" ]; then
-                    is_duplicate=true
-                    break
-                fi
-            done
-            
-            if [ "$is_duplicate" = true ]; then
-                duplicate_ips+=("$ip")
-            else
+            # 检查是否已存在（关联数组查找为 O(1)）
+            if [[ -z "${seen_ips[$ip]+x}" ]]; then
+                # 首次出现，添加到唯一列表
+                seen_ips["$ip"]=1
                 unique_ips+=("$ip")
+            else
+                # 重复出现，添加到重复列表
+                duplicate_ips+=("$ip")
             fi
         done
         
