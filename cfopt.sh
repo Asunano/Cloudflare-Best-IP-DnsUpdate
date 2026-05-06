@@ -41,35 +41,37 @@ rotate_log() {
     fi
 }
 
-# 记录错误日志
-log_error() {
-    local message="$1"
+# ====================== 【统一结构化日志系统】 ======================
+
+# 统一日志格式: [2026-05-06 09:30:00] [INFO ] [cfopt] message
+log() {
+    local level="$1"
+    shift
     local timestamp
     timestamp="$(date '+%Y-%m-%d %H:%M:%S')"
-    echo -e "${RED}[ERROR] ${timestamp} - ${message}${NC}" >&2
     
-    # 同时写入日志文件（如果存在）
-    if [[ -n "${INSTALL_DIR:-}" ]] && [[ -d "${INSTALL_DIR}/logs" ]]; then
-        echo "[${timestamp}] ERROR: ${message}" >> "${INSTALL_DIR}/logs/error.log" 2>/dev/null || true
-    fi
+    # 格式化输出（对齐级别）
+    printf "[%s] [%-5s] [cfopt] %s\n" "$timestamp" "$level" "$*" | tee -a "${INSTALL_DIR:-.}/logs/error.log" 2>/dev/null || true
+}
+
+# 记录错误日志
+log_error() {
+    log "ERROR" "$@"
 }
 
 # 记录警告信息
 log_warning() {
-    local message="$1"
-    echo -e "${YELLOW}[WARN] ${message}${NC}"
+    log "WARN" "$@"
 }
 
 # 记录成功信息
 log_success() {
-    local message="$1"
-    echo -e "${GREEN}[OK] ${message}${NC}"
+    log "OK" "$@"
 }
 
 # 记录信息
 log_info() {
-    local message="$1"
-    echo -e "${CYAN}[INFO] ${message}${NC}"
+    log "INFO" "$@"
 }
 
 # 触发回滚

@@ -98,13 +98,21 @@ for old_log in "${LOG_DIR}"/cfdns_*.log.old; do
     [[ -f "$old_log" ]] && rotate_log "$old_log" 5242880  # 5MB
 done
 
-# 日志函数
+# ====================== 【统一结构化日志系统】 ======================
+# 格式: [2026-05-06 09:30:00] [INFO ] [cf-dns] message
 log() {
-    local message="$1"
+    local level="$1"
+    shift
     local timestamp
     timestamp=$(date +"%Y-%m-%d %H:%M:%S")
-    echo -e "[${timestamp}] ${message}" | tee -a "$LOG_FILE"
+    printf "[%s] [%-5s] [cf-dns] %s\n" "$timestamp" "$level" "$*" | tee -a "$LOG_FILE"
 }
+
+# 便捷函数
+log_info() { log "INFO" "$@"; }
+log_warn() { log "WARN" "$@"; }
+log_error() { log "ERROR" "$@"; }
+log_success() { log "OK" "$@"; }
 
 # ==================== 加载 JSON 配置 ====================
 if [ ! -f "$CONFIG_FILE" ]; then

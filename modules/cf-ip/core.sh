@@ -308,6 +308,22 @@ for old_log in "${LOG_DIR}"/cfst_*.log.old; do
     [[ -f "$old_log" ]] && rotate_log "$old_log" 5242880  # 5MB
 done
 
+# ====================== 【统一结构化日志系统】 ======================
+# 格式: [2026-05-06 09:30:00] [INFO ] [cf-ip] message
+log() {
+    local level="$1"
+    shift
+    local timestamp
+    timestamp="$(date +"%Y-%m-%d %H:%M:%S")"
+    printf "[%s] [%-5s] [cf-ip] %s\n" "$timestamp" "$level" "$*" | tee -a "${LOG_FILE}"
+}
+
+# 便捷函数
+log_info() { log "INFO" "$@"; }
+log_warn() { log "WARN" "$@"; }
+log_error() { log "ERROR" "$@"; }
+log_success() { log "OK" "$@"; }
+
 # 清屏，开始显示进度
 clear 2>/dev/null || true
 
