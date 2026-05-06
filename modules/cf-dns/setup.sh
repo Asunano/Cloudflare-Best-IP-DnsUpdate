@@ -370,7 +370,10 @@ full_config_wizard() {
     echo -e "  • Zone - DNS - Edit（编辑 DNS 记录）"
     echo -e "  • Zone - Zone - Read（读取域名列表）"
     echo ""
-    read -r -p "请输入 CF_API_TOKEN: " cf_api_token
+    # 【安全修复】使用 -s 静默模式，不回显 API Token
+    echo -e "${CYAN}请输入 CF_API_TOKEN（输入不会显示在屏幕上）:${NC}"
+    read -rs cf_api_token
+    echo ""  # read -s 不会换行，手动换行
     
     # 【功能增强】支持返回上一步
     if [[ "$cf_api_token" == "b" ]] || [[ "$cf_api_token" == "B" ]]; then
@@ -1608,7 +1611,10 @@ modify_config_menu() {
                 cf_zone_id=$(jq -r '.api.zone_id // empty' "$CONFIG_FILE")
                 
                 echo "当前 CF_API_TOKEN: ${cf_api_token:0:8}...${cf_api_token: -4}"
-                read -r -p "请输入新的 CF_API_TOKEN (留空保持不变): " new_token
+                # 【安全修复】使用 -s 静默模式，不回显 API Token
+                echo -e "${CYAN}请输入新的 CF_API_TOKEN (留空保持不变，输入不会显示):${NC}"
+                read -rs new_token
+                echo ""
                 if [ -n "$new_token" ]; then
                     local temp_file
                     temp_file=$(mktemp)

@@ -940,7 +940,10 @@ modify_api_keys() {
         echo -e "${GREEN}[OK] SecretId 已更新"
     fi
     
-    read -r -p "请输入 SecretKey (直接回车保持不变): " new_secretkey
+    # 【安全修复】使用 -s 静默模式，不回显 SecretKey
+    echo -e "${CYAN}请输入 SecretKey (直接回车保持不变，输入不会显示):${NC}"
+    read -rs new_secretkey
+    echo ""
     if [[ -n "$new_secretkey" ]]; then
         # 验证输入不包含危险字符
         if [[ "$new_secretkey" =~ [\;\|\&\$\`\\] ]]; then
@@ -2624,7 +2627,10 @@ if [ -z "$SECRETID" ]; then
     exit 1
 fi
 
-read -r -p "请输入 SecretKey: " SECRETKEY
+# 【安全修复】使用 -s 静默模式，不回显 SecretKey
+echo -e "${CYAN}请输入 SecretKey（输入不会显示在屏幕上）:${NC}"
+read -rs SECRETKEY
+echo ""
 
 if [ -z "$SECRETKEY" ]; then
     echo -e "${RED}错误: SecretKey 不能为空"

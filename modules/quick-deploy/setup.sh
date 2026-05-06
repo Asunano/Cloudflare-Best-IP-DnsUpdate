@@ -1155,7 +1155,10 @@ deploy_cloudflare_dns() {
     echo -e "  • Zone - Zone - Read（读取域名列表）"
     echo ""
     
-    read -r -p "请输入 CF_API_TOKEN: " cf_token
+    # 【安全修复】使用 -s 静默模式，不回显 API Token
+    echo -e "${CYAN}请输入 CF_API_TOKEN（输入不会显示在屏幕上）:${NC}"
+    read -rs cf_token
+    echo ""
     if [[ -z "$cf_token" ]]; then
         echo -e "${RED}[ERROR] Cloudflare API Token 不能为空${NC}"
         return 1
@@ -1495,7 +1498,10 @@ deploy_dnspod_single() {
         return 1
     fi
     
-    read -r -p "请输入 DNSPod Token: " dnspod_token
+    # 【安全修复】使用 -s 静默模式，不回显 DNSPod Token
+    echo -e "${CYAN}请输入 DNSPod Token（输入不会显示在屏幕上）:${NC}"
+    read -rs dnspod_token
+    echo ""
     if [[ -z "$dnspod_token" ]]; then
         echo -e "${RED}[ERROR] DNSPod Token 不能为空${NC}"
         return 1
@@ -1670,7 +1676,10 @@ deploy_dnspod_multi() {
         return 1
     fi
     
-    read -r -p "请输入 DNSPod Token: " dnspod_token
+    # 【安全修复】使用 -s 静默模式，不回显 DNSPod Token
+    echo -e "${CYAN}请输入 DNSPod Token（输入不会显示在屏幕上）:${NC}"
+    read -rs dnspod_token
+    echo ""
     if [[ -z "$dnspod_token" ]]; then
         echo -e "${RED}[ERROR] DNSPod Token 不能为空${NC}"
         return 1
