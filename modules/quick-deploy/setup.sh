@@ -310,10 +310,19 @@ select_colo_nodes() {
     echo -e "   6. 自动检测（默认 HKG,NRT）"
     echo -e "   7. 自定义节点（手动输入）"
     echo ""
+    echo -e " ${GRAY}提示: 您也可以直接输入节点代码，如 HKG,NRT${NC}"
+    echo ""
     
     echo -ne "${CYAN}请选择 [1-7] (默认 1):${NC} "
     read -r colo_choice
     colo_choice=${colo_choice:-1}
+    
+    # 【修复】支持直接输入节点代码（如 HKG,NRT）
+    if [[ "$colo_choice" =~ ^[A-Za-z,]+$ ]]; then
+        # 用户直接输入了节点代码，转换为大写并去除空格
+        echo "$colo_choice" | tr '[:lower:]' '[:upper:]' | tr -d ' '
+        return
+    fi
     
     case "$colo_choice" in
         1) echo "HKG,NRT" ;;
