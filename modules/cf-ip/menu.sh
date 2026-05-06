@@ -805,20 +805,31 @@ view_config() {
     echo -e " ${YELLOW}CF-IP 优选配置概览${NC}"
     echo -e "${CYAN}+------------------------------------------------------------+${NC}"
     
-    # 双栏布局显示
+    # 【修复】使用固定宽度的 key-value 分行显示，避免中文字符对齐错乱
     echo ""
-    echo -e " ${GREEN}$(printf '%-24s' '[模块状态]')${NC}${GREEN}$(printf '%-24s' '[测速参数]')${NC}"
-    echo -e "   $(printf '%-22s' "启用状态: ${status_enabled}")$(printf '%-22s' "并发线程: ${YELLOW}${threads}${NC}")"
-    echo -e "   $(printf '%-22s' '')$(printf '%-22s' "测速节点: ${YELLOW}${colo}${NC}")"
-    echo -e "   $(printf '%-22s' '')$(printf '%-22s' "Ping 次数: ${YELLOW}${ping_times}${NC}")"
-    echo -e "   $(printf '%-22s' '')$(printf '%-22s' "下载测试: ${YELLOW}${download_count} 次${NC}")"
+    echo -e " ${GREEN}[模块状态]${NC}"
+    printf "   %-12s %s\n" "启用状态:" "${status_enabled}"
     
     echo ""
-    echo -e " ${GREEN}$(printf '%-24s' '[筛选条件]')${NC}${GREEN}$(printf '%-24s' '[结果处理]')${NC}"
-    echo -e "   $(printf '%-22s' "最大延迟: ${YELLOW}${latency_max} ms${NC}")$(printf '%-22s' "选取 IP 数: ${YELLOW}${take_ip_num} 个${NC}")"
-    echo -e "   $(printf '%-22s' "最大丢包: ${YELLOW}${packet_loss_max}%${NC}")$(printf '%-22s' "最大重试: ${YELLOW}${max_retry} 次${NC}")"
-    echo -e "   $(printf '%-22s' "最低速度: ${YELLOW}${speed_min} MB/s${NC}")$(printf '%-22s' "HTML 报告: ${status_html}")"
-    echo -e "   $(printf '%-22s' "显示数量: ${YELLOW}${show_count} 个${NC}")$(printf '%-22s' "运行日志: ${status_log}")"
+    echo -e " ${GREEN}[测速参数]${NC}"
+    printf "   %-12s %s\n" "并发线程:" "${YELLOW}${threads}${NC}"
+    printf "   %-12s %s\n" "测速节点:" "${YELLOW}${colo}${NC}"
+    printf "   %-12s %s\n" "Ping 次数:" "${YELLOW}${ping_times}${NC}"
+    printf "   %-12s %s\n" "下载测试:" "${YELLOW}${download_count} 次${NC}"
+    
+    echo ""
+    echo -e " ${GREEN}[筛选条件]${NC}"
+    printf "   %-12s %s\n" "最大延迟:" "${YELLOW}${latency_max} ms${NC}"
+    printf "   %-12s %s\n" "最大丢包:" "${YELLOW}${packet_loss_max}%${NC}"
+    printf "   %-12s %s\n" "最低速度:" "${YELLOW}${speed_min} MB/s${NC}"
+    printf "   %-12s %s\n" "显示数量:" "${YELLOW}${show_count} 个${NC}"
+    
+    echo ""
+    echo -e " ${GREEN}[结果处理]${NC}"
+    printf "   %-12s %s\n" "选取 IP 数:" "${YELLOW}${take_ip_num} 个${NC}"
+    printf "   %-12s %s\n" "最大重试:" "${YELLOW}${max_retry} 次${NC}"
+    printf "   %-12s %s\n" "HTML 报告:" "${status_html}"
+    printf "   %-12s %s\n" "运行日志:" "${status_log}"
     
     echo ""
     echo -e "${CYAN}+------------------------------------------------------------+${NC}"
