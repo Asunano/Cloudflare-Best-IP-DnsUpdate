@@ -261,15 +261,6 @@ echo -e "${CYAN}+------------------------------------------------------------+"
 echo ""
 echo -e "${GRAY}  第一阶段: 延迟测速 (TCP Ping)${NC}"
 
-# 切换到 cfst 所在目录执行
-# 【修复】保存原目录，测速完成后返回
-ORIGINAL_DIR="$(pwd)"
-cd "$(dirname "$CFST_BIN")" || exit 1
-
-# 启动测速程序（后台运行）
-"${CMD[@]}" > "${LOG_FILE}" 2>&1 &
-CFST_PID=$!
-
 # ==================== 文件大小获取函数 ====================
 # 兼容 Linux、macOS、BSD 系统
 get_file_size() {
@@ -452,17 +443,33 @@ monitor_progress() {
 
 # 实时显示进度（通过监控日志文件）
 progress_bar_width=40
-monitor_progress "${CFST_PID}" "${LOG_FILE}" "${progress_bar_width}"
 
-# 等待进程结束（屏蔽错误输出，防止进程已退出时报错）
-wait "${CFST_PID}" 2>/dev/null
+# 【修复】使用 subshell 隔离目录切换，确保任何退出情况下都不影响父 shell
+(
+    # 切换到 cfst 所在目录执行
+    cd "$(dirname "$CFST_BIN")" || exit 1
+    
+    # 启动测速程序（后台运行）
+    "${CMD[@]}" > "${LOG_FILE}" 2>&1 &
+    CFST_PID=$!
+    
+    # 实时显示进度（通过监控日志文件）
+    monitor_progress "${CFST_PID}" "${LOG_FILE}" "${progress_bar_width}"
+    
+    # 等待进程结束（屏蔽错误输出，防止进程已退出时报错）
+    wait "${CFST_PID}" 2>/dev/null
+    EXIT_CODE=$?
+    
+    # 修复：固定长度输出，确保覆盖干净
+    echo ""
+    # 【修复】使用 echo -e 正确解释转义码
+    echo -e "${CYAN}  [========================================] 100% 测速完成！${NC}"
+    echo ""
+    
+    # 将退出码传递给父 shell
+    exit ${EXIT_CODE}
+)
 EXIT_CODE=$?
-
-# 修复：固定长度输出，确保覆盖干净
-echo ""
-# 【修复】使用 echo -e 正确解释转义码
-echo -e "${CYAN}  [========================================] 100% 测速完成！${NC}"
-echo ""
 
 # 【增强】测速结果验证与自动重试
 # 【修复】使用配置文件中的 MAX_RETRY，而不是硬编码为 5
@@ -490,31 +497,37 @@ for ((retry=1; retry<=MAX_RETRY; retry++)); do
         if [[ "${CFST_ALL_IP}" = "true" ]]; then RETRY_CMD+=("-allip"); fi
         RETRY_CMD+=("-o" "${OUTPUT_CSV}")
         
-        # 2. 切换到 cfst 所在目录
-        cd "$(dirname "${CFST_BIN}")" || exit 1
-        
-        # 3. 启动测速程序（后台运行）
-        "${RETRY_CMD[@]}" > "${LOG_FILE}" 2>&1 &
-        CFST_PID=$!
-        
-        # 4. 实时显示进度（使用通用监控函数）
-        echo -e "\n${CYAN}+------------------------------------------------------------+"
-        echo -e " ${YELLOW}第 ${retry} 次重试测速中...${NC}"
-        echo -e "${CYAN}+------------------------------------------------------------+"
-        echo ""
-        echo -e "${GRAY}  第一阶段: 延迟测速 (TCP Ping)${NC}"
-        
-        monitor_progress "${CFST_PID}" "${LOG_FILE}" "${progress_bar_width}"
-        
-        # 5. 等待进程结束（屏蔽错误输出）
-        wait "${CFST_PID}" 2>/dev/null
+        # 2. 【修复】使用 subshell 隔离目录切换
+        (
+            cd "$(dirname "${CFST_BIN}")" || exit 1
+            
+            # 3. 启动测速程序（后台运行）
+            "${RETRY_CMD[@]}" > "${LOG_FILE}" 2>&1 &
+            CFST_PID=$!
+            
+            # 4. 实时显示进度（使用通用监控函数）
+            echo -e "\n${CYAN}+------------------------------------------------------------+"
+            echo -e " ${YELLOW}第 ${retry} 次重试测速中...${NC}"
+            echo -e "${CYAN}+------------------------------------------------------------+"
+            echo ""
+            echo -e "${GRAY}  第一阶段: 延迟测速 (TCP Ping)${NC}"
+            
+            monitor_progress "${CFST_PID}" "${LOG_FILE}" "${progress_bar_width}"
+            
+            # 5. 等待进程结束（屏蔽错误输出）
+            wait "${CFST_PID}" 2>/dev/null
+            EXIT_CODE=$?
+            
+            # 修复：固定长度输出，确保覆盖干净
+            echo ""
+            # 【修复】使用 echo -e 正确解释转义码
+            echo -e "${CYAN}  [========================================] 100% 测速完成！${NC}"
+            echo ""
+            
+            # 将退出码传递给父 shell
+            exit ${EXIT_CODE}
+        )
         EXIT_CODE=$?
-        
-        # 修复：固定长度输出，确保覆盖干净
-        echo ""
-        # 【修复】使用 echo -e 正确解释转义码
-        echo -e "${CYAN}  [========================================] 100% 测速完成！${NC}"
-        echo ""
     fi
     
     if [[ "${EXIT_CODE}" -eq 0 ]] && [[ -f "${OUTPUT_CSV}" ]]; then
@@ -559,8 +572,7 @@ done
 # 清屏，显示结果
 clear 2>/dev/null || true
 
-# 【修复】返回原目录，避免影响上层脚本
-cd "${ORIGINAL_DIR}" || exit 1
+# 【修复】使用 subshell 后无需手动恢复目录，subshell 退出时自动恢复
 
 echo ""
 echo -e "${GREEN}[OK] 测速完成！${NC}"
