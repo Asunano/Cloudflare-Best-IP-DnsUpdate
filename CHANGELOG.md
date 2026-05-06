@@ -42,6 +42,42 @@
 ### Fixed - 修复
 
 #### 安全修复 (Security)
+- **cfst 测速改为串行执行** (2026-05-06)
+  - 文件：`modules/scheduler/run.sh`
+  - 问题：多线路模式下同时启动 4 个 cfst 进程，导致网络资源竞争
+  - 影响：
+    - ❌ **测速不准确**：带宽争抢导致延迟和速度数据失真
+    - ❌ **触发限流**：可能触发 Cloudflare 的速率限制
+    - ❌ **内存耗尽**：低配 VPS 上可能 OOM
+    - ❌ **结果不可靠**：并发测速无法反映真实性能
+  - 修复：将并发测速改为串行执行
+    ```bash
+    # 修复前：并发执行（4个进程同时运行）
+    for isp in "${!ISP_COLOS[@]}"; do
+        bash modules/cf-ip/core.sh "${colo_list}" "${output_file}" "${isp}" &
+    done
+    wait  # 等待所有完成
+    
+    # 修复后：串行执行（一个接一个）
+    for isp in "${!ISP_COLOS[@]}"; do
+        bash modules/cf-ip/core.sh "${colo_list}" "${output_file}" "${isp}"
+        if [[ $? -ne 0 ]]; then
+            echo "[WARN] ${isp} 线路测速失败，继续执行下一条"
+        fi
+    done
+    ```
+  - 技术说明：
+    - **多线路模式**：default → unicom → mobile → telecom 依次执行
+    - **多域名模式**：每个域名依次测速
+    - **错误处理**：单个失败不影响其他线路/域名
+    - **看门狗移除**：串行执行无需 wait，看门狗不再需要
+  - 效果：
+    - ✅ **测速准确**：无带宽竞争，数据真实可靠
+    - ✅ **避免限流**：降低 API 调用频率
+    - ✅ **内存友好**：同一时间只有一个 cfst 进程
+    - ✅ **结果可信**：每条线路独立测速，互不干扰
+    - ⚠️ **耗时增加**：4条线路从并行变为串行，总耗时约增加3倍
+
 - **添加日志轮转机制** (2026-05-06)
   - 文件：
     - `cfopt.sh`（scheduler.log, error.log）
