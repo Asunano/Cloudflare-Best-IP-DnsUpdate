@@ -107,6 +107,26 @@ log_warn() { log_msg "WARN" "$@"; }
 log_error() { log_msg "ERROR" "$@"; }
 log_success() { log_msg "OK" "$@"; }
 
+# ====================== 【执行历史记录】 ======================
+# 记录 DNSPod 更新结果到 history.jsonl
+record_dnspod_update_history() {
+    local domain="$1"
+    local records_updated="$2"
+    local records_created="$3"
+    local records_skipped="$4"
+    
+    local history_file="${ROOT_DIR}/conf/history.jsonl"
+    local timestamp
+    timestamp="$(date -u +"%Y-%m-%dT%H:%M:%S+08:00")"
+    
+    # 确保目录存在
+    mkdir -p "${ROOT_DIR}/conf"
+    
+    # 写入 JSONL 格式的历史记录
+    printf '{"time":"%s","action":"dnspod_update","domain":"%s","records_updated":%d,"records_created":%d,"records_skipped":%d}\n' \
+        "$timestamp" "$domain" "$records_updated" "$records_created" "$records_skipped" >> "$history_file"
+}
+
 # ==================== 模式切换检测（供 setup.sh 调用） ====================
 if [[ -n "${DNSPOD_MODE_SWITCH:-}" ]]; then
     # 检测到模式切换请求，执行智能处理
@@ -933,6 +953,10 @@ main_single() {
     log_msg "INFO" "  [SKIP] 跳过: ${skipped_count}"
     log_msg "INFO" "  ➕ 新建: ${created_count}"
     log_msg "INFO" "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    
+    # 【功能增强】记录 DNSPod 更新历史
+    record_dnspod_update_history "$DOMAIN_NAME" "$updated_count" "$created_count" "$skipped_count"
+    log_info "已记录 DNSPod 更新历史到 conf/history.jsonl"
 }
 
 # 多线路模式主函数
@@ -1159,6 +1183,10 @@ main_multi() {
     log_msg "INFO" "失败:     ${total_failed}"
     log_msg "INFO" "新建:     ${total_created}"
     log_msg "INFO" "================================================================"
+    
+    # 【功能增强】记录 DNSPod 多线路更新历史
+    record_dnspod_update_history "$DOMAIN_NAME" "$total_updated" "$total_created" "$total_skipped"
+    log_info "已记录 DNSPod 更新历史到 conf/history.jsonl"
 }
 
 # 删除模式主函数（单线路）

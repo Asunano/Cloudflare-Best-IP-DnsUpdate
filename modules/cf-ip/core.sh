@@ -324,6 +324,27 @@ log_warn() { log "WARN" "$@"; }
 log_error() { log "ERROR" "$@"; }
 log_success() { log "OK" "$@"; }
 
+# ====================== 【执行历史记录】 ======================
+# 记录测速结果到 history.jsonl
+record_speed_test_history() {
+    local domain="$1"
+    local ips_found="$2"
+    local best_ip="$3"
+    local latency="$4"
+    local speed="$5"
+    
+    local history_file="${ROOT_DIR}/conf/history.jsonl"
+    local timestamp
+    timestamp="$(date -u +"%Y-%m-%dT%H:%M:%S+08:00")"
+    
+    # 确保目录存在
+    mkdir -p "${ROOT_DIR}/conf"
+    
+    # 写入 JSONL 格式的历史记录
+    printf '{"time":"%s","action":"speed_test","domain":"%s","ips_found":%d,"best_ip":"%s","latency":%.2f,"speed":%.2f}\n' \
+        "$timestamp" "$domain" "$ips_found" "$best_ip" "$latency" "$speed" >> "$history_file"
+}
+
 # 清屏，开始显示进度
 clear 2>/dev/null || true
 
@@ -747,6 +768,11 @@ echo -e "  • 完整结果: ${OUTPUT_CSV}"
 if [[ "${ENABLE_LOG}" = "true" ]] && [[ -f "${LOG_FILE:-}" ]]; then
     echo -e "  • 运行日志: ${LOG_FILE}"
 fi
+
+# 【功能增强】记录测速历史
+domain_name="${LINE_TAG:-default}"
+record_speed_test_history "$domain_name" "$available_ips" "$best_ip" "$delay" "$speed"
+log_info "已记录测速历史到 conf/history.jsonl"
 
 # 【修复】如果关闭了日志，清理临时日志文件
 if [[ "${ENABLE_LOG}" != "true" ]] && [[ -f "${LOG_FILE:-}" ]]; then
