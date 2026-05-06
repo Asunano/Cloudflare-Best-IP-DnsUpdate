@@ -552,6 +552,9 @@ configure_advanced() {
 
 # ====================== 【函数：生成简单配置】 ======================
 generate_config_simple() {
+    # 【修复】规范化布尔值，防止 jq --argjson 类型转换失败
+    ENABLE_LOG=$(normalize_boolean "${ENABLE_LOG:-false}")
+    
     # 使用 jq 创建 JSON 配置文件
     local temp_file
     temp_file=$(mktemp)
@@ -631,8 +634,25 @@ generate_config_simple() {
     return 0
 }
 
+# ====================== 【函数：布尔值规范化】 ======================
+# 将用户输入转换为标准的 JSON 布尔值（true/false）
+normalize_boolean() {
+    local val="${1,,}"  # 转小写
+    case "$val" in
+        true|yes|1|on)  echo "true" ;;
+        false|no|0|off) echo "false" ;;
+        *)              echo "false" ;;  # 默认 false
+    esac
+}
+
 # ====================== 【函数：生成高级配置】 ======================
 generate_config_advanced() {
+    # 【修复】规范化布尔值，防止 jq --argjson 类型转换失败
+    ENABLE_LOG=$(normalize_boolean "${ENABLE_LOG:-false}")
+    CFST_HTTPING=$(normalize_boolean "${CFST_HTTPING:-true}")
+    CFST_DISABLE_DOWNLOAD=$(normalize_boolean "${CFST_DISABLE_DOWNLOAD:-false}")
+    CFST_ALL_IP=$(normalize_boolean "${CFST_ALL_IP:-false}")
+    
     # 使用 jq 创建完整的 JSON 配置文件
     local temp_file
     temp_file=$(mktemp)
