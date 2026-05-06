@@ -1734,7 +1734,7 @@ manage_ip_content() {
                 while IFS= read -r line; do
                     [[ -z "$line" ]] && break
                     
-                    # 【修复】使用进程替换 < <(...) 避免管道创建的子 shell
+                    # 【优化】使用 awk 一次性完成分隔、去空格、过滤空行，减少进程 fork
                     while read -r ip; do
                         [[ -z "$ip" ]] && continue
                         # 实时验证 IP 格式
@@ -1758,7 +1758,11 @@ manage_ip_content() {
                         else
                             echo -e "  ${RED}[ERROR] $ip ${YELLOW}(格式错误)"
                         fi
-                    done < <(echo "$line" | tr ',;' '\n' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//' | grep -v '^$')
+                    done < <(awk '{
+                        gsub(/[,;]/, "\n")
+                        gsub(/^[[:space:]]+|[[:space:]]+$/, "")
+                        if (length($0) > 0) print
+                    }' <<< "$line")
                 done
                 
                 # 统计结果

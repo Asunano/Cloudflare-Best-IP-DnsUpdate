@@ -1195,11 +1195,11 @@ manage_ip_content() {
             local temp_file
             temp_file=$(mktemp)
             
-            # 【修复】使用进程替换避免子 shell 变量丢失，同时优化为 awk 单次处理
+            # 【优化】使用进程替换 + awk 单次处理，避免多管道 fork 开销
             while IFS= read -r line; do
                 [ -z "$line" ] && break
                 
-                # 使用进程替换 < <(...) 避免管道创建的子 shell
+                # 使用 awk 一次性完成分隔、去空格、过滤空行
                 while read -r ip; do
                     [[ -z "$ip" ]] && continue
                     # 实时验证 IP 格式
@@ -1223,7 +1223,11 @@ manage_ip_content() {
                     else
                         echo -e "  ${RED}[ERROR]${NC} $ip ${YELLOW}(格式错误)${NC}"
                     fi
-                done < <(echo "$line" | tr ',;' '\n' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//' | grep -v '^$')
+                done < <(awk '{
+                    gsub(/[,;]/, "\n")
+                    gsub(/^[[:space:]]+|[[:space:]]+$/, "")
+                    if (length($0) > 0) print
+                }' <<< "$line")
             done
             
             # 统计结果
