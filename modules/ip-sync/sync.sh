@@ -413,6 +413,149 @@ sync_dnspod_ips() {
     done < <(find "${config_dir}" -name "*.json" -type f -print0 2>/dev/null)
 }
 
+# ==================== 【标准数据格式】转换函数 ====================
+
+# CSV → .iplist 格式转换
+csv_to_iplist() {
+    local csv_file="$1"
+    local iplist_file="$2"
+    
+    if [[ ! -f "$csv_file" ]]; then
+        echo -e "${RED}[ERROR] CSV 文件不存在: ${csv_file}${NC}"
+        return 1
+    fi
+    
+    echo "# Cloudflare 优选 IP 列表" > "$iplist_file"
+    echo "# 生成时间: $(date '+%Y-%m-%d %H:%M:%S')" >> "$iplist_file"
+    echo "#" >> "$iplist_file"
+    echo "# IP地址|延迟(ms)|下载速度(MB/s)|地区码" >> "$iplist_file"
+    
+    # 跳过 CSV 标题行，提取需要的字段
+    tail -n +2 "$csv_file" | while IFS=',' read -r ip sent recv loss delay speed region; do
+        # 清理 Windows 换行符
+        region=$(echo "$region" | tr -d '\r' | xargs)
+        
+        # 只保留有效数据（速度 > 0）
+        if [[ "$speed" =~ ^[0-9.]+$ ]] && (( $(echo "$speed > 0" | bc -l) )); then
+            echo "${ip}|${delay}|${speed}|${region}" >> "$iplist_file"
+        fi
+    done
+    
+    local count
+    count=$(grep -v '^#' "$iplist_file" | wc -l)
+    echo -e "${GREEN}[OK] CSV → .iplist 转换完成: ${count} 个 IP${NC}"
+}
+
+# .iplist → TXT 格式转换（兼容旧模块）
+iplist_to_txt() {
+    local iplist_file="$1"
+    local txt_file="$2"
+    
+    if [[ ! -f "$iplist_file" ]]; then
+        echo -e "${RED}[ERROR] .iplist 文件不存在: ${iplist_file}${NC}"
+        return 1
+    fi
+    
+    # 提取第一列（IP地址），跳过注释行
+    grep -v '^#' "$iplist_file" | awk -F'|' '{print $1}' > "$txt_file"
+    
+    local count
+    count=$(wc -l < "$txt_file")
+    echo -e "${GREEN}[OK] .iplist → TXT 转换完成: ${count} 个 IP${NC}"
+}
+
+# TXT → .iplist 格式转换（补充默认元数据）
+txt_to_iplist() {
+    local txt_file="$1"
+    local iplist_file="$2"
+    
+    if [[ ! -f "$txt_file" ]]; then
+        echo -e "${RED}[ERROR] TXT 文件不存在: ${txt_file}${NC}"
+        return 1
+    fi
+    
+    echo "# 注意: 此文件由 TXT 格式升级而来" > "$iplist_file"
+    echo "# 延迟、速度、地区码字段为默认值，建议重新测速" >> "$iplist_file"
+    echo "# 生成时间: $(date '+%Y-%m-%d %H:%M:%S')" >> "$iplist_file"
+    echo "#" >> "$iplist_file"
+    echo "# IP地址|延迟(ms)|下载速度(MB/s)|地区码" >> "$iplist_file"
+    
+    while IFS= read -r ip; do
+        # 跳过空行和注释
+        [[ -z "$ip" ]] && continue
+        [[ "$ip" =~ ^# ]] && continue
+        
+        # 清理空格
+        ip=$(echo "$ip" | xargs)
+        
+        # 使用默认值（因为 TXT 格式不包含这些信息）
+        echo "${ip}|0|0.0|UNKNOWN" >> "$iplist_file"
+    done < "$txt_file"
+    
+    local count
+    count=$(grep -v '^#' "$iplist_file" | wc -l)
+    echo -e "${GREEN}[OK] TXT → .iplist 转换完成: ${count} 个 IP${NC}"
+    echo -e "${YELLOW}[WARN] 元数据为默认值，建议重新测速以获取准确的延迟和速度信息${NC}"
+}
+
+# 自动检测文件格式并转换
+detect_and_convert() {
+    local source_file="$1"
+    local target_file="$2"
+    local target_format="$3"  # iplist, txt, csv
+    
+    if [[ ! -f "$source_file" ]]; then
+        echo -e "${RED}[ERROR] 源文件不存在: ${source_file}${NC}"
+        return 1
+    fi
+    
+    # 检测源文件格式
+    local source_format
+    if [[ "$source_file" == *.iplist ]]; then
+        source_format="iplist"
+    elif [[ "$source_file" == *.csv ]]; then
+        source_format="csv"
+    elif [[ "$source_file" == *.txt ]]; then
+        source_format="txt"
+    else
+        # 根据内容判断
+        if head -n 1 "$source_file" | grep -q '|'; then
+            source_format="iplist"
+        elif head -n 1 "$source_file" | grep -q ','; then
+            source_format="csv"
+        else
+            source_format="txt"
+        fi
+    fi
+    
+    echo -e "${CYAN}[INFO] 检测到源文件格式: ${source_format}${NC}"
+    echo -e "${CYAN}[INFO] 目标文件格式: ${target_format}${NC}"
+    
+    # 如果格式相同，直接复制
+    if [[ "$source_format" == "$target_format" ]]; then
+        cp "$source_file" "$target_file"
+        echo -e "${GREEN}[OK] 格式相同，直接复制${NC}"
+        return 0
+    fi
+    
+    # 执行转换
+    case "${source_format}-${target_format}" in
+        csv-iplist)
+            csv_to_iplist "$source_file" "$target_file"
+            ;;
+        iplist-txt)
+            iplist_to_txt "$source_file" "$target_file"
+            ;;
+        txt-iplist)
+            txt_to_iplist "$source_file" "$target_file"
+            ;;
+        *)
+            echo -e "${RED}[ERROR] 不支持的转换: ${source_format} → ${target_format}${NC}"
+            return 1
+            ;;
+    esac
+}
+
 # ==================== 执行同步任务 ====================
 
 # 1. 同步 Cloudflare DNS 模块数据（支持多域名）
