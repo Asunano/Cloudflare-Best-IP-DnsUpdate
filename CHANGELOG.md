@@ -9,6 +9,36 @@
 
 ## [Unreleased]
 
+### Added - 新增
+
+#### CI/CD 工作流增强
+- **添加 ShellCheck 静态检查** (2026-05-06)
+  - 功能：在 GitHub Actions 中自动运行 ShellCheck 检查所有 .sh 文件
+  - 位置：`.github/workflows/update-version.yml` 步骤2
+  - 特性：
+    - `continue-on-error: true` - 仅报告问题，不阻断流程
+    - 自动安装 ShellCheck 工具
+    - 递归扫描 `cfopt.sh` 和 `modules/**/*.sh`
+    - 生成 GitHub Actions 注解（error/warning/notice）
+    - 汇总统计报告（通过/警告/错误数量）
+  - 输出示例：
+    ```
+    ======================================
+      ShellCheck 检查汇总
+    ======================================
+      扫描文件:   10 个
+      通过:       7 个
+      仅警告:     2 个
+      有错误:     1 个
+      问题总数:   5 个
+    ======================================
+    ```
+  - 优势：
+    - ✅ 提前发现常见 Bash 错误
+    - ✅ 统一代码风格和质量
+    - ✅ 不影响 SHA256 哈希计算流程
+    - ✅ 开发阶段友好（不强制修复）
+
 ### Fixed - 修复
 
 #### 安全性修复 (Security)
