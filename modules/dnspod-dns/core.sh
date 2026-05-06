@@ -1587,7 +1587,8 @@ read_ips_from_file() {
     # 1. 每行一个 IP
     # 2. 逗号分隔的 IP
     local content
-    content="$(grep -v '^#' "${ip_file}" | sed 's/#.*//g' | tr '\n' ',' | sed 's/,$//' | sed 's/^,//')"
+    # 【性能优化】使用单次 awk 替代 4 个管道 + 4 次 fork
+    content="$(awk '!/^#/ && !/^$/ { gsub(/#.*/, ""); printf "%s,", $0 }' "${ip_file}" | sed 's/,$//')"
     
     if [[ -z "${content}" ]]; then
         log_msg "WARN" "IP 文件为空: ${ip_file}"
