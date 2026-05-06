@@ -126,6 +126,38 @@
     - 大规模部署：可能数百个 IP，性能提升显著
     - 代码质量：始终选择最优算法
 
+- **修复变量作用域混淆** (2026-05-06)
+  - 文件：`cfopt.sh` 第358-364行
+  - 函数：`download_with_retry()`
+  - 问题：`mirror_url` 在 `if` 块内使用 `local` 声明，作用域不清晰
+  - 影响：
+    - ⚠️ 虽然 Bash 中 `local` 的作用域是整个函数，不会报错
+    - ⚠️ 但代码意图不明确，容易误导读者
+    - ⚠️ 如果 URL 不是 GitHub raw 链接，`mirror_url` 未初始化
+  - 修复：
+    ```bash
+    # 修复前：在 if 块内声明
+    local use_mirror=false
+    if [[ "${url}" == *"raw.githubusercontent.com"* ]]; then
+        use_mirror=true
+        local mirror_url="${REMOTE_URL_MIRROR}${url#*main}"  # ❌ 作用域混淆
+    fi
+    
+    # 修复后：在函数开头初始化
+    local use_mirror=false
+    local mirror_url=""  # ✅ 明确初始化
+    
+    if [[ "${url}" == *"raw.githubusercontent.com"* ]]; then
+        use_mirror=true
+        mirror_url="${REMOTE_URL_MIRROR}${url#*main}"  # ✅ 赋值而非声明
+    fi
+    ```
+  - 优势：
+    - ✅ 作用域清晰：所有局部变量在函数开头声明
+    - ✅ 避免未定义：即使条件不满足，变量也有初始值
+    - ✅ 提高可读性：一眼看出函数的所有局部变量
+    - ✅ 符合最佳实践：遵循 Shell 编程规范
+
 #### 安全性修复 (Security)
 - **修复 API Token 环境变量泄露** (2026-05-06)
   - 问题：`export CF_API_TOKEN` 和 `export SECRETKEY` 将敏感信息导出为环境变量
