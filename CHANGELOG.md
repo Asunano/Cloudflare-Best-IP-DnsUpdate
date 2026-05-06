@@ -41,6 +41,52 @@
 
 ### Fixed - 修复
 
+#### 代码质量优化 (Code Quality)
+- **重构 HTTP 请求函数消除重复** (2026-05-06)
+  - 文件：`modules/cf-dns/core.sh`
+  - 问题：`http_get`、`http_put`、`http_post` 三个函数约 121 行代码，90% 完全相同
+  - 修复：
+    - 创建通用函数 `_http_request(method, url, data)`
+    - 使用参数化设计，通过 `method` 区分 GET/PUT/POST
+    - 使用数组构建 curl 参数，动态添加选项
+    - 保留所有原有功能（重试、速率限制、认证错误处理）
+  - 效果：
+    - ✅ 删除 109 行重复代码
+    - ✅ 新增 32 行通用逻辑
+    - ✅ 净减少 77 行代码（-64%）
+    - ✅ 提高可维护性：修改一处即可影响所有请求
+  - 技术亮点：
+    ```bash
+    # 通用函数
+    _http_request() {
+        local method="$1"
+        local url="$2"
+        local data="${3:-}"
+        
+        # 动态构建 curl 参数
+        local -a curl_args=(-s -X "$method" "$url" ...)
+        
+        # GET 特殊处理
+        if [ "$method" = "GET" ]; then
+            curl_args=(--connect-timeout 10 "${curl_args[@]}")
+        fi
+        
+        # PUT/POST 添加数据体
+        if [[ -n "$data" ]] && [[ "$method" != "GET" ]]; then
+            curl_args+=(-d "$data")
+        fi
+        
+        # 统一的重试逻辑
+        response=$(curl "${curl_args[@]}")
+        # ...
+    }
+    
+    # 简化的包装函数
+    http_get()  { _http_request "GET" "$1" "${2:-}"; }
+    http_put()  { _http_request "PUT" "$1" "$2"; }
+    http_post() { _http_request "POST" "$1" "$2"; }
+    ```
+
 #### 安全性修复 (Security)
 - **修复 API Token 环境变量泄露** (2026-05-06)
   - 问题：`export CF_API_TOKEN` 和 `export SECRETKEY` 将敏感信息导出为环境变量
