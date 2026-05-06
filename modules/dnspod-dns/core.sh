@@ -887,10 +887,8 @@ main_single() {
             local record_id="${record_ids[$i]}"
             local current_value="${current_values[$i]}"
             
-            log_msg "INFO" "处理记录 $((i+1))/${#ip_addresses[@]}"
-            log_msg "INFO" "  Record ID: ${record_id}"
-            log_msg "INFO" "  当前IP:    ${current_value}"
-            log_msg "INFO" "  目标IP:    ${new_ip}"
+            # 【功能增强】显示进度
+            printf "\r  [%d/%d] 正在处理 %s..." "$((i+1))" "${#ip_addresses[@]}" "$new_ip"
             
             # 检查 IP 是否变化 (去除空格后比较)
             local clean_current
@@ -899,12 +897,9 @@ main_single() {
             clean_new="$(echo "${new_ip}" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')"
             
             if [[ "${clean_current}" = "${clean_new}" ]]; then
-                log_msg "INFO" "  [OK] IP未变化,跳过"
                 skipped_count=$((skipped_count + 1))
             else
                 # 需要更新
-                log_msg "INFO" "  ⟳ 正在更新..."
-                
                 local modify_response
                 modify_response="$(modify_record "${record_id}" "${new_ip}")"
                 
@@ -914,18 +909,16 @@ main_single() {
                     error_code="$(echo "${modify_response}" | jq -r '.Response.Error.Code' 2>/dev/null)"
                     local error_msg
                     error_msg="$(echo "${modify_response}" | jq -r '.Response.Error.Message' 2>/dev/null)"
+                    echo ""  # 换行
                     log_msg "ERROR" "  [ERROR] 更新失败: ${error_code} - ${error_msg}"
                 else
-                    log_msg "INFO" "  [OK] 更新成功"
                     updated_count=$((updated_count + 1))
                 fi
             fi
         else
             # 自动新建记录
-            log_msg "INFO" "处理记录 $((i+1))/${#ip_addresses[@]}"
-            log_msg "INFO" "  ➕ 自动新建记录"
-            log_msg "INFO" "  目标IP:    ${new_ip}"
-            log_msg "INFO" "  ⟳ 正在创建..."
+            # 【功能增强】显示进度
+            printf "\r  [%d/%d] 正在创建 %s..." "$((i+1))" "${#ip_addresses[@]}" "$new_ip"
             
             local create_response
             create_response="$(create_record "${new_ip}")"
@@ -936,13 +929,14 @@ main_single() {
                 error_code="$(echo "${create_response}" | jq -r '.Response.Error.Code' 2>/dev/null)"
                 local error_msg
                 error_msg="$(echo "${create_response}" | jq -r '.Response.Error.Message' 2>/dev/null)"
+                echo ""  # 换行
                 log_msg "ERROR" "  [ERROR] 创建失败: ${error_code} - ${error_msg}"
             else
-                log_msg "INFO" "  [OK] 创建成功"
                 created_count=$((created_count + 1))
             fi
         fi
     done
+    echo ""  # 换行
     
     # 输出总结
     log_msg "INFO" ""
@@ -1099,64 +1093,59 @@ main_multi() {
                 # 更新现有记录
                 local record_id="${record_ids[$i]}"
                 local current_value="${current_values[$i]}"
-                
-                log_msg "INFO" "处理记录 $((i+1))/${#ip_addresses[@]}"
-                log_msg "INFO" "  RecordID: ${record_id}"
-                log_msg "INFO" "  当前IP:   ${current_value}"
-                log_msg "INFO" "  目标IP:   ${new_ip}"
-                
+                        
+                # 【功能增强】显示进度
+                printf "\r    [%d/%d] 正在处理 %s..." "$((i+1))" "${#ip_addresses[@]}" "$new_ip"
+                        
                 # 检查 IP 是否变化 (去除空格后比较)
                 local clean_current
                 clean_current="$(echo "${current_value}" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')"
                 local clean_new
                 clean_new="$(echo "${new_ip}" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')"
-                
+                        
                 if [[ "${clean_current}" = "${clean_new}" ]]; then
-                    log_msg "INFO" "  [OK] IP未变化,跳过"
                     skipped=$((skipped + 1))
                 else
                     # 需要更新
-                    log_msg "INFO" "  ⟳ 正在更新..."
                     local modify_response
                     modify_response="$(modify_record_by_line "${record_id}" "${new_ip}" "${line}")"
-                    
+                            
                     # 检查结果
                     if echo "${modify_response}" | jq -r '.Response.Error' 2>/dev/null | grep -q 'Code'; then
                         local error_code
                         error_code="$(echo "${modify_response}" | jq -r '.Response.Error.Code' 2>/dev/null)"
                         local error_msg
                         error_msg="$(echo "${modify_response}" | jq -r '.Response.Error.Message' 2>/dev/null)"
+                        echo ""  # 换行
                         log_msg "ERROR" "  [ERROR] 更新失败: ${error_code} - ${error_msg}"
                         failed=$((failed + 1))
                     else
-                        log_msg "INFO" "  [OK] 更新成功"
                         updated=$((updated + 1))
                     fi
                 fi
             else
                 # 自动新建记录
-                log_msg "INFO" "处理记录 $((i+1))/${#ip_addresses[@]}"
-                log_msg "INFO" "  ➕ 自动新建记录"
-                log_msg "INFO" "  目标IP:   ${new_ip}"
-                log_msg "INFO" "  ⟳ 正在创建..."
-                
+                # 【功能增强】显示进度
+                printf "\r    [%d/%d] 正在创建 %s..." "$((i+1))" "${#ip_addresses[@]}" "$new_ip"
+                        
                 local create_response
                 create_response="$(create_record_by_line "${new_ip}" "${line}")"
-                
+                        
                 # 检查结果
                 if echo "${create_response}" | jq -r '.Response.Error' 2>/dev/null | grep -q 'Code'; then
                     local error_code
                     error_code="$(echo "${create_response}" | jq -r '.Response.Error.Code' 2>/dev/null)"
                     local error_msg
                     error_msg="$(echo "${create_response}" | jq -r '.Response.Error.Message' 2>/dev/null)"
+                    echo ""  # 换行
                     log_msg "ERROR" "  [ERROR] 创建失败: ${error_code} - ${error_msg}"
                     failed=$((failed + 1))
                 else
-                    log_msg "INFO" "  [OK] 创建成功"
                     created=$((created + 1))
                 fi
             fi
         done
+        echo ""  # 换行
         
         log_msg "INFO" ""
         log_msg "INFO" "线路完成统计:"

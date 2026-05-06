@@ -1012,9 +1012,13 @@ main() {
         local full_dns_name
         full_dns_name=$(build_full_domain "$CF_DNS_NAME" "$CF_DOMAIN")
         
-        for ((i=0; i<${#ips_to_update[@]}; i++)); do
+        local total=${#ips_to_update[@]}
+        for ((i=0; i<total; i++)); do
             local target_ip="${ips_to_update[$i]}"
             local record_id="${update_record_ids[$i]}"
+            
+            # 【功能增强】显示进度
+            printf "\r  [%d/%d] 正在更新 %s..." "$((i+1))" "$total" "$target_ip"
             
             local update_result
             update_result=$(update_dns_record "$record_id" "$full_dns_name" "$target_ip")
@@ -1022,9 +1026,11 @@ main() {
             if [[ "$update_result" == success* ]]; then
                 updated_count=$((updated_count + 1))
             else
+                echo ""  # 换行
                 log "    ${RED}[ERROR]${NC} 更新失败: ${target_ip}"
             fi
         done
+        echo ""  # 换行
         log "  [OK] 已更新 ${updated_count} 条记录"
     fi
     
@@ -1037,8 +1043,12 @@ main() {
         local full_dns_name
         full_dns_name=$(build_full_domain "$CF_DNS_NAME" "$CF_DOMAIN")
         
-        for ((i=record_count; i<${#ip_addresses[@]}; i++)); do
+        local total=${#ip_addresses[@]}
+        for ((i=record_count; i<total; i++)); do
             local target_ip="${ip_addresses[$i]}"
+            
+            # 【功能增强】显示进度
+            printf "\r  [%d/%d] 正在创建 %s..." "$((i+1-record_count))" "$remaining_ips" "$target_ip"
             
             local create_result
             create_result=$(create_dns_record "$full_dns_name" "$target_ip")
@@ -1046,6 +1056,7 @@ main() {
             if [[ "$create_result" == success* ]]; then
                 created_count=$((created_count + 1))
             else
+                echo ""  # 换行
                 log "    ${RED}[ERROR]${NC} 创建失败: ${target_ip}"
                 # 提取错误信息
                 local error_msg
@@ -1055,7 +1066,7 @@ main() {
                 fi
             fi
         done
-        
+        echo ""  # 换行
         if [ "$created_count" -gt 0 ]; then
             log "  [OK] 已创建 ${created_count} 条记录"
         else
