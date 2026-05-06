@@ -10,6 +10,14 @@
 SCRIPT_VERSION="0.1"
 
 # ==================== 入口校验与路径初始化 ====================
+
+# 【安全修复】检测非 TTY 环境，防止在 cron 中阻塞
+if [[ ! -t 0 ]] && [[ -z "${CF_OPT_ENTRY:-}" ]]; then
+    echo -e "${RED}[ERROR] 此脚本需要交互式终端，请通过 cfopt 菜单运行${NC}"
+    echo -e "${YELLOW}[提示] 正确用法: cfopt -> 4. DNSPod 管理 -> 1. 配置向导${NC}"
+    exit 1
+fi
+
 # 限制：此脚本应由主程序 cfopt.sh 统一调度启动
 if [ -z "$CF_OPT_ENTRY" ] && [ "$(basename "$0")" != "setup.sh" ]; then
     SCRIPT_DIR="$( cd -P "$( dirname "${BASH_SOURCE[0]}" )" >/dev/null 2>&1 && pwd )"

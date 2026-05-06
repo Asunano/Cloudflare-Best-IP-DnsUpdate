@@ -10,6 +10,14 @@
 SCRIPT_VERSION="0.1"
 
 # ==================== 入口校验与路径初始化 ====================
+
+# 【安全修复】检测非 TTY 环境，防止在 cron 中阻塞
+if [[ ! -t 0 ]] && [[ -z "${CF_OPT_ENTRY:-}" ]]; then
+    echo -e "${RED}[ERROR] 此脚本需要交互式终端，请通过 cfopt 菜单运行${NC}"
+    echo -e "${YELLOW}[提示] 正确用法: cfopt -> 3. CF-DNS 管理 -> 1. 配置向导${NC}"
+    exit 1
+fi
+
 RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'

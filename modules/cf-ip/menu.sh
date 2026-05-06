@@ -60,6 +60,14 @@ acquire_lock() {
 }
 
 # ====================== 【入口权限校验】 ======================
+
+# 【安全修复】检测非 TTY 环境，防止在 cron 中阻塞
+if [[ ! -t 0 ]]; then
+    echo -e "${RED}[ERROR] 此脚本需要交互式终端，请通过 cfopt 菜单运行${NC}"
+    echo -e "${YELLOW}[提示] 正确用法: cfopt -> 2. CF IP 优选管理${NC}"
+    exit 1
+fi
+
 # 【修复】删除未使用的 run_sh 分支，仅保留 main_menu
 if [[ "${CF_OPT_ENTRY:-}" != "main_menu" ]]; then
     echo -e "${RED}[ERROR] 请使用 'cfopt' 命令进入主菜单运行此模块。${NC}"
