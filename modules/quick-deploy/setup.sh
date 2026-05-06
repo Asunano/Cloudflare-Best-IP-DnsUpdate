@@ -74,14 +74,36 @@ is_domain_deployed() {
     local domain="$1"
     init_deploy_record
     
+    # 【修复】优先检查 deploy_record.json
     local count
     count=$(jq -r --arg d "$domain" '.domains[] | select(.domain == $d) | .domain' "${DEPLOY_RECORD_FILE}" 2>/dev/null | wc -l)
     
     if [[ "$count" -gt 0 ]]; then
-        return 0  # 已部署
-    else
-        return 1  # 未部署
+        return 0  # 已在部署记录中
     fi
+    
+    # 【新增】如果部署记录中没有，检查实际配置文件是否存在
+    # 这样可以识别通过 CF-DNS 模块直接配置的域名
+    local cf_dns_dir="${ROOT_DIR}/conf/cf-dns"
+    if [[ -d "$cf_dns_dir" ]]; then
+        # 检查是否存在该域名的配置文件（支持根域名和子域名）
+        local config_count
+        config_count=$(find "$cf_dns_dir" -maxdepth 1 -name "*.json" -type f 2>/dev/null | \
+            while read -r config_file; do
+                local basename
+                basename=$(basename "$config_file" .json)
+                # 匹配精确域名或子域名.域名格式
+                if [[ "$basename" == "$domain" ]] || [[ "$basename" == *."$domain" ]]; then
+                    echo "found"
+                fi
+            done | wc -l)
+        
+        if [[ "$config_count" -gt 0 ]]; then
+            return 0  # 找到配置文件
+        fi
+    fi
+    
+    return 1  # 未部署
 }
 
 # 获取域名的部署信息
@@ -89,7 +111,56 @@ get_domain_info() {
     local domain="$1"
     init_deploy_record
     
-    jq -r --arg d "$domain" '.domains[] | select(.domain == $d)' "${DEPLOY_RECORD_FILE}" 2>/dev/null
+    # 【修复】优先从 deploy_record.json 获取信息
+    local deploy_info
+    deploy_info=$(jq -r --arg d "$domain" '.domains[] | select(.domain == $d)' "${DEPLOY_RECORD_FILE}" 2>/dev/null)
+    
+    if [[ -n "$deploy_info" ]]; then
+        echo "$deploy_info"
+        return 0
+    fi
+    
+    # 【新增】如果部署记录中没有，尝试从实际配置文件提取信息
+    local cf_dns_dir="${ROOT_DIR}/conf/cf-dns"
+    if [[ -d "$cf_dns_dir" ]]; then
+        # 查找匹配的配置文件
+        local matched_file=""
+        while IFS= read -r config_file; do
+            local basename
+            basename=$(basename "$config_file" .json)
+            # 匹配精确域名或子域名.域名格式
+            if [[ "$basename" == "$domain" ]] || [[ "$basename" == *."$domain" ]]; then
+                matched_file="$config_file"
+                break
+            fi
+        done < <(find "$cf_dns_dir" -maxdepth 1 -name "*.json" -type f 2>/dev/null)
+        
+        if [[ -n "$matched_file" ]] && command -v jq &>/dev/null; then
+            # 从配置文件提取信息并转换为 JSON 格式
+            local record_name dns_type mode
+            record_name=$(jq -r '.dns.record_name // "@"' "$matched_file" 2>/dev/null)
+            dns_type="cloudflare"
+            mode="single"  # CF-DNS 默认为单线路模式
+            
+            # 构造兼容的 JSON 输出
+            jq -n \
+                --arg d "$domain" \
+                --arg t "$dns_type" \
+                --arg m "$mode" \
+                --arg r "$record_name" \
+                '{
+                    "domain": $d,
+                    "dns_type": $t,
+                    "mode": $m,
+                    "record_name": $r,
+                    "deploy_time": "unknown",
+                    "_source": "config_file"
+                }'
+            return 0
+        fi
+    fi
+    
+    return 1  # 未找到
 }
 
 # 添加部署记录
@@ -1221,6 +1292,12 @@ deploy_cloudflare_dns() {
             read -r -p "按回车键返回..."
             return 0
         fi
+        
+        # 【修复】如果用户选择覆盖，先删除旧记录
+        echo -e "${CYAN}[INFO] 正在清理旧配置...${NC}"
+        delete_domain_config "$domain" "$existing_dns"
+        echo -e "${GREEN}[OK] 旧配置已清理${NC}"
+        echo ""
     fi
     
     # 第3步：选择测速节点并生成配置
@@ -1404,6 +1481,12 @@ deploy_dnspod_single() {
             read -r -p "按回车键返回..."
             return 0
         fi
+        
+        # 【修复】如果用户选择覆盖，先删除旧记录
+        echo -e "${CYAN}[INFO] 正在清理旧配置...${NC}"
+        delete_domain_config "$domain" "$existing_dns"
+        echo -e "${GREEN}[OK] 旧配置已清理${NC}"
+        echo ""
     fi
     
     read -r -p "请输入 DNSPod ID: " dnspod_id
@@ -1573,6 +1656,12 @@ deploy_dnspod_multi() {
             read -r -p "按回车键返回..."
             return 0
         fi
+        
+        # 【修复】如果用户选择覆盖，先删除旧记录
+        echo -e "${CYAN}[INFO] 正在清理旧配置...${NC}"
+        delete_domain_config "$domain" "$existing_dns"
+        echo -e "${GREEN}[OK] 旧配置已清理${NC}"
+        echo ""
     fi
     
     read -r -p "请输入 DNSPod ID: " dnspod_id
