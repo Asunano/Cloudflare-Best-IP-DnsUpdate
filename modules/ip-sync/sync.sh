@@ -1,11 +1,12 @@
 #!/bin/bash
 # ==============================================================================
-# cfopt - IP 数据同步组件 (IP Sync)
-# Version: 0.1
-# Description: 负责将测速结果分发至各 DNS 模块的数据目录，支持状态检测与有效性校验
+# cfopt - IP 数据同步与 DNS 批量更新组件 (IP Sync & Batch Updater)
+# Version: 0.2
+# Description: 负责将测速结果分发至各 DNS 模块的数据目录，并执行批量 DNS 更新
 # Usage: bash modules/ip-sync/sync.sh
 # ==============================================================================
-SCRIPT_VERSION="0.1"
+set -euo pipefail
+SCRIPT_VERSION="0.2"
 
 # ==================== 路径初始化 ====================
 # 动态获取脚本所在目录及项目根目录，确保路径引用的健壮性
@@ -556,6 +557,180 @@ detect_and_convert() {
     esac
 }
 
+# ==================== 【新增】批量 DNS 更新函数 ====================
+
+# Cloudflare DNS 批量更新函数
+batch_update_cf_dns() {
+    local config_dir="${ROOT_DIR}/conf/cf-dns"
+    
+    if [[ ! -d "${config_dir}" ]]; then
+        echo -e "${YELLOW}[SKIP] 未找到 CF-DNS 配置目录${NC}"
+        return 0
+    fi
+    
+    # 收集所有配置文件
+    declare -a CONFIG_FILES=()
+    while IFS= read -r -d '' config_file; do
+        CONFIG_FILES+=("$config_file")
+    done < <(find "$config_dir" -name "*.json" -type f -print0 2>/dev/null)
+    
+    if [[ ${#CONFIG_FILES[@]} -eq 0 ]]; then
+        echo -e "${YELLOW}[SKIP] 未找到任何 Cloudflare DNS 配置文件${NC}"
+        return 0
+    fi
+    
+    echo -e "\n${GREEN}[INFO] 找到 ${#CONFIG_FILES[@]} 个 Cloudflare DNS 域名配置${NC}"
+    
+    # 批量执行更新
+    local SUCCESS_COUNT=0
+    local FAIL_COUNT=0
+    local SKIP_COUNT=0
+    
+    for config_file in "${CONFIG_FILES[@]}"; do
+        local domain_name
+        domain_name=$(basename "$config_file" .json)
+        
+        # 【安全修复】清理文件名中的非域名字符，防止特殊字符注入
+        domain_name=$(echo "$domain_name" | tr -cd 'a-zA-Z0-9.-')
+        
+        if [[ -z "$domain_name" ]]; then
+            echo -e "${RED}[ERROR] 无效的配置文件名: $(basename "$config_file")${NC}"
+            FAIL_COUNT=$((FAIL_COUNT + 1))
+            continue
+        fi
+        
+        echo -e "\n${CYAN}+------------------------------------------------------------+${NC}"
+        echo -e " ${YELLOW}正在处理域名: ${domain_name}${NC}"
+        echo -e "${CYAN}+------------------------------------------------------------+${NC}"
+        
+        # 检查配置文件是否启用
+        if command -v jq &>/dev/null; then
+            local enabled
+            enabled=$(jq -r '.enabled // false' "$config_file" 2>/dev/null)
+            if [[ "$enabled" != "true" ]]; then
+                echo -e "${YELLOW}[SKIP] 域名 ${domain_name} 已禁用 (enabled=false)${NC}"
+                SKIP_COUNT=$((SKIP_COUNT + 1))
+                echo ""
+                continue
+            fi
+        fi
+        
+        # 执行单个域名的更新
+        echo -e "${CYAN}[INFO] 启动 CF-DNS 更新进程...${NC}"
+        if CF_DNS_DOMAIN="$domain_name" bash "${ROOT_DIR}/modules/cf-dns/core.sh" "$config_file"; then
+            echo -e "${GREEN}[OK] 域名 ${domain_name} 更新成功${NC}"
+            SUCCESS_COUNT=$((SUCCESS_COUNT + 1))
+        else
+            echo -e "${RED}[FAIL] 域名 ${domain_name} 更新失败${NC}"
+            FAIL_COUNT=$((FAIL_COUNT + 1))
+        fi
+        
+        echo ""
+    done
+    
+    # 汇总报告
+    echo -e "${CYAN}+------------------------------------------------------------+${NC}"
+    echo -e " ${YELLOW}Cloudflare DNS 批量更新完成报告${NC}"
+    echo -e "${CYAN}+------------------------------------------------------------+${NC}"
+    echo -e " 总计配置: ${#CONFIG_FILES[@]}"
+    echo -e " ${GREEN}成功: ${SUCCESS_COUNT}${NC}"
+    echo -e " ${RED}失败: ${FAIL_COUNT}${NC}"
+    echo -e " ${YELLOW}跳过: ${SKIP_COUNT}${NC}"
+    echo -e "${CYAN}+------------------------------------------------------------+${NC}"
+    
+    if [[ $FAIL_COUNT -gt 0 ]]; then
+        return 1
+    else
+        return 0
+    fi
+}
+
+# DNSPod DNS 批量更新函数
+batch_update_dnspod_dns() {
+    local config_dir="${ROOT_DIR}/conf/dnspod"
+    
+    if [[ ! -d "${config_dir}" ]]; then
+        echo -e "${YELLOW}[SKIP] 未找到 DNSPod 配置目录${NC}"
+        return 0
+    fi
+    
+    # 收集所有配置文件
+    declare -a CONFIG_FILES=()
+    while IFS= read -r -d '' config_file; do
+        CONFIG_FILES+=("$config_file")
+    done < <(find "$config_dir" -name "*.json" -type f -print0 2>/dev/null)
+    
+    if [[ ${#CONFIG_FILES[@]} -eq 0 ]]; then
+        echo -e "${YELLOW}[SKIP] 未找到任何 DNSPod DNS 配置文件${NC}"
+        return 0
+    fi
+    
+    echo -e "\n${GREEN}[INFO] 找到 ${#CONFIG_FILES[@]} 个 DNSPod DNS 域名配置${NC}"
+    
+    # 批量执行更新
+    local SUCCESS_COUNT=0
+    local FAIL_COUNT=0
+    local SKIP_COUNT=0
+    
+    for config_file in "${CONFIG_FILES[@]}"; do
+        local domain_name
+        domain_name=$(basename "$config_file" .json)
+        
+        # 【安全修复】清理文件名中的非域名字符，防止特殊字符注入
+        domain_name=$(echo "$domain_name" | tr -cd 'a-zA-Z0-9.-')
+        
+        if [[ -z "$domain_name" ]]; then
+            echo -e "${RED}[ERROR] 无效的配置文件名: $(basename "$config_file")${NC}"
+            FAIL_COUNT=$((FAIL_COUNT + 1))
+            continue
+        fi
+        
+        echo -e "\n${CYAN}+------------------------------------------------------------+${NC}"
+        echo -e " ${YELLOW}正在处理域名: ${domain_name}${NC}"
+        echo -e "${CYAN}+------------------------------------------------------------+${NC}"
+        
+        # 检查配置文件是否启用
+        if command -v jq &>/dev/null; then
+            local enabled
+            enabled=$(jq -r '.enabled // false' "$config_file" 2>/dev/null)
+            if [[ "$enabled" != "true" ]]; then
+                echo -e "${YELLOW}[SKIP] 域名 ${domain_name} 已禁用 (enabled=false)${NC}"
+                SKIP_COUNT=$((SKIP_COUNT + 1))
+                echo ""
+                continue
+            fi
+        fi
+        
+        # 执行单个域名的更新
+        echo -e "${CYAN}[INFO] 启动 DNSPod-DNS 更新进程...${NC}"
+        if DNSPOD_DOMAIN="$domain_name" bash "${ROOT_DIR}/modules/dnspod-dns/core.sh" "$config_file"; then
+            echo -e "${GREEN}[OK] 域名 ${domain_name} 更新成功${NC}"
+            SUCCESS_COUNT=$((SUCCESS_COUNT + 1))
+        else
+            echo -e "${RED}[FAIL] 域名 ${domain_name} 更新失败${NC}"
+            FAIL_COUNT=$((FAIL_COUNT + 1))
+        fi
+        
+        echo ""
+    done
+    
+    # 汇总报告
+    echo -e "${CYAN}+------------------------------------------------------------+${NC}"
+    echo -e " ${YELLOW}DNSPod DNS 批量更新完成报告${NC}"
+    echo -e "${CYAN}+------------------------------------------------------------+${NC}"
+    echo -e " 总计配置: ${#CONFIG_FILES[@]}"
+    echo -e " ${GREEN}成功: ${SUCCESS_COUNT}${NC}"
+    echo -e " ${RED}失败: ${FAIL_COUNT}${NC}"
+    echo -e " ${YELLOW}跳过: ${SKIP_COUNT}${NC}"
+    echo -e "${CYAN}+------------------------------------------------------------+${NC}"
+    
+    if [[ $FAIL_COUNT -gt 0 ]]; then
+        return 1
+    else
+        return 0
+    fi
+}
+
 # ==================== 执行同步任务 ====================
 
 # 1. 同步 Cloudflare DNS 模块数据（支持多域名）
@@ -565,4 +740,24 @@ sync_cf_dns_ips
 sync_dnspod_ips
 
 echo -e "\n${CYAN}+------------------------------------------------------------+${NC}"
-echo -e "${GREEN}同步任务执行完毕！${NC}"
+echo -e "${GREEN}IP 数据同步任务执行完毕！${NC}"
+
+# 3. 【新增】批量更新 Cloudflare DNS 记录
+echo -e "\n${CYAN}[INFO] 开始执行 Cloudflare DNS 批量更新...${NC}"
+if batch_update_cf_dns; then
+    echo -e "${GREEN}[OK] Cloudflare DNS 批量更新完成${NC}"
+else
+    echo -e "${RED}[ERROR] Cloudflare DNS 批量更新失败${NC}"
+fi
+
+# 4. 【新增】批量更新 DNSPod DNS 记录
+echo -e "\n${CYAN}[INFO] 开始执行 DNSPod DNS 批量更新...${NC}"
+if batch_update_dnspod_dns; then
+    echo -e "${GREEN}[OK] DNSPod DNS 批量更新完成${NC}"
+else
+    echo -e "${RED}[ERROR] DNSPod DNS 批量更新失败${NC}"
+fi
+
+echo -e "\n${CYAN}+------------------------------------------------------------+${NC}"
+echo -e "${GREEN}所有任务执行完毕！${NC}"
+echo -e "${CYAN}+------------------------------------------------------------+${NC}"
