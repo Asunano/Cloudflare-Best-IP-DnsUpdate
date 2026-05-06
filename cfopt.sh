@@ -315,7 +315,17 @@ install_system_cmd() {
     echo ""
     log_info "建议将 'cfopt' 安装为系统全局命令。"
     echo "       (安装后可在任意终端直接输入 cfopt 运行)"
-    read -r -p "是否现在安装？(y/n，默认y): " INSTALL_CMD
+    
+    # 【安全修复】重定向到 /dev/tty，确保从终端读取输入
+    # 解决 wget -O- | bash 管道安装时 stdin 被占用的问题
+    local input_device="/dev/tty"
+    if [[ -e "${input_device}" ]]; then
+        read -r -p "是否现在安装？(y/n，默认y): " INSTALL_CMD < "${input_device}"
+    else
+        # 非交互式环境（无 tty），默认安装
+        INSTALL_CMD="y"
+        echo -e "${CYAN}[INFO] 非交互式环境，自动安装全局命令${NC}"
+    fi
     INSTALL_CMD="${INSTALL_CMD:-y}"
 
     if [[ "${INSTALL_CMD}" =~ ^[Yy]$ ]]; then
@@ -1023,7 +1033,16 @@ setup_auto_cron() {
     if ! command -v crontab &> /dev/null; then
         echo -e "${RED}[ERROR] 系统未检测到 crontab 组件。${NC}"
         echo -e "${YELLOW}提示:${NC} 定时任务依赖于 cronie (CentOS) 或 cron (Debian/Ubuntu)."
-        read -r -p "是否现在尝试自动安装？(y/n，默认y): " INSTALL_CRON
+        
+        # 【安全修复】重定向到 /dev/tty，确保从终端读取输入
+        local input_device="/dev/tty"
+        if [[ -e "${input_device}" ]]; then
+            read -r -p "是否现在尝试自动安装？(y/n，默认y): " INSTALL_CRON < "${input_device}"
+        else
+            # 非交互式环境，默认不安装
+            INSTALL_CRON="n"
+            echo -e "${CYAN}[INFO] 非交互式环境，跳过 crontab 安装${NC}"
+        fi
         INSTALL_CRON="${INSTALL_CRON:-y}"
         
         if [[ "${INSTALL_CRON}" =~ ^[Yy]$ ]]; then
@@ -1145,7 +1164,18 @@ uninstall_cfopt() {
     echo ""
     echo -e "${YELLOW}注意:${NC} 此操作不会卸载系统级组件 (如 crontab, wget 等)。"
     echo ""
-    read -r -p "确认要彻底删除并跑路吗？(输入 yes 确认): " CONFIRM_UNINSTALL
+    
+    # 【安全修复】重定向到 /dev/tty，确保从终端读取输入
+    local input_device="/dev/tty"
+    if [[ -e "${input_device}" ]]; then
+        read -r -p "确认要彻底删除并跑路吗？(输入 yes 确认): " CONFIRM_UNINSTALL < "${input_device}"
+    else
+        # 非交互式环境，禁止自动卸载（安全措施）
+        CONFIRM_UNINSTALL="no"
+        echo -e "${RED}[ERROR] 非交互式环境，禁止自动卸载。请手动执行卸载。${NC}"
+        read -r -p "按回车键返回主菜单..." < "${input_device}" 2>/dev/null || true
+        return
+    fi
     
     if [[ "${CONFIRM_UNINSTALL}" != "yes" ]]; then
         echo -e "${GREEN}[INFO] 已取消卸载，欢迎继续使用。${NC}"
