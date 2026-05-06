@@ -247,7 +247,24 @@ if [[ "${CURRENT_SCRIPT_PATH}" != "${TARGET_SCRIPT_PATH}" ]]; then
             # 【安全修复】先测试目标文件是否可以正常执行
             if bash -n "${TARGET_SCRIPT_PATH}" 2>/tmp/cfopt_syntax_check.log; then
                 log_info "语法检查通过，正在启动..."
-                exec bash "${TARGET_SCRIPT_PATH}" "$@"
+                
+                # 【关键修复】不使用 exec，而是直接启动新进程并退出
+                # 原因：当通过 'bash cfopt.sh' 运行时，当前 bash 持有原文件的 fd
+                # 移动文件后，exec 可能因为 fd 问题而失败
+                bash "${TARGET_SCRIPT_PATH}" "$@" &
+                local new_pid=$!
+                
+                # 等待新进程启动
+                sleep 0.1
+                
+                # 检查新进程是否成功启动
+                if kill -0 "$new_pid" 2>/dev/null; then
+                    log_info "新进程已启动 (PID: ${new_pid})"
+                    exit 0
+                else
+                    log_error "新进程启动失败"
+                    exit 1
+                fi
             else
                 log_error "目标文件语法检查失败:"
                 cat /tmp/cfopt_syntax_check.log >&2
@@ -282,8 +299,24 @@ if [[ "${CURRENT_SCRIPT_PATH}" != "${TARGET_SCRIPT_PATH}" ]]; then
             # 【安全修复】先测试目标文件是否可以正常执行
             if bash -n "${TARGET_SCRIPT_PATH}" 2>/tmp/cfopt_syntax_check.log; then
                 log_info "语法检查通过，正在启动..."
-                # 使用 exec 替换当前进程
-                exec bash "${TARGET_SCRIPT_PATH}" "$@"
+                
+                # 【关键修复】不使用 exec，而是直接启动新进程并退出
+                # 原因：当通过 'bash cfopt.sh' 运行时，当前 bash 持有原文件的 fd
+                # 移动文件后，exec 可能因为 fd 问题而失败
+                bash "${TARGET_SCRIPT_PATH}" "$@" &
+                local new_pid=$!
+                
+                # 等待新进程启动
+                sleep 0.1
+                
+                # 检查新进程是否成功启动
+                if kill -0 "$new_pid" 2>/dev/null; then
+                    log_info "新进程已启动 (PID: ${new_pid})"
+                    exit 0
+                else
+                    log_error "新进程启动失败"
+                    exit 1
+                fi
             else
                 log_error "目标文件语法检查失败:"
                 cat /tmp/cfopt_syntax_check.log >&2
