@@ -580,10 +580,11 @@ echo ""
 
 # ==================== 腾讯云 API 签名 ====================
 sha256_hex() {
-    if command -v sha256sum &> /dev/null; then
-        echo -n "$1" | sha256sum | awk '{print $1}'
-    elif command -v shasum &> /dev/null; then
-        echo -n "$1" | shasum -a 256 | awk '{print $1}'
+    # 【修复】使用 printf 替代 echo -n，兼容所有 shell
+    if command -v sha256sum &>/dev/null; then
+        printf '%s' "$1" | sha256sum | awk '{print $1}'
+    elif command -v shasum &>/dev/null; then
+        printf '%s' "$1" | shasum -a 256 | awk '{print $1}'
     else
         echo "错误: 未找到 sha256sum 或 shasum 命令" >&2
         exit 1
@@ -595,12 +596,13 @@ get_signature_key() {
     local date_stamp="$2"
     local service_name="$3"
     
+    # 【修复】使用 printf 替代 echo -n，兼容所有 shell
     local k_date
-    k_date="$(echo -n "${date_stamp}" | openssl dgst -sha256 -hmac "TC3${key}" -hex 2>/dev/null | awk '{print $NF}')"
+    k_date="$(printf '%s' "${date_stamp}" | openssl dgst -sha256 -hmac "TC3${key}" -hex 2>/dev/null | awk '{print $NF}')"
     local k_service
-    k_service="$(echo -n "${service_name}" | openssl dgst -sha256 -mac HMAC -macopt "hexkey:${k_date}" -hex 2>/dev/null | awk '{print $NF}')"
+    k_service="$(printf '%s' "${service_name}" | openssl dgst -sha256 -mac HMAC -macopt "hexkey:${k_date}" -hex 2>/dev/null | awk '{print $NF}')"
     local k_signing
-    k_signing="$(echo -n "tc3_request" | openssl dgst -sha256 -mac HMAC -macopt "hexkey:${k_service}" -hex 2>/dev/null | awk '{print $NF}')"
+    k_signing="$(printf '%s' "tc3_request" | openssl dgst -sha256 -mac HMAC -macopt "hexkey:${k_service}" -hex 2>/dev/null | awk '{print $NF}')"
     
     echo "${k_signing}"
 }
@@ -637,8 +639,9 @@ generate_signature() {
     
     local secret_key
     secret_key="$(get_signature_key "${SECRETKEY}" "${date}" "dnspod")"
+    # 【修复】使用 printf 替代 echo -n，兼容所有 shell
     local signature
-    signature="$(echo -n "${string_to_sign}" | openssl dgst -sha256 -mac HMAC -macopt "hexkey:${secret_key}" -hex 2>/dev/null | awk '{print $NF}')"
+    signature="$(printf '%s' "${string_to_sign}" | openssl dgst -sha256 -mac HMAC -macopt "hexkey:${secret_key}" -hex 2>/dev/null | awk '{print $NF}')"
     
     local authorization="${algorithm} Credential=${SECRETID}/${credential_scope}, SignedHeaders=${signed_headers}, Signature=${signature}"
     
