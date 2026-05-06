@@ -42,6 +42,37 @@
 ### Fixed - 修复
 
 #### 代码质量优化 (Code Quality)
+- **修复 set -u 下未初始化变量** (2026-05-06)
+  - 文件：`cfopt.sh`
+  - 问题：第12行设置了 `set -uo pipefail`，但以下变量可能在未初始化时被引用
+  - 影响：
+    - ❌ `INSTALL_DIR`（第34行）：在 `check_environment` 之前被 `log_error` 引用
+    - ❌ `SCHEDULER_ENABLED`（第834行）：`source status.conf` 可能不包含此变量
+    - ❌ `choice`（第865行）：如果 `read` 失败（非 TTY），变量未赋值
+  - 修复：
+    ```bash
+    # 修复1：log_error 中安全引用 INSTALL_DIR
+    if [[ -n "${INSTALL_DIR:-}" ]] && [[ -d "${INSTALL_DIR}/logs" ]]; then
+        echo "[${timestamp}] ERROR: ${message}" >> "${INSTALL_DIR}/logs/error.log" 2>/dev/null || true
+    fi
+    
+    # 修复2：加载 status.conf 后确保 SCHEDULER_ENABLED 已定义
+    source "${STATUS_CONF}"
+    SCHEDULER_ENABLED="${SCHEDULER_ENABLED:-false}"
+    
+    # 修复3：read 失败时设置默认值
+    read -r -p "请选择功能 [0-7, 9]: " choice < "${input_device}" || true
+    choice="${choice:-0}"
+    ```
+  - 技术说明：
+    - `${VAR:-default}`：如果 VAR 未定义或为空，使用 default 值
+    - `|| true`：防止命令失败导致脚本退出
+    - 符合 Bash 严格模式最佳实践
+  - 效果：
+    - ✅ 消除 `unbound variable` 错误
+    - ✅ 提高脚本健壮性
+    - ✅ 支持非交互式环境（管道、cron）
+
 - **重构 HTTP 请求函数消除重复** (2026-05-06)
   - 文件：`modules/cf-dns/core.sh`
   - 问题：`http_get`、`http_put`、`http_post` 三个函数约 121 行代码，90% 完全相同
