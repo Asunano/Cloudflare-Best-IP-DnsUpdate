@@ -220,13 +220,30 @@ fi
 # ==================== 【进程锁管理】 ====================
 LOCK_FILE="${OUTPUT_DIR}/.lock_${LINE_TAG}"
 acquire_lock() {
+    # 【修复】检查残留的锁文件是否过期（超过 30 分钟视为残留）
+    if [[ -f "${LOCK_FILE}" ]]; then
+        local lock_mtime
+        lock_mtime=$(stat_file_mtime "${LOCK_FILE}")
+        local now
+        now=$(date +%s)
+        local age=$(( now - lock_mtime ))
+        if [[ $age -gt 1800 ]]; then
+            log_warn "发现残留锁文件（${age}秒前），自动清理"
+            rm -f "${LOCK_FILE}"
+        fi
+    fi
+
     # 【安全修复】使用 flock 避免 TOCTOU 竞态条件
     exec 9>"${LOCK_FILE}"
     if ! flock -n 9; then
-        echo -e "${RED}[ERROR] ${LINE_TAG} 线路测速任务已在运行，无法获取锁。${NC}"
+        log_error "无法获取锁，另一个测速进程正在运行"
+        log_info  "如果确认没有进程在运行，请删除: ${LOCK_FILE}"
         exit 1
     fi
-    # 锁会在脚本退出时自动释放（fd 9 关闭）
+
+    # 【修复】注册清理函数，确保退出时删除锁文件
+    cleanup_lock() { rm -f "${LOCK_FILE}" 2>/dev/null || true; }
+    trap cleanup_lock EXIT
 }
 
 # 获取锁以确保同一线路不会并发执行
@@ -385,6 +402,42 @@ get_file_size() {
         echo "0"
     else
         echo "${size}"
+    fi
+}
+
+# ==================== 文件修改时间获取函数 ====================
+# 兼容 Linux、macOS、BSD 系统，返回 Unix 时间戳
+stat_file_mtime() {
+    local file="$1"
+    local mtime
+    
+    if [[ ! -f "${file}" ]]; then
+        echo "0"
+        return
+    fi
+    
+    # 【修复】优先尝试 macOS/BSD stat
+    if stat -f %m "${file}" >/dev/null 2>&1; then
+        # macOS/BSD stat: %m = 修改时间（Unix 时间戳）
+        mtime=$(stat -f %m "${file}" 2>/dev/null)
+    elif stat -c %Y "${file}" >/dev/null 2>&1; then
+        # Linux stat: %Y = 修改时间（Unix 时间戳）
+        mtime=$(stat -c %Y "${file}" 2>/dev/null)
+    else
+        # 降级方案：使用 date -r（macOS）或 stat 输出解析
+        if date -r "${file}" +%s >/dev/null 2>&1; then
+            mtime=$(date -r "${file}" +%s 2>/dev/null)
+        else
+            echo "0"
+            return
+        fi
+    fi
+    
+    # 最终校验
+    if [[ -z "${mtime}" ]] || [[ ! "${mtime}" =~ ^[0-9]+$ ]]; then
+        echo "0"
+    else
+        echo "${mtime}"
     fi
 }
 
