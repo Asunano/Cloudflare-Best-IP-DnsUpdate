@@ -248,9 +248,19 @@ if [[ "${CURRENT_SCRIPT_PATH}" != "${TARGET_SCRIPT_PATH}" ]]; then
             if bash -n "${TARGET_SCRIPT_PATH}" 2>/tmp/cfopt_syntax_check.log; then
                 log_info "语法检查通过，正在启动..."
                 
+                # 【调试】输出 exec 前的环境信息
+                log_info "当前 PID: $$"
+                log_info "参数数量: $#"
+                log_info "CFOPT_RELOCATED: ${CFOPT_RELOCATED:-unset}"
+                
                 # 【标准做法】使用 exec 替换当前进程
                 # exec 会用新进程完全替换当前进程，包括文件描述符
-                exec bash "${TARGET_SCRIPT_PATH}" "$@"
+                exec bash "${TARGET_SCRIPT_PATH}" "$@" || {
+                    EXEC_EXIT_CODE=$?
+                    log_error "exec 退出码: ${EXEC_EXIT_CODE}"
+                    log_error "请手动运行: ${TARGET_SCRIPT_PATH}"
+                    exit ${EXEC_EXIT_CODE}
+                }
             else
                 log_error "目标文件语法检查失败:"
                 cat /tmp/cfopt_syntax_check.log >&2
@@ -286,9 +296,19 @@ if [[ "${CURRENT_SCRIPT_PATH}" != "${TARGET_SCRIPT_PATH}" ]]; then
             if bash -n "${TARGET_SCRIPT_PATH}" 2>/tmp/cfopt_syntax_check.log; then
                 log_info "语法检查通过，正在启动..."
                 
+                # 【调试】输出 exec 前的环境信息
+                log_info "当前 PID: $$"
+                log_info "参数数量: $#"
+                log_info "CFOPT_RELOCATED: ${CFOPT_RELOCATED:-unset}"
+                
                 # 【标准做法】使用 exec 替换当前进程
                 # exec 会用新进程完全替换当前进程，包括文件描述符
-                exec bash "${TARGET_SCRIPT_PATH}" "$@"
+                exec bash "${TARGET_SCRIPT_PATH}" "$@" || {
+                    EXEC_EXIT_CODE=$?
+                    log_error "exec 退出码: ${EXEC_EXIT_CODE}"
+                    log_error "请手动运行: ${TARGET_SCRIPT_PATH}"
+                    exit ${EXEC_EXIT_CODE}
+                }
             else
                 log_error "目标文件语法检查失败:"
                 cat /tmp/cfopt_syntax_check.log >&2
