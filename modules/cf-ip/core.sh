@@ -309,7 +309,7 @@ echo -e "   • 提取数量: ${TAKE_IP_NUM}"
 echo -e "   • 输出文件: ${OUTPUT_CSV}"
 
 # 【重构】使用函数构建 cfst 命令，消除代码重复
-local -a CMD
+declare -a CMD
 build_cfst_cmd "${TARGET_COLO}" "${OUTPUT_CSV}" "${IP_DATA_FILE}" CMD
 
 # 执行并记录日志（带实时进度提示）
