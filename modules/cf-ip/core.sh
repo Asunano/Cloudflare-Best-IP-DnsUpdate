@@ -274,6 +274,31 @@ elif [[ -z "${IP_DATA_FILE}" ]]; then
     echo -e "${YELLOW}[WARN] 未找到自定义 IP 列表，将使用 cfst 内置列表。${NC}"
 fi
 
+# ==================== 【重构】cfst 命令构建函数 ====================
+# 参数：$1=目标地区, $2=输出文件, $3=IP数据文件(可选), $4=命令数组引用(nameref)
+build_cfst_cmd() {
+    local target_colo="$1"
+    local output_csv="$2"
+    local ip_data_file="${3:-}"
+    
+    # Bash 4.3+ 支持 nameref，通过引用返回数组
+    local -n __cmd_ref="$4"
+    
+    # 构建基础命令
+    __cmd_ref=("${CFST_BIN}" "-n" "${CFST_THREADS}" "-t" "${CFST_PING_TIMES}")
+    [[ -n "${target_colo}" ]] && __cmd_ref+=("-cfcolo" "${target_colo}")
+    [[ -n "${ip_data_file}" ]] && __cmd_ref+=("-f" "${ip_data_file}")
+    __cmd_ref+=("-dn" "${CFST_DOWNLOAD_COUNT}" "-dt" "${CFST_DOWNLOAD_TIME}")
+    __cmd_ref+=("-tp" "${CFST_PORT}")
+    [[ -n "${CFST_URL}" ]] && __cmd_ref+=("-url" "${CFST_URL}")
+    [[ "${CFST_HTTPING}" = "true" ]] && __cmd_ref+=("-httping")
+    __cmd_ref+=("-tl" "${CFST_LATENCY_MAX}" "-tlr" "${CFST_PACKET_LOSS_MAX}" "-sl" "${CFST_SPEED_MIN}")
+    __cmd_ref+=("-p" "${CFST_SHOW_COUNT}")
+    [[ "${CFST_DISABLE_DOWNLOAD}" = "true" ]] && __cmd_ref+=("-dd")
+    [[ "${CFST_ALL_IP}" = "true" ]] && __cmd_ref+=("-allip")
+    __cmd_ref+=("-o" "${output_csv}")
+}
+
 # ==================== 执行测速 ====================
 # 简化启动信息显示
 echo -e "${GREEN}✓${NC} 测速程序: ${CFST_BIN}"
@@ -283,19 +308,9 @@ echo -e "   • 目标地区: ${TARGET_COLO}"
 echo -e "   • 提取数量: ${TAKE_IP_NUM}"
 echo -e "   • 输出文件: ${OUTPUT_CSV}"
 
-# 构建 cfst 命令 - 【修复】使用绝对路径变量 CFST_BIN
-CMD=("${CFST_BIN}" "-n" "${CFST_THREADS}" "-t" "${CFST_PING_TIMES}")
-if [[ -n "${TARGET_COLO}" ]]; then CMD+=("-cfcolo" "${TARGET_COLO}"); fi
-if [[ -n "${IP_DATA_FILE}" ]]; then CMD+=("-f" "${IP_DATA_FILE}"); fi
-CMD+=("-dn" "${CFST_DOWNLOAD_COUNT}" "-dt" "${CFST_DOWNLOAD_TIME}")
-CMD+=("-tp" "${CFST_PORT}")
-if [[ -n "${CFST_URL}" ]]; then CMD+=("-url" "${CFST_URL}"); fi
-if [[ "${CFST_HTTPING}" = "true" ]]; then CMD+=("-httping"); fi
-CMD+=("-tl" "${CFST_LATENCY_MAX}" "-tlr" "${CFST_PACKET_LOSS_MAX}" "-sl" "${CFST_SPEED_MIN}")
-CMD+=("-p" "${CFST_SHOW_COUNT}")
-if [[ "${CFST_DISABLE_DOWNLOAD}" = "true" ]]; then CMD+=("-dd"); fi
-if [[ "${CFST_ALL_IP}" = "true" ]]; then CMD+=("-allip"); fi
-CMD+=("-o" "${OUTPUT_CSV}")
+# 【重构】使用函数构建 cfst 命令，消除代码重复
+local -a CMD
+build_cfst_cmd "${TARGET_COLO}" "${OUTPUT_CSV}" "${IP_DATA_FILE}" CMD
 
 # 执行并记录日志（带实时进度提示）
 # 【修复】关闭日志时仍需要临时日志文件用于进度监控，测速完成后删除
@@ -631,20 +646,9 @@ for ((retry=1; retry<=MAX_RETRY; retry++)); do
         sleep ${wait_time}
         
         # 重新执行测速（使用与首次测速相同的后台运行 + 实时进度监控方式）
-        # 1. 构建命令
-        RETRY_CMD=("${CFST_BIN}" "-n" "${CFST_THREADS}" "-t" "${CFST_PING_TIMES}")
-        if [[ -n "${TARGET_COLO}" ]]; then RETRY_CMD+=("-cfcolo" "${TARGET_COLO}"); fi
-        # 【修复】使用 IP_DATA_FILE，尊重用户自定义配置，不再强制使用 ip.txt
-        if [[ -n "${IP_DATA_FILE}" ]]; then RETRY_CMD+=("-f" "${IP_DATA_FILE}"); fi
-        RETRY_CMD+=("-dn" "${CFST_DOWNLOAD_COUNT}" "-dt" "${CFST_DOWNLOAD_TIME}")
-        RETRY_CMD+=("-tp" "${CFST_PORT}")
-        if [[ -n "${CFST_URL}" ]]; then RETRY_CMD+=("-url" "${CFST_URL}"); fi
-        if [[ "${CFST_HTTPING}" = "true" ]]; then RETRY_CMD+=("-httping"); fi
-        RETRY_CMD+=("-tl" "${CFST_LATENCY_MAX}" "-tlr" "${CFST_PACKET_LOSS_MAX}" "-sl" "${CFST_SPEED_MIN}")
-        RETRY_CMD+=("-p" "${CFST_SHOW_COUNT}")
-        if [[ "${CFST_DISABLE_DOWNLOAD}" = "true" ]]; then RETRY_CMD+=("-dd"); fi
-        if [[ "${CFST_ALL_IP}" = "true" ]]; then RETRY_CMD+=("-allip"); fi
-        RETRY_CMD+=("-o" "${OUTPUT_CSV}")
+        # 【重构】使用函数构建命令，消除代码重复
+        local -a RETRY_CMD
+        build_cfst_cmd "${TARGET_COLO}" "${OUTPUT_CSV}" "${IP_DATA_FILE}" RETRY_CMD
         
         # 2. 【修复】使用 subshell 隔离目录切换
         (
