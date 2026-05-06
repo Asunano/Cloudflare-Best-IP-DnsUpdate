@@ -336,7 +336,7 @@ _http_request() {
         fi
         
         # PUT/POST 请求添加数据体
-        if [[ -n "$data" ]] && [[ "$method" != "GET" ]]; then
+        if [[ -n "$data" ]] && [[ "$method" != "GET" ]] && [[ "$method" != "DELETE" ]]; then
             curl_args+=(-d "$data")
         fi
         
@@ -348,7 +348,7 @@ _http_request() {
         local body
         body=$(echo "$response" | sed '$d')
         
-        if [ "$http_code" = "200" ]; then
+        if [ "$http_code" = "200" ] || [ "$http_code" = "204" ]; then
             echo "$body"
             return 0
         elif [ "$http_code" = "429" ]; then
@@ -395,6 +395,11 @@ http_put() {
 # HTTP POST 请求（带重试）
 http_post() {
     _http_request "POST" "$1" "$2"
+}
+
+# 【新增】HTTP DELETE 请求（带重试）
+http_delete() {
+    _http_request "DELETE" "$1" "${2:-}"
 }
 
 # ==================== API 调用函数 ====================
@@ -592,11 +597,9 @@ delete_dns_record() {
     
     local url="https://api.cloudflare.com/client/v4/zones/${CF_ZONE_ID}/dns_records/${record_id}"
     
+    # 【修复】使用 http_delete 替代直接调用 curl，支持重试和统一错误处理
     local response
-    response=$(curl -s -X DELETE "$url" \
-        -H "Authorization: Bearer ${CF_API_TOKEN}" \
-        -H "Content-Type: application/json" \
-        --max-time "$REQUEST_TIMEOUT")
+    response=$(http_delete "$url")
     
     if echo "$response" | jq -r '.success' 2>/dev/null | grep -q 'true'; then
         echo "success"
