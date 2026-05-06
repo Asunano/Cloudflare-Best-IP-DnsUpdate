@@ -91,14 +91,21 @@ done
 # DNSPod IP 数据默认路径
 DEFAULT_IP_DIR="${ROOT_DIR}/assets/data/dnspod-dns"
 
-# 日志函数
+# ====================== 【统一结构化日志系统】 ======================
+# 格式: [2026-05-06 09:30:00] [INFO ] [dnspod] message
 log_msg() {
     local level="$1"
-    local message="$2"
+    shift
     local timestamp
     timestamp="$(date +"%Y-%m-%d %H:%M:%S")"
-    echo -e "[${timestamp}] [${level}] ${message}" | tee -a "${LOG_FILE}"
+    printf "[%s] [%-5s] [dnspod] %s\n" "$timestamp" "$level" "$*" | tee -a "${LOG_FILE}"
 }
+
+# 便捷函数
+log_info() { log_msg "INFO" "$@"; }
+log_warn() { log_msg "WARN" "$@"; }
+log_error() { log_msg "ERROR" "$@"; }
+log_success() { log_msg "OK" "$@"; }
 
 # ==================== 模式切换检测（供 setup.sh 调用） ====================
 if [[ -n "${DNSPOD_MODE_SWITCH:-}" ]]; then
