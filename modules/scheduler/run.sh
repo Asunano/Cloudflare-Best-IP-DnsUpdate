@@ -34,6 +34,28 @@ echo -e " ${MAGENTA}项目仓库: https://github.com/Asunano/Cloudflare-Best-IP-
 echo -e " 启动时间: $(date '+%Y-%m-%d %H:%M:%S')"
 echo -e "${CYAN}+------------------------------------------------------------+${NC}"
 
+# ==================== 【安全配置】日志轮转 ====================
+# 防止日志文件无限增长（每10MB轮转一次，保留1个备份）
+rotate_log() {
+    local log_file="$1"
+    local max_size=${2:-$((10 * 1024 * 1024))}  # 默认 10MB
+    
+    if [[ -f "$log_file" ]]; then
+        local file_size
+        file_size=$(stat -c %s "$log_file" 2>/dev/null || echo 0)
+        
+        if [[ "$file_size" -gt "$max_size" ]]; then
+            mv "$log_file" "${log_file}.old"
+            rm -f "${log_file}.old.old"
+            touch "$log_file"
+        fi
+    fi
+}
+
+# 轮转 scheduler 日志和错误日志
+rotate_log "${ROOT_DIR}/logs/scheduler.log"
+rotate_log "${ROOT_DIR}/logs/error.log"
+
 # ==================== 【安全配置】测速超时保护 ====================
 # 防止 cfst 进程挂起导致 scheduler 无限等待
 SCHEDULER_TIMEOUT=${SCHEDULER_TIMEOUT:-600}  # 默认 10 分钟，可通过环境变量覆盖

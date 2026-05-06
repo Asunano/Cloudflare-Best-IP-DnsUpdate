@@ -21,6 +21,26 @@ NC='\033[0m'
 
 # ====================== 【统一错误处理系统】 ======================
 
+# 日志轮转函数（防止日志无限增长）
+rotate_log() {
+    local log_file="$1"
+    local max_size=${2:-$((10 * 1024 * 1024))}  # 默认 10MB
+    
+    if [[ -f "$log_file" ]]; then
+        local file_size
+        file_size=$(stat -c %s "$log_file" 2>/dev/null || echo 0)
+        
+        if [[ "$file_size" -gt "$max_size" ]]; then
+            # 轮转日志：当前日志 -> .old
+            mv "$log_file" "${log_file}.old"
+            # 删除更旧的备份（只保留1个）
+            rm -f "${log_file}.old.old"
+            # 创建新的空日志文件
+            touch "$log_file"
+        fi
+    fi
+}
+
 # 记录错误日志
 log_error() {
     local message="$1"

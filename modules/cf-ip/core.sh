@@ -286,6 +286,28 @@ else
     LOG_FILE="${LOG_DIR}/.tmp_cfst_$(date +%Y%m%d_%H%M%S).log"
 fi
 
+# 【安全配置】日志轮转：防止日志无限增长
+rotate_log() {
+    local log_file="$1"
+    local max_size=${2:-$((10 * 1024 * 1024))}  # 默认 10MB
+    
+    if [[ -f "$log_file" ]]; then
+        local file_size
+        file_size=$(stat -c %s "$log_file" 2>/dev/null || echo 0)
+        
+        if [[ "$file_size" -gt "$max_size" ]]; then
+            mv "$log_file" "${log_file}.old"
+            rm -f "${log_file}.old.old"
+            touch "$log_file"
+        fi
+    fi
+}
+
+# 轮转旧的 cfst 日志文件（保留最近的10个）
+for old_log in "${LOG_DIR}"/cfst_*.log.old; do
+    [[ -f "$old_log" ]] && rotate_log "$old_log" 5242880  # 5MB
+done
+
 # 清屏，开始显示进度
 clear 2>/dev/null || true
 
