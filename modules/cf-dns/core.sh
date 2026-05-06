@@ -114,6 +114,26 @@ log_warn() { log "WARN" "$@"; }
 log_error() { log "ERROR" "$@"; }
 log_success() { log "OK" "$@"; }
 
+# ====================== 【执行历史记录】 ======================
+# 记录 DNS 更新结果到 history.jsonl
+record_dns_update_history() {
+    local domain="$1"
+    local records_updated="$2"
+    local records_created="$3"
+    local records_deleted="$4"
+    
+    local history_file="${ROOT_DIR}/conf/history.jsonl"
+    local timestamp
+    timestamp="$(date -u +"%Y-%m-%dT%H:%M:%S+08:00")"
+    
+    # 确保目录存在
+    mkdir -p "${ROOT_DIR}/conf"
+    
+    # 写入 JSONL 格式的历史记录
+    printf '{"time":"%s","action":"dns_update","domain":"%s","records_updated":%d,"records_created":%d,"records_deleted":%d}\n' \
+        "$timestamp" "$domain" "$records_updated" "$records_created" "$records_deleted" >> "$history_file"
+}
+
 # ==================== 加载 JSON 配置 ====================
 if [ ! -f "$CONFIG_FILE" ]; then
     echo -e "${RED}错误${NC}: 找不到配置文件 ${CONFIG_FILE}"
@@ -1060,6 +1080,10 @@ main() {
     log ""
     log "${CYAN}结果汇总:${NC} 跳过 ${skipped_count} | 新建 ${created_count} | 删除 ${deleted_count}"
     log ""
+    
+    # 【功能增强】记录 DNS 更新历史
+    record_dns_update_history "$DOMAIN_NAME" "$updated_count" "$created_count" "$deleted_count"
+    log_info "已记录 DNS 更新历史到 conf/history.jsonl"
 }
 
 # 执行主函数
