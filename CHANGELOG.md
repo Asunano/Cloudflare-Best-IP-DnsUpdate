@@ -42,6 +42,51 @@
 ### Fixed - 修复
 
 #### 安全修复 (Security)
+- **添加日志轮转机制** (2026-05-06)
+  - 文件：
+    - `cfopt.sh`（scheduler.log, error.log）
+    - `modules/scheduler/run.sh`
+    - `modules/cf-ip/core.sh`（cfst_*.log）
+    - `modules/cf-dns/core.sh`（cfdns_*.log）
+    - `modules/dnspod-dns/core.sh`（dnspod_*.log）
+  - 问题：日志文件无限追加，无轮转机制，可能导致 GB 级别的文件
+  - 影响：
+    - ❌ **磁盘空间耗尽**：每4小时执行一次，一年约2190条记录
+    - ❌ **性能下降**：大文件读写缓慢，影响系统性能
+    - ❌ **维护困难**：手动清理日志繁琐，容易遗漏
+  - 修复：实现自动日志轮转机制
+    ```bash
+    rotate_log() {
+        local log_file="$1"
+        local max_size=${2:-$((10 * 1024 * 1024))}  # 默认 10MB
+        
+        if [[ -f "$log_file" ]]; then
+            local file_size
+            file_size=$(stat -c %s "$log_file" 2>/dev/null || echo 0)
+            
+            if [[ "$file_size" -gt "$max_size" ]]; then
+                mv "$log_file" "${log_file}.old"  # 轮转
+                rm -f "${log_file}.old.old"       # 删除旧备份
+                touch "$log_file"                 # 创建新文件
+            fi
+        fi
+    }
+    
+    # 在 scheduler 启动时调用
+    rotate_log "${ROOT_DIR}/logs/scheduler.log"
+    rotate_log "${ROOT_DIR}/logs/error.log"
+    ```
+  - 技术说明：
+    - **阈值**：10MB（主日志），5MB（模块日志）
+    - **保留策略**：只保留1个备份（.old）
+    - **触发时机**：scheduler 启动时检查
+    - **跨平台兼容**：使用 `stat -c %s`（Linux）
+  - 效果：
+    - ✅ **防止无限增长**：单个日志最多 10MB + 5MB（备份）= 15MB
+    - ✅ **自动管理**：无需人工干预
+    - ✅ **磁盘友好**：每年节省数 GB 空间
+    - ✅ **性能优化**：避免大文件读写开销
+
 - **添加测速任务超时保护** (2026-05-06)
   - 文件：`modules/scheduler/run.sh`
   - 问题：`wait` 命令没有超时机制，如果 cfst 进程挂起（网络卡死、DNS 解析阻塞），scheduler 会永远等待
