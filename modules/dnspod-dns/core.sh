@@ -91,6 +91,24 @@ done
 # DNSPod IP 数据默认路径
 DEFAULT_IP_DIR="${ROOT_DIR}/assets/data/dnspod-dns"
 
+# 【功能增强】优先使用 .iplist 格式，fallback 到 .txt
+get_default_ip_file() {
+    local line_name="$1"
+    local iplist_file="${DEFAULT_IP_DIR}/${line_name}.iplist"
+    local txt_file="${DEFAULT_IP_DIR}/${line_name}.txt"
+    
+    # 优先返回 .iplist
+    if [[ -f "$iplist_file" ]]; then
+        echo "$iplist_file"
+    elif [[ -f "$txt_file" ]]; then
+        log_warn "检测到旧格式 .txt 文件: ${txt_file}，建议转换为 .iplist 格式"
+        echo "$txt_file"
+    else
+        # 默认返回 .iplist 路径（即使不存在）
+        echo "$iplist_file"
+    fi
+}
+
 # ====================== 【统一结构化日志系统】 ======================
 # 格式: [2026-05-06 09:30:00] [INFO ] [dnspod] message
 log_msg() {
@@ -266,11 +284,15 @@ delete_record_by_line() {
 }
 
 # ==================== IP 数据文件检测 (启动前校验) ====================
-# 根据模式确定要检查的 IP 文件
+# 【功能增强】根据模式确定要检查的 IP 文件，优先使用 .iplist 格式
 IP_FILES_TO_CHECK=()
 if [[ "${MODE}" = "single" ]]; then
     # 单线路模式：检查默认 IP 文件
-    IP_FILES_TO_CHECK+=("${IP_FILE:-${DEFAULT_IP_DIR}/ip_list.txt}")
+    if [[ -n "${IP_FILE}" ]]; then
+        IP_FILES_TO_CHECK+=("${IP_FILE}")
+    else
+        IP_FILES_TO_CHECK+=("$(get_default_ip_file "ip_list")")
+    fi
 else
     # 多线路模式：检查所有线路的 IP 文件
     IFS=' ' read -ra lines_array <<< "${ISP_LINES}"
@@ -278,15 +300,15 @@ else
         case "$line" in
             "默认")
                 ip_file=$(jq -r '.ip_source.files.default // empty' "$CONFIG_FILE")
-                [[ -z "$ip_file" ]] && ip_file="${DEFAULT_IP_DIR}/default.txt"
+                [[ -z "$ip_file" ]] && ip_file="$(get_default_ip_file "default")"
                 ;;
             "联通")
                 ip_file=$(jq -r '.ip_source.files.unicom // empty' "$CONFIG_FILE")
-                [[ -z "$ip_file" ]] && ip_file="${DEFAULT_IP_DIR}/unicom.txt"
+                [[ -z "$ip_file" ]] && ip_file="$(get_default_ip_file "unicom")"
                 ;;
             "移动")
                 ip_file=$(jq -r '.ip_source.files.mobile // empty' "$CONFIG_FILE")
-                [[ -z "$ip_file" ]] && ip_file="${DEFAULT_IP_DIR}/mobile.txt"
+                [[ -z "$ip_file" ]] && ip_file="$(get_default_ip_file "mobile")"
                 ;;
             "电信")
                 ip_file=$(jq -r '.ip_source.files.telecom // empty' "$CONFIG_FILE")
