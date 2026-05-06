@@ -12,6 +12,60 @@
 ### Added - 新增
 
 #### 功能增强 (Features)
+- **同步 IP 文件路径至 .iplist 标准格式** (2026-05-06)
+  - 文件：
+    - `modules/cf-dns/setup.sh`
+    - `modules/cf-dns/core.sh`
+    - `modules/dnspod-dns/core.sh`
+  - 变更：
+    - ✅ **cf-dns/setup.sh**：新配置的默认 IP 文件改为 `.iplist` 格式
+      ```bash
+      # 修复前
+      local ip_file="${ROOT_DIR}/assets/data/cf-dns/${full_domain}.txt"
+      
+      # 修复后
+      local ip_file="${ROOT_DIR}/assets/data/cf-dns/${full_domain}.iplist"
+      ```
+    
+    - ✅ **cf-dns/core.sh**：优先使用 `.iplist`，自动 fallback 到 `.txt`
+      ```bash
+      # 修复前
+      IP_FILE=${IP_FILE:-"$ROOT_DIR/assets/data/cf-dns/ip_list.txt"}
+      
+      # 修复后
+      IP_FILE=${IP_FILE:-"$ROOT_DIR/assets/data/cf-dns/ip_list.iplist"}
+      if [[ ! -f "$IP_FILE" ]] && [[ "$IP_FILE" == *.iplist ]]; then
+          local txt_file="${IP_FILE%.iplist}.txt"
+          if [[ -f "$txt_file" ]]; then
+              log_warn "检测到旧格式 .txt 文件，建议转换为 .iplist 格式"
+              IP_FILE="$txt_file"
+          fi
+      fi
+      ```
+    
+    - ✅ **dnspod-dns/core.sh**：添加智能路径选择函数
+      ```bash
+      get_default_ip_file() {
+          local line_name="$1"
+          local iplist_file="${DEFAULT_IP_DIR}/${line_name}.iplist"
+          local txt_file="${DEFAULT_IP_DIR}/${line_name}.txt"
+          
+          if [[ -f "$iplist_file" ]]; then
+              echo "$iplist_file"
+          elif [[ -f "$txt_file" ]]; then
+              log_warn "检测到旧格式 .txt 文件: ${txt_file}"
+              echo "$txt_file"
+          else
+              echo "$iplist_file"  # 默认返回 .iplist 路径
+          fi
+      }
+      ```
+  - 效果：
+    - ✅ **新配置默认使用 .iplist**：提升数据完整性
+    - ✅ **旧配置自动兼容**：无缝迁移，无需手动修改
+    - ✅ **智能提示**：检测到旧格式时给出升级建议
+    - ✅ **渐进式迁移**：用户可按需逐步升级
+
 - **定义标准 IP 列表格式 (.iplist)** (2026-05-06)
   - 文件：
     - `docs/IP_LIST_FORMAT.md`（格式规范文档）
