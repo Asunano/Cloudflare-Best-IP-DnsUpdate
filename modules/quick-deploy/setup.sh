@@ -320,7 +320,12 @@ select_colo_nodes() {
     # 【修复】支持直接输入节点代码（如 HKG,NRT）
     if [[ "$colo_choice" =~ ^[A-Za-z,]+$ ]]; then
         # 用户直接输入了节点代码，转换为大写并去除空格
-        echo "$colo_choice" | tr '[:lower:]' '[:upper:]' | tr -d ' '
+        local normalized_colo
+        normalized_colo=$(echo "$colo_choice" | tr '[:lower:]' '[:upper:]' | tr -d ' ')
+        
+        # 【修复】清屏后再输出，避免菜单残留
+        clear
+        echo "$normalized_colo"
         return
     fi
     
