@@ -76,6 +76,28 @@ LOG_DIR="${LOG_DIR:-$LOG_DIR_DEFAULT}"
 mkdir -p "$LOG_DIR"
 LOG_FILE="${LOG_DIR}/cfdns_$(date +%Y%m%d_%H%M%S).log"
 
+# 【安全配置】日志轮转：防止日志无限增长
+rotate_log() {
+    local log_file="$1"
+    local max_size=${2:-$((10 * 1024 * 1024))}  # 默认 10MB
+    
+    if [[ -f "$log_file" ]]; then
+        local file_size
+        file_size=$(stat -c %s "$log_file" 2>/dev/null || echo 0)
+        
+        if [[ "$file_size" -gt "$max_size" ]]; then
+            mv "$log_file" "${log_file}.old"
+            rm -f "${log_file}.old.old"
+            touch "$log_file"
+        fi
+    fi
+}
+
+# 轮转旧的 cfdns 日志文件
+for old_log in "${LOG_DIR}"/cfdns_*.log.old; do
+    [[ -f "$old_log" ]] && rotate_log "$old_log" 5242880  # 5MB
+done
+
 # 日志函数
 log() {
     local message="$1"
