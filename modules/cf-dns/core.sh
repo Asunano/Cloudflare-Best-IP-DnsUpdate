@@ -294,12 +294,16 @@ build_full_domain() {
     local dns_name="$1"
     local domain="$2"
     
-    if [ "$dns_name" != "@" ] && [ -n "$domain" ]; then
-        echo "${dns_name}.${domain}"
-    elif [ "$dns_name" = "@" ] && [ -n "$domain" ]; then
-        echo "${domain}"
+    # 【修复】domain 不能为空（@ 模式下尤其需要）
+    if [[ -z "$domain" ]]; then
+        log_error "$MODULE_NAME" "域名(domain)配置为空，请检查配置文件"
+        return 1
+    fi
+    
+    if [[ "$dns_name" == "@" ]]; then
+        echo "$domain"
     else
-        echo "$dns_name"
+        echo "${dns_name}.${domain}"
     fi
 }
 
