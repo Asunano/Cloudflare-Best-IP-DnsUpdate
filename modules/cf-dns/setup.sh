@@ -159,6 +159,7 @@ show_menu() {
     echo -e " ${GREEN}➤${NC} 6. 修改 IP 数量限制 ${CYAN}- 调整每条记录包含的 IP 个数${NC}"
     echo -e " ${GREEN}➤${NC} 7. 修改配置         ${CYAN}- 针对性修改某一项（如 Token）${NC}"
     echo -e " ${GREEN}➤${NC} 8. 日志管理         ${CYAN}- 查看运行结果或清理旧日志${NC}"
+    echo -e " ${RED}➤${NC} 9. 删除配置         ${CYAN}- 彻底删除当前域名的所有配置${NC}"
     echo ""
     echo -e " ${RED}➤${NC} 0. 退出程序"
     echo -e "${CYAN}${MENU_BORDER_BOTTOM}${NC}"
@@ -1460,6 +1461,124 @@ log_management() {
     esac
 }
 
+# 删除配置
+delete_config() {
+    clear
+    echo -e "${CYAN}+------------------------------------------------------------+"
+    echo -e " ${BOLD}${RED}删除 Cloudflare DNS 配置${NC}"
+    echo -e "${CYAN}+------------------------------------------------------------+"
+    echo ""
+    
+    if [ ! -f "$CONFIG_FILE" ]; then
+        echo -e "${YELLOW}[INFO] 配置文件不存在，无需删除${NC}"
+        echo ""
+        read -r -p "按回车键继续..."
+        return
+    fi
+    
+    # 读取配置信息
+    local domain_name record_name full_domain
+    domain_name=$(jq -r '.dns.domain // "unknown"' "$CONFIG_FILE")
+    record_name=$(jq -r '.dns.record_name // "@"' "$CONFIG_FILE")
+    
+    if [[ "$record_name" == "@" ]]; then
+        full_domain="$domain_name"
+    else
+        full_domain="${record_name}.${domain_name}"
+    fi
+    
+    echo -e "${RED}⚠ 警告：此操作将彻底删除以下配置：${NC}"
+    echo ""
+    echo -e "  • 完整域名: ${RED}${full_domain}${NC}"
+    echo -e "  • 配置文件: ${RED}${CONFIG_FILE}${NC}"
+    
+    # 检查关联的 IP 文件
+    local ip_file
+    ip_file=$(jq -r '.ip_source.file_path // empty' "$CONFIG_FILE")
+    if [[ -n "$ip_file" ]] && [[ -f "$ip_file" ]]; then
+        echo -e "  • IP 数据文件: ${RED}${ip_file}${NC}"
+    fi
+    
+    # 检查关联的测速结果文件
+    local result_file
+    result_file=$(jq -r '.ip_source.result_file // empty' "$CONFIG_FILE")
+    if [[ -n "$result_file" ]] && [[ -f "$result_file" ]]; then
+        echo -e "  • 测速结果文件: ${RED}${result_file}${NC}"
+    fi
+    
+    echo ""
+    echo -e "${YELLOW}注意：${NC}"
+    echo -e "  - 此操作不可恢复！"
+    echo -e "  - 不会删除系统级组件（如 crontab、wget 等）"
+    echo -e "  - 建议先备份重要数据"
+    echo ""
+    
+    # 【安全修复】重定向到 /dev/tty，确保从终端读取输入
+    local input_device="/dev/tty"
+    if [[ -e "${input_device}" ]]; then
+        read -r -p "确认要删除吗？(输入 yes 确认): " CONFIRM_DELETE < "${input_device}"
+    else
+        # 非交互式环境，禁止自动删除（安全措施）
+        CONFIRM_DELETE="no"
+        echo -e "${RED}[ERROR] 非交互式环境，禁止自动删除。请手动执行删除。${NC}"
+        read -r -p "按回车键返回主菜单..." < "${input_device}" 2>/dev/null || true
+        return
+    fi
+    
+    if [[ "$CONFIRM_DELETE" != "yes" ]]; then
+        echo -e "${CYAN}[INFO] 已取消删除操作${NC}"
+        echo ""
+        read -r -p "按回车键返回主菜单..."
+        return
+    fi
+    
+    echo ""
+    echo -e "${CYAN}正在删除配置...${NC}"
+    
+    # 1. 删除配置文件
+    if [[ -f "$CONFIG_FILE" ]]; then
+        rm -f "$CONFIG_FILE"
+        echo -e "  ${GREEN}[OK]${NC} 已删除配置文件: ${CONFIG_FILE}"
+    fi
+    
+    # 2. 删除 IP 数据文件
+    if [[ -n "$ip_file" ]] && [[ -f "$ip_file" ]]; then
+        rm -f "$ip_file"
+        echo -e "  ${GREEN}[OK]${NC} 已删除 IP 数据文件: ${ip_file}"
+    fi
+    
+    # 3. 删除测速结果文件
+    if [[ -n "$result_file" ]] && [[ -f "$result_file" ]]; then
+        rm -f "$result_file"
+        echo -e "  ${GREEN}[OK]${NC} 已删除测速结果文件: ${result_file}"
+    fi
+    
+    # 4. 删除部署记录（如果存在）
+    local deploy_record_file="${ROOT_DIR}/modules/quick-deploy/deploy_record.json"
+    if [[ -f "$deploy_record_file" ]] && command -v jq &>/dev/null; then
+        local temp_file
+        temp_file=$(mktemp)
+        if jq --arg d "$domain_name" '.domains = [.domains[] | select(.domain != $d)]' \
+           "$deploy_record_file" > "$temp_file" 2>/dev/null; then
+            mv "$temp_file" "$deploy_record_file"
+            chmod 600 "$deploy_record_file"
+            echo -e "  ${GREEN}[OK]${NC} 已从部署记录中移除: ${domain_name}"
+        else
+            rm -f "$temp_file"
+        fi
+    fi
+    
+    echo ""
+    echo -e "${GREEN}[OK] 配置已彻底删除！${NC}"
+    echo ""
+    
+    # 重置 CONFIG_FILE，让 auto_detect_config_file 重新检测
+    CONFIG_FILE="$ROOT_DIR/conf/cf-dns.json"
+    auto_detect_config_file || true
+    
+    read -r -p "按回车键返回主菜单..."
+}
+
 # 修改配置二级菜单
 modify_config_menu() {
     while true; do
@@ -1948,7 +2067,7 @@ main() {
         auto_detect_config_file || true
         show_menu
         
-        read -r -p "请选择 (0-8): " choice
+        read -r -p "请选择 (0-9): " choice
         
         case $choice in
             1)
@@ -2071,6 +2190,20 @@ main() {
             8)
                 # 日志管理（不需要选择域名，因为日志是共享的）
                 log_management
+                ;;
+            9)
+                # 删除配置 - 先选择域名
+                local selected_config
+                selected_config=$(select_domain_menu "删除")
+                if [[ $? -ne 0 ]]; then
+                    continue
+                fi
+                
+                # 临时设置 CONFIG_FILE 并调用 delete_config
+                local original_config_file="$CONFIG_FILE"
+                CONFIG_FILE="$selected_config"
+                delete_config
+                CONFIG_FILE="$original_config_file"
                 ;;
             0)
                 # 退出子菜单，返回 cfopt 主菜单
