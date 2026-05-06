@@ -553,7 +553,7 @@ main() {
     
     # 显示配置摘要
     echo -e "${CYAN}+------------------------------------------------------------+"
-    echo -e " ${BOLD}${YELLOW}Cloudflare-Best-IP-DnsUpdate v${VERSION}${NC}"
+    echo -e " ${BOLD}${YELLOW}Cloudflare-Best-IP-DnsUpdate v${SCRIPT_VERSION}${NC}"
     echo -e " ${MAGENTA}项目仓库: https://github.com/Asunano/Cloudflare-Best-IP-DnsUpdate${NC}"
     echo -e " 域名: ${full_domain}"
     echo -e " IP限制: ${MAX_IPS_PER_RECORD} 个/记录"
