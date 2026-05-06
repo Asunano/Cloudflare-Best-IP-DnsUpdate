@@ -31,7 +31,124 @@ jobs:
         fetch-depth: 0              # 获取完整历史记录
         persist-credentials: true   # 保留认证信息
     
-    # 步骤 2：计算所有脚本的 SHA256 哈希值
+    # 步骤 2：ShellCheck 静态检查（仅检测，不阻断流程）
+    - name: ShellCheck 静态检查
+      continue-on-error: true
+      run: |
+        echo "======================================"
+        echo "  ShellCheck 静态分析（仅报告）"
+        echo "======================================"
+        echo ""
+
+        # 安装 ShellCheck
+        sudo apt-get update -qq
+        sudo apt-get install -y -qq shellcheck > /dev/null
+
+        echo "[版本信息]"
+        shellcheck --version
+        echo ""
+
+        # 收集所有 .sh 文件
+        SCRIPTS=()
+        [ -f "cfopt.sh" ] && SCRIPTS+=("cfopt.sh")
+        while IFS= read -r -d '' file; do
+          SCRIPTS+=("$file")
+        done < <(find modules -name "*.sh" -type f -print0 2>/dev/null)
+
+        if [ ${#SCRIPTS[@]} -eq 0 ]; then
+          echo "  [WARN] 未找到任何 .sh 文件，跳过检查"
+          exit 0
+        fi
+
+        echo "[待检查文件: ${#SCRIPTS[@]} 个]"
+        for f in "${SCRIPTS[@]}"; do
+          echo "  - $f"
+        done
+        echo ""
+
+        # 执行 ShellCheck
+        TOTAL_PASS=0
+        TOTAL_WARN=0
+        TOTAL_FAIL=0
+        TOTAL_ISSUES=0
+
+        for script in "${SCRIPTS[@]}"; do
+          echo "--------------------------------------"
+          echo "检查: $script"
+          echo "--------------------------------------"
+
+          OUTPUT=$(shellcheck -s bash -S warning -f gcc "$script" 2>&1) || true
+
+          if [ -z "$OUTPUT" ]; then
+            echo "  ✓ 通过"
+            TOTAL_PASS=$((TOTAL_PASS + 1))
+            echo ""
+            continue
+          fi
+
+          FILE_ERRORS=$(echo "$OUTPUT" | grep -c ": error:" || true)
+          FILE_WARNINGS=$(echo "$OUTPUT" | grep -c ": warning:" || true)
+          FILE_NOTES=$(echo "$OUTPUT" | grep -c ": note:" || true)
+          FILE_TOTAL=$((FILE_ERRORS + FILE_WARNINGS + FILE_NOTES))
+          TOTAL_ISSUES=$((TOTAL_ISSUES + FILE_TOTAL))
+
+          echo ""
+          echo "$OUTPUT"
+          echo ""
+
+          # 转为 GitHub Actions 注解
+          while IFS= read -r line; do
+            ANNOTATION=$(echo "$line" | awk -F': ' '{
+              split($1, loc, ":")
+              file = loc[1]; line_num = loc[2]; col_num = loc[3]
+              level = $2
+              msg = ""
+              for (i = 3; i <= NF; i++) {
+                if (msg != "") msg = msg ": "
+                msg = msg $i
+              }
+              gsub(/%/, "%25", msg)
+              gsub(/\n/, "%0A", msg)
+              if (level == "error") {
+                printf "::error file=%s,line=%s,col=%s::%s\n", file, line_num, col_num, msg
+              } else if (level == "warning") {
+                printf "::warning file=%s,line=%s,col=%s::%s\n", file, line_num, col_num, msg
+              } else if (level == "note") {
+                printf "::notice file=%s,line=%s,col=%s::%s\n", file, line_num, col_num, msg
+              }
+            }')
+            echo "$ANNOTATION"
+          done <<< "$OUTPUT"
+
+          if [ "$FILE_ERRORS" -gt 0 ]; then
+            echo ""
+            echo "  ✗ error: $FILE_ERRORS, warning: $FILE_WARNINGS, note: $FILE_NOTES"
+            TOTAL_FAIL=$((TOTAL_FAIL + 1))
+          else
+            echo ""
+            echo "  △ warning: $FILE_WARNINGS, note: $FILE_NOTES"
+            TOTAL_WARN=$((TOTAL_WARN + 1))
+          fi
+          echo ""
+        done
+
+        # 汇总报告
+        echo ""
+        echo "======================================"
+        echo "  ShellCheck 检查汇总"
+        echo "======================================"
+        echo "  扫描文件:   ${#SCRIPTS[@]} 个"
+        echo "  通过:       $TOTAL_PASS 个"
+        echo "  仅警告:     $TOTAL_WARN 个"
+        echo "  有错误:     $TOTAL_FAIL 个"
+        echo "  问题总数:   $TOTAL_ISSUES 个"
+        echo "======================================"
+        echo ""
+        echo "  提示：当前为开发阶段，检查结果仅供参考"
+        echo "  后续稳定后可移除 continue-on-error 改为强制检查"
+        echo ""
+    
+    # 步骤 3：计算所有脚本的 SHA256 哈希值
     - name: 计算 SHA256 哈希值
       run: |
         echo "# ============================================================" > version.txt
@@ -91,7 +208,7 @@ jobs:
         echo "  哈希值计算完成"
         echo "======================================"
     
-    # 步骤 3：检查 version.txt 是否有变更
+    # 步骤 4：检查 version.txt 是否有变更
     - name: 检查文件变更
       id: check_changes
       run: |
@@ -105,7 +222,7 @@ jobs:
           echo "  [INFO] 检测到 version.txt 变更，准备提交"
         fi
     
-    # 步骤 4：配置 Git 认证信息
+    # 步骤 5：配置 Git 认证信息
     - name: 配置 Git
       if: steps.check_changes.outputs.has_changes == 'true'
       run: |
@@ -117,7 +234,7 @@ jobs:
         git remote set-url origin https://x-access-token:${{ secrets.GH_TOKEN }}@github.com/${{ github.repository }}.git
         echo "  [INFO] Git 配置完成"
     
-    # 步骤 5：提交并推送更新
+    # 步骤 6：提交并推送更新
     - name: 提交并推送
       if: steps.check_changes.outputs.has_changes == 'true'
       run: |
