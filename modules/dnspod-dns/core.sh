@@ -688,12 +688,35 @@ call_api() {
         # 执行请求
         result=$(curl "${curl_args[@]}")
         
-        # 简单的成功校验：如果返回了 JSON 且包含 Response 字段，则认为请求已发出
+        # 【安全修复】严格验证 API 响应，区分成功和错误
         if echo "${result}" | grep -q "Response"; then
-            echo "${result}"
-            return 0
+            # 检查是否包含错误字段
+            local error_code
+            error_code=$(echo "${result}" | jq -r '.Response.Error.Code // empty' 2>/dev/null)
+            
+            if [[ -n "$error_code" ]]; then
+                # API 返回了错误
+                local error_msg
+                error_msg=$(echo "${result}" | jq -r '.Response.Error.Message // "未知错误"' 2>/dev/null)
+                log_msg "ERROR" "API 错误: ${error_code} - ${error_msg}"
+                
+                # 认证错误不重试，直接返回失败
+                if [[ "$error_code" == "AuthFailure"* ]] || [[ "$error_code" == "Unauthorized"* ]]; then
+                    echo "${result}"
+                    return 1
+                fi
+                
+                # 其他错误继续重试
+                retry=$((retry + 1))
+                continue
+            else
+                # 无错误，请求成功
+                echo "${result}"
+                return 0
+            fi
         fi
         
+        # 不包含 Response，可能是网络错误或无效响应
         retry=$((retry + 1))
     done
     
