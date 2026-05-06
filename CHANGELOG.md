@@ -12,27 +12,18 @@
 ### Added - 新增
 
 #### 功能增强 (Features)
-- **同步 IP 文件路径至 .iplist 标准格式** (2026-05-06)
+- **移除向后兼容逻辑，统一使用 .iplist 标准格式** (2026-05-06)
   - 文件：
-    - `modules/cf-dns/setup.sh`
     - `modules/cf-dns/core.sh`
+    - `modules/cf-dns/setup.sh`
     - `modules/dnspod-dns/core.sh`
+    - `modules/dnspod-dns/setup.sh`
+    - `modules/cf-ip/menu.sh`
+    - `modules/quick-deploy/setup.sh`
   - 变更：
-    - ✅ **cf-dns/setup.sh**：新配置的默认 IP 文件改为 `.iplist` 格式
+    - ✅ **cf-dns/core.sh**：简化 IP_FILE 初始化，移除 fallback 逻辑
       ```bash
       # 修复前
-      local ip_file="${ROOT_DIR}/assets/data/cf-dns/${full_domain}.txt"
-      
-      # 修复后
-      local ip_file="${ROOT_DIR}/assets/data/cf-dns/${full_domain}.iplist"
-      ```
-    
-    - ✅ **cf-dns/core.sh**：优先使用 `.iplist`，自动 fallback 到 `.txt`
-      ```bash
-      # 修复前
-      IP_FILE=${IP_FILE:-"$ROOT_DIR/assets/data/cf-dns/ip_list.txt"}
-      
-      # 修复后
       IP_FILE=${IP_FILE:-"$ROOT_DIR/assets/data/cf-dns/ip_list.iplist"}
       if [[ ! -f "$IP_FILE" ]] && [[ "$IP_FILE" == *.iplist ]]; then
           local txt_file="${IP_FILE%.iplist}.txt"
@@ -41,10 +32,14 @@
               IP_FILE="$txt_file"
           fi
       fi
+      
+      # 修复后
+      IP_FILE=${IP_FILE:-"$ROOT_DIR/assets/data/cf-dns/ip_list.iplist"}
       ```
     
-    - ✅ **dnspod-dns/core.sh**：添加智能路径选择函数
+    - ✅ **dnspod-dns/core.sh**：简化 get_default_ip_file() 函数
       ```bash
+      # 修复前
       get_default_ip_file() {
           local line_name="$1"
           local iplist_file="${DEFAULT_IP_DIR}/${line_name}.iplist"
@@ -53,18 +48,97 @@
           if [[ -f "$iplist_file" ]]; then
               echo "$iplist_file"
           elif [[ -f "$txt_file" ]]; then
-              log_warn "检测到旧格式 .txt 文件: ${txt_file}"
+              log_warn "检测到旧格式 .txt 文件: ${txt_file}，建议转换为 .iplist 格式"
               echo "$txt_file"
           else
-              echo "$iplist_file"  # 默认返回 .iplist 路径
+              echo "$iplist_file"
           fi
       }
+      
+      # 修复后
+      get_default_ip_file() {
+          local line_name="$1"
+          echo "${DEFAULT_IP_DIR}/${line_name}.iplist"
+      }
       ```
-  - 效果：
-    - ✅ **新配置默认使用 .iplist**：提升数据完整性
-    - ✅ **旧配置自动兼容**：无缝迁移，无需手动修改
-    - ✅ **智能提示**：检测到旧格式时给出升级建议
-    - ✅ **渐进式迁移**：用户可按需逐步升级
+    
+    - ✅ **dnspod-dns/core.sh**：替换5处硬编码的 .txt 路径
+      ```bash
+      # 修复前（5处）
+      [[ -z "$ip_file" ]] && ip_file="${DEFAULT_IP_DIR}/telecom.txt"
+      [[ -z "$ip_file" ]] && ip_file="${DEFAULT_IP_DIR}/default.txt"
+      [[ -z "$ip_file" ]] && ip_file="${DEFAULT_IP_DIR}/unicom.txt"
+      [[ -z "$ip_file" ]] && ip_file="${DEFAULT_IP_DIR}/mobile.txt"
+      [[ -z "$ip_file" ]] && ip_file="${DEFAULT_IP_DIR}/telecom.txt"
+      
+      # 修复后
+      [[ -z "$ip_file" ]] && ip_file="$(get_default_ip_file "telecom")"
+      [[ -z "$ip_file" ]] && ip_file="$(get_default_ip_file "default")"
+      [[ -z "$ip_file" ]] && ip_file="$(get_default_ip_file "unicom")"
+      [[ -z "$ip_file" ]] && ip_file="$(get_default_ip_file "mobile")"
+      [[ -z "$ip_file" ]] && ip_file="$(get_default_ip_file "telecom")"
+      ```
+    
+    - ✅ **cf-dns/setup.sh**：默认 IP 文件改为 .iplist
+      ```bash
+      # 修复前
+      ip_file="$ROOT_DIR/assets/data/cf-dns/ip_list.txt"
+      
+      # 修复后
+      ip_file="$ROOT_DIR/assets/data/cf-dns/ip_list.iplist"
+      ```
+    
+    - ✅ **dnspod-dns/setup.sh**：所有提示信息改为 .iplist
+      ```bash
+      # 修复前（17处）
+      echo "  - assets/data/dnspod-dns/default.txt    (默认线路)"
+      IP_FILE_DEFAULT="${base_path}/default.txt"
+      IP_FILE_UNICOM="${base_path}/unicom.txt"
+      IP_FILE_MOBILE="${base_path}/mobile.txt"
+      IP_FILE_TELECOM="${base_path}/telecom.txt"
+      
+      # 修复后
+      echo "  - assets/data/dnspod-dns/default.iplist    (默认线路)"
+      IP_FILE_DEFAULT="${base_path}/default.iplist"
+      IP_FILE_UNICOM="${base_path}/unicom.iplist"
+      IP_FILE_MOBILE="${base_path}/mobile.iplist"
+      IP_FILE_TELECOM="${base_path}/telecom.iplist"
+      ```
+    
+    - ✅ **quick-deploy/setup.sh**：快速部署配置改为 .iplist
+      ```bash
+      # 修复前（8处）
+      --arg ip_file_default "${ROOT_DIR}/assets/data/dnspod-dns/ip_list_default.txt" \
+      echo -e "   • ${ROOT_DIR}/assets/data/dnspod-dns/ip_list_default.txt"
+      
+      # 修复后
+      --arg ip_file_default "${ROOT_DIR}/assets/data/dnspod-dns/ip_list_default.iplist" \
+      echo -e "   • ${ROOT_DIR}/assets/data/dnspod-dns/ip_list_default.iplist"
+      ```
+    
+    - ✅ **cf-ip/menu.sh**：提示文本改为 .iplist
+      ```bash
+      # 修复前
+      read -r -p "IP段数据文件名（留空=使用默认ip.txt）: " CFST_IP_FILE
+      
+      # 修复后
+      read -r -p "IP段数据文件名（留空=使用默认ip.iplist）: " CFST_IP_FILE
+      ```
+  - 影响：
+    - ✅ **代码简洁**：移除 47 行向后兼容代码，新增 35 行标准化代码
+    - ✅ **逻辑清晰**：不再需要检测文件格式，直接使用 .iplist
+    - ✅ **维护简单**：只需维护一种格式，降低复杂度
+    - ✅ **性能提升**：减少文件存在性检查，启动速度更快
+    - ⚠️ **破坏性变更**：现有 .txt 文件需要手动转换为 .iplist 格式
+  - 迁移指南：
+    ```bash
+    # 如果已有 .txt 文件，请使用转换工具
+    bash modules/ip-sync/sync.sh --convert-txt-to-iplist
+    
+    # 或者手动重命名并添加元数据
+    mv ip_list.txt ip_list.iplist
+    # 编辑文件头部添加注释
+    ```
 
 - **定义标准 IP 列表格式 (.iplist)** (2026-05-06)
   - 文件：

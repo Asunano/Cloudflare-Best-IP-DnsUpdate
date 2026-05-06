@@ -255,16 +255,8 @@ fi
 MAX_RETRIES=${MAX_RETRIES:-3}
 REQUEST_TIMEOUT=${REQUEST_TIMEOUT:-10}
 MAX_IPS_PER_RECORD=${MAX_IPS_PER_RECORD:-2}
-# 【功能增强】优先使用 .iplist 格式，fallback 到 .txt
+# 【标准化】统一使用 .iplist 标准格式
 IP_FILE=${IP_FILE:-"$ROOT_DIR/assets/data/cf-dns/ip_list.iplist"}
-# 如果 .iplist 不存在，尝试 .txt 格式（向后兼容）
-if [[ ! -f "$IP_FILE" ]] && [[ "$IP_FILE" == *.iplist ]]; then
-    local txt_file="${IP_FILE%.iplist}.txt"
-    if [[ -f "$txt_file" ]]; then
-        log_warn "检测到旧格式 .txt 文件，建议转换为 .iplist 格式"
-        IP_FILE="$txt_file"
-    fi
-fi
 CF_DEBUG=${CF_DEBUG:-false}  # 调试模式
 
 # ==================== IP 数据文件检测 (启动前校验) ====================
