@@ -1166,7 +1166,8 @@ uninstall_cfopt() {
     echo "     - assets/ (测速数据和 IP 列表)"
     echo "     - logs/ (运行日志)"
     echo "  2. 全局命令: /usr/local/bin/cfopt"
-    echo "  3. 定时任务: 所有包含 'cfopt' 的 Crontab 项"
+    echo "  3. 定时任务: 所有包含 '${INSTALL_DIR}/' 的 Crontab 项"
+    echo "  4. Shell 配置: ~/.bashrc ~/.zshrc ~/.profile 中的 cfopt 相关行"
     echo ""
     echo -e "${YELLOW}注意:${NC} 此操作不会卸载系统级组件 (如 crontab, wget 等)。"
     echo ""
@@ -1337,8 +1338,11 @@ else
 fi
 
 # 清理临时脚本
+rm -f /tmp/.cfopt_uninstalling 2>/dev/null || true
 rm -f "$0" 2>/dev/null || true
 echo "[$(date)] 清理脚本执行完毕" >> "${LOG_FILE}"
+sleep 1
+rm -f "${LOG_FILE}" 2>/dev/null || true
 CLEANUP_EOF
         
         chmod +x "${cleanup_script}"
