@@ -252,14 +252,14 @@ if [[ "${CURRENT_SCRIPT_PATH}" != "${TARGET_SCRIPT_PATH}" ]]; then
                 # 原因：当通过 'bash cfopt.sh' 运行时，当前 bash 持有原文件的 fd
                 # 移动文件后，exec 可能因为 fd 问题而失败
                 bash "${TARGET_SCRIPT_PATH}" "$@" &
-                local new_pid=$!
+                NEW_PID=$!
                 
                 # 等待新进程启动
                 sleep 0.1
                 
                 # 检查新进程是否成功启动
-                if kill -0 "$new_pid" 2>/dev/null; then
-                    log_info "新进程已启动 (PID: ${new_pid})"
+                if kill -0 "$NEW_PID" 2>/dev/null; then
+                    log_info "新进程已启动 (PID: ${NEW_PID})"
                     exit 0
                 else
                     log_error "新进程启动失败"
@@ -304,14 +304,14 @@ if [[ "${CURRENT_SCRIPT_PATH}" != "${TARGET_SCRIPT_PATH}" ]]; then
                 # 原因：当通过 'bash cfopt.sh' 运行时，当前 bash 持有原文件的 fd
                 # 移动文件后，exec 可能因为 fd 问题而失败
                 bash "${TARGET_SCRIPT_PATH}" "$@" &
-                local new_pid=$!
+                NEW_PID=$!
                 
                 # 等待新进程启动
                 sleep 0.1
                 
                 # 检查新进程是否成功启动
-                if kill -0 "$new_pid" 2>/dev/null; then
-                    log_info "新进程已启动 (PID: ${new_pid})"
+                if kill -0 "$NEW_PID" 2>/dev/null; then
+                    log_info "新进程已启动 (PID: ${NEW_PID})"
                     exit 0
                 else
                     log_error "新进程启动失败"
