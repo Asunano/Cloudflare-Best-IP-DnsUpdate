@@ -973,12 +973,99 @@ setup_cron() {
 # ====================== 【函数：删除定时任务】 ======================
 remove_cron() {
     echo ""
-    read -r -p "确认删除所有 CF-IP 相关的定时任务？(y/n): " CONFIRM_REMOVE
     
-    if [[ "${CONFIRM_REMOVE}" = "y" ]] || [[ "${CONFIRM_REMOVE}" = "Y" ]]; then
-        crontab -l 2>/dev/null | grep -v "cf-ip/core.sh" | crontab -
-        echo -e "${GREEN}[OK] 定时任务已删除${NC}"
+    # 获取所有 CF-IP 相关的定时任务
+    CRON_LIST=$(crontab -l 2>/dev/null | grep "cf-ip/core.sh")
+    
+    if [[ -z "${CRON_LIST}" ]]; then
+        echo -e "${YELLOW}[WARN] 未找到 CF-IP 相关的定时任务${NC}"
+        return
     fi
+    
+    # 将任务存入数组并显示编号
+    declare -a TASKS
+    local idx=1
+    echo -e "${CYAN}当前 CF-IP 定时任务列表：${NC}"
+    echo "--------------------------------------------------------"
+    while IFS= read -r line; do
+        TASKS[$idx]="$line"
+        echo -e " ${GREEN}[${idx}]${NC} $line"
+        ((idx++))
+    done <<< "${CRON_LIST}"
+    echo "--------------------------------------------------------"
+    echo ""
+    
+    # 提供删除选项
+    echo -e "${YELLOW}请选择要删除的任务：${NC}"
+    echo -e " ${GRAY}• 输入单个编号：删除指定任务（如：1）${NC}"
+    echo -e " ${GRAY}• 输入多个编号：删除多个任务（如：1 2 3）${NC}"
+    echo -e " ${GRAY}• 输入 'all'：删除所有任务${NC}"
+    echo -e " ${GRAY}• 直接回车：取消操作${NC}"
+    echo ""
+    read -r -p "请输入选择: " DELETE_CHOICE
+    
+    if [[ -z "${DELETE_CHOICE}" ]]; then
+        echo -e "${GRAY}[INFO] 已取消删除操作${NC}"
+        return
+    fi
+    
+    # 处理 'all' 选项
+    if [[ "${DELETE_CHOICE}" == "all" ]] || [[ "${DELETE_CHOICE}" == "ALL" ]]; then
+        read -r -p "确认删除所有 ${#TASKS[@]} 个 CF-IP 定时任务？(y/n): " CONFIRM_ALL
+        if [[ "${CONFIRM_ALL}" == "y" ]] || [[ "${CONFIRM_ALL}" == "Y" ]]; then
+            crontab -l 2>/dev/null | grep -v "cf-ip/core.sh" | crontab -
+            echo -e "${GREEN}[OK] 已删除所有 CF-IP 定时任务${NC}"
+        else
+            echo -e "${GRAY}[INFO] 已取消删除操作${NC}"
+        fi
+        return
+    fi
+    
+    # 解析用户输入的编号（支持空格分隔的多个编号）
+    declare -a SELECTED_INDICES
+    for num in ${DELETE_CHOICE}; do
+        # 验证是否为有效数字
+        if [[ "${num}" =~ ^[0-9]+$ ]] && [[ ${num} -ge 1 ]] && [[ ${num} -lt ${idx} ]]; then
+            SELECTED_INDICES+=("${num}")
+        else
+            echo -e "${RED}[ERROR] 无效的任务编号: ${num}${NC}"
+        fi
+    done
+    
+    if [[ ${#SELECTED_INDICES[@]} -eq 0 ]]; then
+        echo -e "${RED}[ERROR] 未选择任何有效任务${NC}"
+        return
+    fi
+    
+    # 显示将要删除的任务
+    echo ""
+    echo -e "${YELLOW}即将删除以下任务：${NC}"
+    for i in "${SELECTED_INDICES[@]}"; do
+        echo -e " ${RED}[${i}]${NC} ${TASKS[$i]}"
+    done
+    echo ""
+    
+    # 确认删除
+    read -r -p "确认删除以上 ${#SELECTED_INDICES[@]} 个任务？(y/n): " CONFIRM_DELETE
+    if [[ "${CONFIRM_DELETE}" != "y" ]] && [[ "${CONFIRM_DELETE}" != "Y" ]]; then
+        echo -e "${GRAY}[INFO] 已取消删除操作${NC}"
+        return
+    fi
+    
+    # 执行删除：保留未被选中的任务
+    CURRENT_CRON=$(crontab -l 2>/dev/null)
+    NEW_CRON="${CURRENT_CRON}"
+    
+    for i in "${SELECTED_INDICES[@]}"; do
+        # 转义特殊字符用于 grep
+        ESCAPED_TASK=$(echo "${TASKS[$i]}" | sed 's/[.[\*^$()+?{|\\]/\\&/g')
+        NEW_CRON=$(echo "${NEW_CRON}" | grep -v -F "${TASKS[$i]}")
+    done
+    
+    # 更新 crontab
+    echo "${NEW_CRON}" | crontab -
+    
+    echo -e "${GREEN}[OK] 已成功删除 ${#SELECTED_INDICES[@]} 个定时任务${NC}"
 }
 
 # ====================== 【函数：手动执行测速】 ======================
