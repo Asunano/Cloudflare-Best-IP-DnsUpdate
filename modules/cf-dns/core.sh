@@ -242,26 +242,40 @@ rotate_logs() {
     find "$LOG_DIR" -name "cfdns_*.log" -mtime +7 -delete 2>/dev/null
 }
 
-# HTTP GET 请求（带重试、校验与详细提示）
-http_get() {
-    local url="$1"
-    # shellcheck disable=SC2034
-    local expected_hash="$2" # 可选参数
+# ==================== 【通用 HTTP 请求函数】 ====================
+# 【重构】合并 http_get/http_put/http_post 为一个通用函数，消除代码重复
+_http_request() {
+    local method="$1"
+    local url="$2"
+    local data="${3:-}"
     local max_retries=${MAX_RETRIES:-3}
     local retry=0
     
     while [ "$retry" -lt "$max_retries" ]; do
-        if [ $retry -gt 0 ]; then
+        if [ $retry -gt 0 ] && [ "$method" = "GET" ]; then
             log_msg "WARN" "正在重试第 $retry/$max_retries 次..."
             sleep 2
         fi
         
-        local response
-        response=$(curl -s --connect-timeout 10 -X GET "$url" \
-            -H "Authorization: Bearer ${CF_API_TOKEN}" \
-            -H "Content-Type: application/json" \
-            --max-time "$REQUEST_TIMEOUT" \
+        # 构建 curl 参数数组
+        local -a curl_args=(-s -X "$method" "$url"
+            -H "Authorization: Bearer ${CF_API_TOKEN}"
+            -H "Content-Type: application/json"
+            --max-time "$REQUEST_TIMEOUT"
             -w "\n%{http_code}")
+        
+        # GET 请求添加连接超时
+        if [ "$method" = "GET" ]; then
+            curl_args=(--connect-timeout 10 "${curl_args[@]}")
+        fi
+        
+        # PUT/POST 请求添加数据体
+        if [[ -n "$data" ]] && [[ "$method" != "GET" ]]; then
+            curl_args+=(-d "$data")
+        fi
+        
+        local response
+        response=$(curl "${curl_args[@]}")
         
         local http_code
         http_code=$(echo "$response" | tail -n1)
@@ -302,110 +316,19 @@ http_get() {
     return 1
 }
 
+# HTTP GET 请求（带重试）
+http_get() {
+    _http_request "GET" "$1" "${2:-}"
+}
+
 # HTTP PUT 请求（带重试）
 http_put() {
-    local url="$1"
-    local data="$2"
-    local max_retries=${MAX_RETRIES:-3}
-    local retry=0
-    
-    while [ "$retry" -lt "$max_retries" ]; do
-        local response
-        response=$(curl -s -X PUT "$url" \
-            -H "Authorization: Bearer ${CF_API_TOKEN}" \
-            -H "Content-Type: application/json" \
-            -d "$data" \
-            --max-time "$REQUEST_TIMEOUT" \
-            -w "\n%{http_code}")
-        
-        local http_code
-        http_code=$(echo "$response" | tail -n1)
-        local body
-        body=$(echo "$response" | sed '$d')
-        
-        if [ "$http_code" = "200" ]; then
-            echo "$body"
-            return 0
-        elif [ "$http_code" = "429" ]; then
-            local wait_time=$((2 ** retry * 3))
-            if [ "${CF_DEBUG}" = "true" ]; then
-                log "  [WARN] API 速率限制，等待 ${wait_time}秒后重试..."
-            fi
-            sleep $wait_time
-        elif [ "$http_code" = "401" ] || [ "$http_code" = "403" ]; then
-            log "  ${RED}[ERROR]${NC} API 认证失败 (HTTP $http_code)"
-            echo '{"success":false,"errors":[{"message":"Authentication failed"}]}'
-            return 1
-        else
-            retry=$((retry + 1))
-            if [ "$retry" -lt "$max_retries" ]; then
-                local wait_time=$((retry * 2))
-                if [ "${CF_DEBUG}" = "true" ]; then
-                    log "  [WARN] API 请求失败 (HTTP $http_code), ${wait_time}秒后重试 $retry/$max_retries"
-                fi
-                sleep $wait_time
-            fi
-        fi
-    done
-    
-    if [ "${CF_DEBUG}" = "true" ]; then
-        log "  ${RED}[ERROR]${NC} API 请求失败，已达到最大重试次数"
-    fi
-    echo '{"success":false,"errors":[{"message":"Max retries exceeded"}]}'
-    return 1
+    _http_request "PUT" "$1" "$2"
 }
 
 # HTTP POST 请求（带重试）
 http_post() {
-    local url="$1"
-    local data="$2"
-    local max_retries=${MAX_RETRIES:-3}
-    local retry=0
-    
-    while [ "$retry" -lt "$max_retries" ]; do
-        local response
-        response=$(curl -s -X POST "$url" \
-            -H "Authorization: Bearer ${CF_API_TOKEN}" \
-            -H "Content-Type: application/json" \
-            -d "$data" \
-            --max-time "$REQUEST_TIMEOUT" \
-            -w "\n%{http_code}")
-        
-        local http_code
-        http_code=$(echo "$response" | tail -n1)
-        local body
-        body=$(echo "$response" | sed '$d')
-        
-        if [ "$http_code" = "200" ]; then
-            echo "$body"
-            return 0
-        elif [ "$http_code" = "429" ]; then
-            local wait_time=$((2 ** retry * 3))
-            if [ "${CF_DEBUG}" = "true" ]; then
-                log "  [WARN] API 速率限制，等待 ${wait_time}秒后重试..."
-            fi
-            sleep $wait_time
-        elif [ "$http_code" = "401" ] || [ "$http_code" = "403" ]; then
-            log "  ${RED}[ERROR]${NC} API 认证失败 (HTTP $http_code)"
-            echo '{"success":false,"errors":[{"message":"Authentication failed"}]}'
-            return 1
-        else
-            retry=$((retry + 1))
-            if [ "$retry" -lt "$max_retries" ]; then
-                local wait_time=$((retry * 2))
-                if [ "${CF_DEBUG}" = "true" ]; then
-                    log "  [WARN] API 请求失败 (HTTP $http_code), ${wait_time}秒后重试 $retry/$max_retries"
-                fi
-                sleep $wait_time
-            fi
-        fi
-    done
-    
-    if [ "${CF_DEBUG}" = "true" ]; then
-        log "  ${RED}[ERROR]${NC} API 请求失败，已达到最大重试次数"
-    fi
-    echo '{"success":false,"errors":[{"message":"Max retries exceeded"}]}'
-    return 1
+    _http_request "POST" "$1" "$2"
 }
 
 # ==================== API 调用函数 ====================
