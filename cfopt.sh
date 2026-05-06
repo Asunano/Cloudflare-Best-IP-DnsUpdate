@@ -1227,7 +1227,8 @@ uninstall_cfopt() {
 # 等待 3 秒，确保主脚本已完全退出
 sleep 3
 
-# 强制删除整个目录
+# 【安全增强】从 $1 接收 INSTALL_DIR 参数
+# bash 会正确处理带空格或特殊字符的路径（因为调用时使用了双引号）
 INSTALL_DIR="$1"
 LOG_FILE="/tmp/cfopt_cleanup.log"
 
@@ -1288,8 +1289,10 @@ CLEANUP_EOF
         
         # 【关键修复】使用 setsid 确保后台进程独立于当前会话
         # 即使主脚本退出，清理进程也会继续运行
+        # 【安全增强】INSTALL_DIR 作为 $1 传入，bash 会正确处理引号
         if command -v setsid >/dev/null 2>&1; then
             # 优先使用 setsid（创建新会话）
+            # 注意："${INSTALL_DIR}" 被双引号包裹，bash 会将其作为单个参数传递
             setsid bash "${cleanup_script}" "${INSTALL_DIR}" >> /tmp/cfopt_cleanup.log 2>&1 &
         else
             # 备用方案：使用 nohup + disown
