@@ -1074,34 +1074,8 @@ show_panel_commands() {
 }
 
 # ====================== 【安装全局命令】 ======================
-install_system_cmd() {
-    if [[ "${EUID}" -eq 0 ]]; then
-        # root 用户，直接创建链接
-        ln -sf "${INSTALL_DIR}/cfopt.sh" "${SYSTEM_CMD_PATH}" 2>/dev/null
-        chmod +x "${SYSTEM_CMD_PATH}" 2>/dev/null
-        if [[ -x "${SYSTEM_CMD_PATH}" ]]; then
-            echo -e "${GREEN}[OK] 全局命令已安装: ${SYSTEM_CMD_PATH}${NC}"
-        else
-            echo -e "${YELLOW}[WARN] 全局命令安装失败，请手动执行: ln -sf ${INSTALL_DIR}/cfopt.sh ${SYSTEM_CMD_PATH}${NC}"
-        fi
-    elif command -v sudo >/dev/null 2>&1; then
-        # 非 root 用户，尝试使用 sudo
-        echo -e "${CYAN}[INFO] 正在尝试安装全局命令 (需要 sudo 权限)...${NC}"
-        if sudo ln -sf "${INSTALL_DIR}/cfopt.sh" "${SYSTEM_CMD_PATH}" 2>/dev/null && \
-           sudo chmod +x "${SYSTEM_CMD_PATH}" 2>/dev/null; then
-            if [[ -x "${SYSTEM_CMD_PATH}" ]]; then
-                echo -e "${GREEN}[OK] 全局命令已安装: ${SYSTEM_CMD_PATH}${NC}"
-            else
-                echo -e "${YELLOW}[WARN] 全局命令安装失败${NC}"
-            fi
-        else
-            echo -e "${YELLOW}[WARN] 无法获取 sudo 权限，跳过全局命令安装${NC}"
-            echo -e "${YELLOW}[提示] 您可以手动执行: sudo ln -sf ${INSTALL_DIR}/cfopt.sh ${SYSTEM_CMD_PATH}${NC}"
-        fi
-    else
-        echo -e "${YELLOW}[WARN] 未找到 sudo，跳过全局命令安装${NC}"
-    fi
-}
+# 【修复】已删除重复的 install_system_cmd 函数定义（原第1077-1103行）
+# 保留第264-321行的完整版（包含交互式确认、智能检测）
 
 # --- 一键跑路逻辑 (卸载清理) ---
 uninstall_cfopt() {
