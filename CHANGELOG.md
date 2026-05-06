@@ -12,6 +12,45 @@
 ### Added - 新增
 
 #### 功能增强 (Features)
+- **为 DNS 批量操作添加进度反馈** (2026-05-06)
+  - 文件：
+    - `modules/cf-dns/core.sh`（单线路模式）
+    - `modules/dnspod-dns/core.sh`（单线路和多线路模式）
+  - 问题：DNS 更新时如果有大量记录需要创建/删除，用户看不到进度
+  - 影响：
+    - ❌ **无反馈**：长时间操作时用户不知道是否在运行
+    - ❌ **焦虑感**：不确定是否需要中断或等待
+    - ❌ **难以估算**：无法判断还需要多久完成
+  - 修复：在批量操作中添加实时进度显示
+    ```bash
+    # cf-dns/core.sh - 更新记录
+    local total=${#ips_to_update[@]}
+    for ((i=0; i<total; i++)); do
+        printf "\r  [%d/%d] 正在更新 %s..." "$((i+1))" "$total" "$target_ip"
+        update_dns_record ...
+    done
+    echo ""  # 换行
+    
+    # dnspod-dns/core.sh - 多线路模式
+    for line in "${ISP_LINES[@]}"; do
+        for ((i=0; i<${#ip_addresses[@]}; i++)); do
+            printf "\r    [%d/%d] 正在处理 %s..." "$((i+1))" "${#ip_addresses[@]}" "$new_ip"
+            modify_record_by_line ...
+        done
+        echo ""  # 换行
+    done
+    ```
+  - 技术细节：
+    - `\r`：回车符，回到行首，实现原地更新
+    - `[当前/总数]`：清晰显示进度比例
+    - `echo ""`：循环结束后换行，避免覆盖后续输出
+    - 错误时换行：失败信息单独一行，不被覆盖
+  - 效果：
+    - ✅ **实时反馈**：用户可以看到当前处理到哪条记录
+    - ✅ **进度可视化**：[3/10] 直观显示完成比例
+    - ✅ **减少焦虑**：明确知道程序在正常运行
+    - ✅ **专业体验**：类似专业工具的进度显示
+
 - **添加执行历史记录** (2026-05-06)
   - 文件：
     - `modules/cf-ip/core.sh`（测速历史）
