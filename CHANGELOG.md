@@ -127,13 +127,17 @@
     - 代码质量：始终选择最优算法
 
 - **修复版本号变量未定义** (2026-05-06)
-  - 文件：`modules/cf-dns/core.sh` 第556行
+  - 文件：
+    - `modules/cf-dns/core.sh` 第556行
+    - `modules/cf-dns/setup.sh` 第145行
+    - `modules/dnspod-dns/setup.sh` 第245行
   - 问题：显示时使用 `${VERSION}`，但该变量从未定义（实际定义为 `SCRIPT_VERSION`）
   - 影响：界面显示为 `Cloudflare-Best-IP-DnsUpdate v`（版本号为空）
   - 修复：将 `${VERSION}` 改为 `${SCRIPT_VERSION}`
   - 效果：
     - ✅ 正确显示版本号：`Cloudflare-Best-IP-DnsUpdate v0.1`
-    - ✅ 保持与其他模块一致（cf-ip/core.sh 也使用 SCRIPT_VERSION）
+    - ✅ 保持与其他模块一致（所有模块都使用 SCRIPT_VERSION）
+    - ✅ 提升用户体验：信息完整清晰
 
 - **修复变量作用域混淆** (2026-05-06)
   - 文件：`cfopt.sh` 第358-364行
