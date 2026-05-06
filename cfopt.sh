@@ -784,6 +784,9 @@ show_main_menu() {
         source "${STATUS_CONF}"
     fi
     
+    # 【修复】确保 SCHEDULER_ENABLED 已定义（status.conf 可能不包含此变量）
+    SCHEDULER_ENABLED="${SCHEDULER_ENABLED:-false}"
+    
     # 【新增】检测并自动下载 cfst（如果缺失）
     local cfst_bin="${INSTALL_DIR}/assets/cfst/cfst"
     if [[ ! -f "${cfst_bin}" ]]; then
@@ -862,7 +865,10 @@ show_main_menu() {
         input_device="/dev/stdin"
     fi
 
-    read -r -p "请选择功能 [0-7, 9]: " choice < "${input_device}"
+    read -r -p "请选择功能 [0-7, 9]: " choice < "${input_device}" || true
+    
+    # 【修复】如果 read 失败（非 TTY），choice 可能未赋值，设置默认值
+    choice="${choice:-0}"
 
     case "${choice}" in
         1)
