@@ -217,19 +217,13 @@ fi
 # ==================== 【进程锁管理】 ====================
 LOCK_FILE="${OUTPUT_DIR}/.lock_${LINE_TAG}"
 acquire_lock() {
-    if [[ -f "${LOCK_FILE}" ]]; then
-        local pid
-        pid="$(cat "${LOCK_FILE}" 2>/dev/null)"
-        if [[ -n "${pid}" ]] && kill -0 "${pid}" 2>/dev/null; then
-            echo -e "${RED}[ERROR] ${LINE_TAG} 线路测速任务已在运行 (PID: ${pid})。${NC}"
-            exit 1
-        else
-            rm -f "${LOCK_FILE}"
-        fi
+    # 【安全修复】使用 flock 避免 TOCTOU 竞态条件
+    exec 9>"${LOCK_FILE}"
+    if ! flock -n 9; then
+        echo -e "${RED}[ERROR] ${LINE_TAG} 线路测速任务已在运行，无法获取锁。${NC}"
+        exit 1
     fi
-    echo $$ > "${LOCK_FILE}"
-    # 【修复】使用双引号，确保变量正确解析
-    trap 'rm -f "'"${LOCK_FILE}"'"' EXIT INT TERM HUP
+    # 锁会在脚本退出时自动释放（fd 9 关闭）
 }
 
 # 获取锁以确保同一线路不会并发执行

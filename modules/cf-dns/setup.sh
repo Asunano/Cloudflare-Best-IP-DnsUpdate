@@ -27,24 +27,17 @@ MENU_BORDER_BOTTOM="+-----------------------------------------------------------
 
 # 检查并获取锁
 acquire_lock() {
-    if [ -f "$LOCK_FILE" ]; then
-        local lock_pid
-        lock_pid=$(cat "$LOCK_FILE" 2>/dev/null)
-        if [ -n "$lock_pid" ] && kill -0 "$lock_pid" 2>/dev/null; then
-            echo -e "${RED}[ERROR] 另一个实例正在运行 (PID: ${lock_pid})${NC}"
-            echo -e "${YELLOW}提示: 如果确定没有运行，请删除 ${LOCK_FILE}${NC}"
-            exit 1
-        else
-            # 旧进程已不存在，清理锁文件
-            rm -f "$LOCK_FILE"
-        fi
+    # 【安全修复】使用 flock 避免 TOCTOU 竞态条件
+    exec 9>"$LOCK_FILE"
+    if ! flock -n 9; then
+        echo -e "${RED}[ERROR] 另一个实例正在运行，无法获取锁${NC}"
+        echo -e "${YELLOW}提示: 如果确定没有运行，请删除 ${LOCK_FILE}${NC}"
+        exit 1
     fi
-    
-    echo $$ > "$LOCK_FILE"
-    trap 'rm -f "$LOCK_FILE"' EXIT INT TERM
+    # 锁会在脚本退出时自动释放（fd 9 关闭）
 }
 
-# 释放锁
+# 释放锁（flock 会自动释放，此函数保留用于兼容性）
 release_lock() {
     rm -f "$LOCK_FILE"
 }

@@ -47,24 +47,16 @@ ROOT_DIR="$(cd "$SCRIPT_DIR/../.." && pwd)"
 # ====================== 【进程锁管理】 ======================
 LOCK_FILE="${ROOT_DIR}/modules/cf-ip/.menu.lock"
 acquire_lock() {
-    if [[ -f "${LOCK_FILE}" ]]; then
-        local pid
-        pid="$(cat "${LOCK_FILE}" 2>/dev/null || echo "")"
-        # 校验 PID 是否有效且进程正在运行
-        if [[ -n "${pid}" ]] && [[ "${pid}" =~ ^[0-9]+$ ]] && kill -0 "${pid}" 2>/dev/null; then
-            echo -e "${RED}[ERROR] 检测到另一个 CF-IP 管理进程正在运行 (PID: ${pid})。${NC}"
-            echo -e "${CYAN}提示:${NC} 如果确认没有进程在运行，请手动删除: ${LOCK_FILE}"
-            echo ""
-            read -r -p "按回车键返回主菜单..."
-            exit 1
-        else
-            echo -e "${YELLOW}[WARN] 发现残留锁文件，正在清理...${NC}"
-            rm -f "${LOCK_FILE}"
-        fi
+    # 【安全修复】使用 flock 避免 TOCTOU 竞态条件
+    exec 9>"${LOCK_FILE}"
+    if ! flock -n 9; then
+        echo -e "${RED}[ERROR] 检测到另一个 CF-IP 管理进程正在运行。${NC}"
+        echo -e "${CYAN}提示:${NC} 如果确认没有进程在运行，请手动删除: ${LOCK_FILE}"
+        echo ""
+        read -r -p "按回车键返回主菜单..."
+        exit 1
     fi
-    # 写入当前 PID 并设置退出时自动清理
-    echo $$ > "${LOCK_FILE}"
-    trap 'rm -f "${LOCK_FILE}"' EXIT INT TERM HUP
+    # 锁会在脚本退出时自动释放（fd 9 关闭）
 }
 
 # ====================== 【入口权限校验】 ======================
