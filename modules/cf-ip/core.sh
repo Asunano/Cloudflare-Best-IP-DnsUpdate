@@ -352,14 +352,13 @@ parse_and_display_progress() {
             # 提取 "可用:" 后面的所有数字
             available_count=$(echo "${ping_line}" | grep -oP '可用:\s*\K[0-9]+')
             total_count=$(echo "${ping_line}" | grep -oP '可用:\s*[0-9]+\s*/\s*\K[0-9]+')
-                
-                # 【修复】严格校验：非空 + 纯数字 + 总数大于 0
-                if [[ -n "${available_count}" ]] && [[ -n "${total_count}" ]] && \
-                   [[ "${available_count}" =~ ^[0-9]+$ ]] && [[ "${total_count}" =~ ^[0-9]+$ ]] && \
-                   [[ "${total_count}" -gt 0 ]]; then
-                    display_progress "${available_count}" "${total_count}"
-                    return 0
-                fi
+            
+            # 【修复】严格校验：非空 + 纯数字 + 总数大于 0
+            if [[ -n "${available_count}" ]] && [[ -n "${total_count}" ]] && \
+               [[ "${available_count}" =~ ^[0-9]+$ ]] && [[ "${total_count}" =~ ^[0-9]+$ ]] && \
+               [[ "${total_count}" -gt 0 ]]; then
+                display_progress "${available_count}" "${total_count}"
+                return 0
             fi
         fi
         # 修复：默认提示也固定长度，防止字符残留
@@ -377,14 +376,13 @@ parse_and_display_progress() {
             # 提取第一个数字（当前值）和第二个数字（总值）
             download_current=$(echo "${download_line}" | grep -oP '^\s*\K[0-9]+(?=\s*/)')
             download_total=$(echo "${download_line}" | grep -oP '\d+\s*/\s*\K\d+')
-                
-                # 【修复】严格校验：非空 + 纯数字 + 总数大于 0
-                if [[ -n "${download_current}" ]] && [[ -n "${download_total}" ]] && \
-                   [[ "${download_current}" =~ ^[0-9]+$ ]] && [[ "${download_total}" =~ ^[0-9]+$ ]] && \
-                   [[ "${download_total}" -gt 0 ]]; then
-                    display_progress "${download_current}" "${download_total}"
-                    return 0
-                fi
+            
+            # 【修复】严格校验：非空 + 纯数字 + 总数大于 0
+            if [[ -n "${download_current}" ]] && [[ -n "${download_total}" ]] && \
+               [[ "${download_current}" =~ ^[0-9]+$ ]] && [[ "${download_total}" =~ ^[0-9]+$ ]] && \
+               [[ "${download_total}" -gt 0 ]]; then
+                display_progress "${download_current}" "${download_total}"
+                return 0
             fi
         fi
         # 修复：默认提示也固定长度，防止字符残留
