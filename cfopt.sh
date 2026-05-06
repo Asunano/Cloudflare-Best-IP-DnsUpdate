@@ -925,7 +925,10 @@ show_main_menu() {
     case "${choice}" in
         1)
             export CF_OPT_ENTRY="main_menu"
-            bash "${INSTALL_DIR}/modules/quick-deploy/setup.sh" || true
+            if ! bash "${INSTALL_DIR}/modules/quick-deploy/setup.sh"; then
+                echo -e "${RED}[ERROR] 快速部署向导执行失败${NC}"
+                read -r -p "按回车键返回主菜单..." < /dev/tty 2>/dev/null || true
+            fi
             ;;
         2)
             export CF_OPT_ENTRY="main_menu"
