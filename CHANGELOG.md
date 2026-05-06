@@ -12,6 +12,66 @@
 ### Added - 新增
 
 #### 功能增强 (Features)
+- **添加执行历史记录** (2026-05-06)
+  - 文件：
+    - `modules/cf-ip/core.sh`（测速历史）
+    - `modules/cf-dns/core.sh`（DNS 更新历史）
+    - `modules/dnspod-dns/core.sh`（DNSPod 更新历史）
+  - 问题：测速和 DNS 更新结果只保存在 CSV 文件中，没有历史追踪
+  - 影响：
+    - ❌ **无法追溯**：不知道上次测速是什么时候
+    - ❌ **无趋势分析**：无法判断 IP 质量是在变好还是变差
+    - ❌ **缺少审计**：DNS 更新是否成功无法长期追踪
+  - 修复：实现 JSONL 格式的执行历史记录
+    ```bash
+    # conf/history.jsonl（每行一条记录）
+    {"time":"2026-05-06T09:30:00+08:00","action":"speed_test","domain":"example.com","ips_found":15,"best_ip":"1.2.3.4","latency":45,"speed":12.5}
+    {"time":"2026-05-06T09:31:00+08:00","action":"dns_update","domain":"example.com","records_updated":2,"records_created":0,"records_deleted":0}
+    {"time":"2026-05-06T09:32:00+08:00","action":"dnspod_update","domain":"example.cn","records_updated":1,"records_created":0,"records_skipped":2}
+    ```
+  - 实现细节：
+    ```bash
+    # cf-ip/core.sh - 测速历史
+    record_speed_test_history() {
+        local domain="$1"
+        local ips_found="$2"
+        local best_ip="$3"
+        local latency="$4"
+        local speed="$5"
+        
+        printf '{"time":"%s","action":"speed_test","domain":"%s",...}' \
+            "$timestamp" "$domain" ... >> "${ROOT_DIR}/conf/history.jsonl"
+    }
+    
+    # cf-dns/core.sh - DNS 更新历史
+    record_dns_update_history() {
+        local domain="$1"
+        local records_updated="$2"
+        local records_created="$3"
+        local records_deleted="$4"
+        
+        printf '{"time":"%s","action":"dns_update","domain":"%s",...}' \
+            "$timestamp" "$domain" ... >> "${ROOT_DIR}/conf/history.jsonl"
+    }
+    
+    # dnspod-dns/core.sh - DNSPod 更新历史
+    record_dnspod_update_history() {
+        local domain="$1"
+        local records_updated="$2"
+        local records_created="$3"
+        local records_skipped="$4"
+        
+        printf '{"time":"%s","action":"dnspod_update","domain":"%s",...}' \
+            "$timestamp" "$domain" ... >> "${ROOT_DIR}/conf/history.jsonl"
+    }
+    ```
+  - 效果：
+    - ✅ **完整追溯**：所有操作都有时间戳记录
+    - ✅ **趋势分析**：可分析 IP 质量和 DNS 更新成功率的变化趋势
+    - ✅ **易于解析**：JSONL 格式便于 jq/grep/awk 处理
+    - ✅ **轻量高效**：追加写入，无需锁机制
+    - ✅ **自动创建**：首次运行时自动创建目录和文件
+
 - **实现统一结构化日志系统** (2026-05-06)
   - 文件：
     - `cfopt.sh`
