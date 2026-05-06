@@ -158,6 +158,42 @@
     - ✅ 提高可读性：一眼看出函数的所有局部变量
     - ✅ 符合最佳实践：遵循 Shell 编程规范
 
+- **修复目录切换恢复不完整** (2026-05-06)
+  - 文件：`modules/cf-ip/core.sh`
+  - 问题：使用 `cd` 切换目录后，如果中间 `exit 1`，工作目录不会恢复
+  - 影响：
+    - ❌ 上层脚本的工作目录被改变
+    - ❌ 可能导致后续命令在错误目录执行
+    - ❌ 重试逻辑中再次 `cd`，退出时也无法恢复
+  - 修复：使用 subshell `( )` 隔离目录切换
+    ```bash
+    # 修复前：手动保存和恢复目录
+    ORIGINAL_DIR="$(pwd)"
+    cd "$(dirname "$CFST_BIN")" || exit 1  # ❌ 如果 exit，无法恢复
+    
+    # ... 测速逻辑 ...
+    
+    cd "${ORIGINAL_DIR}" || exit 1  # ⚠️ 只有正常执行到这里才恢复
+    
+    # 修复后：使用 subshell 自动恢复
+    (
+        cd "$(dirname "$CFST_BIN")" || exit 1
+        
+        # ... 测速逻辑 ...
+        # 无论何时 exit，subshell 退出时自动恢复父 shell 的目录
+    )
+    ```
+  - 技术原理：
+    - Subshell 是父 shell 的副本，有独立的工作目录
+    - Subshell 内的 `cd` 不影响父 shell
+    - Subshell 退出时，父 shell 保持原状
+    - 无需手动保存和恢复目录
+  - 优势：
+    - ✅ 绝对安全：任何退出路径都自动恢复
+    - ✅ 代码简洁：无需 ORIGINAL_DIR 变量
+    - ✅ 零维护：不需要担心遗漏恢复逻辑
+    - ✅ 符合 Unix 哲学：利用子进程隔离副作用
+
 #### 安全性修复 (Security)
 - **修复 API Token 环境变量泄露** (2026-05-06)
   - 问题：`export CF_API_TOKEN` 和 `export SECRETKEY` 将敏感信息导出为环境变量
