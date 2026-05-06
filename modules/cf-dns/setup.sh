@@ -967,7 +967,9 @@ view_config() {
         echo "  IP_FILE      = ${ip_file:-${RED}未设置${NC}}"
         if [ -n "$ip_file" ] && [ -f "$ip_file" ]; then
             local ip_count
-            ip_count=$(grep -c -v '^#' "$ip_file" | grep -c -v '^$')
+            # 【修复】使用 grep -v 过滤后 wc -l 计数，避免管道逻辑错误
+            ip_count=$(grep -v '^\s*#' "$ip_file" | grep -v '^\s*$' | wc -l)
+            ip_count="${ip_count// /}"  # 去除 wc -l 可能的前导空格
             echo "  当前 IP 数量 = ${ip_count} 个"
         else
             echo "  当前 IP 数量 = 文件不存在"
@@ -1143,7 +1145,9 @@ manage_ip_content() {
             clear
             if [ -f "$ip_file" ]; then
                 local old_count
-                old_count=$(grep -c -v '^\s*#' "$ip_file" | grep -c -v '^\s*$')
+                # 【修复】使用 grep -v 过滤后 wc -l 计数，避免管道逻辑错误
+                old_count=$(grep -v '^\s*#' "$ip_file" | grep -v '^\s*$' | wc -l)
+                old_count="${old_count// /}"  # 去除 wc -l 可能的前导空格
                 echo ""
                 echo -e "${CYAN}检测到现有文件 (${old_count} 个 IP)${NC}"
                 echo ""
@@ -1232,7 +1236,9 @@ manage_ip_content() {
                 chmod 644 "$ip_file"
                 
                 local new_count
-                new_count=$(grep -c -v '^\s*#' "$ip_file" | grep -c -v '^\s*$')
+                # 【修复】使用 grep -v 过滤后 wc -l 计数，避免管道逻辑错误
+                new_count=$(grep -v '^\s*#' "$ip_file" | grep -v '^\s*$' | wc -l)
+                new_count="${new_count// /}"  # 去除 wc -l 可能的前导空格
                 echo ""
                 echo -e "${GREEN}[OK] 已保存 ${valid_count} 个有效 IP${NC}"
                 echo -e "   当前总 IP 数: ${new_count}"
@@ -1355,7 +1361,9 @@ ${ip}"
             
             local deleted_count=${#lines_to_delete[@]}
             local remaining_count
-            remaining_count=$(grep -c -v '^\s*#' "$ip_file" | grep -c -v '^\s*$')
+            # 【修复】使用 grep -v 过滤后 wc -l 计数，避免管道逻辑错误
+            remaining_count=$(grep -v '^\s*#' "$ip_file" | grep -v '^\s*$' | wc -l)
+            remaining_count="${remaining_count// /}"  # 去除 wc -l 可能的前导空格
             echo -e "${GREEN}[OK] 已删除 ${deleted_count} 个 IP,剩余 ${remaining_count} 个${NC}"
             ;;
         0)
