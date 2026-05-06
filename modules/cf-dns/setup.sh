@@ -670,7 +670,8 @@ full_config_wizard() {
     CONFIG_FILE="${config_dir}/${full_domain}.json"
     
     # 按域名独立存储 IP 列表和测速结果
-    local ip_file="${ROOT_DIR}/assets/data/cf-dns/${full_domain}.txt"
+    # 【功能增强】使用 .iplist 标准格式（推荐），同时兼容 .txt
+    local ip_file="${ROOT_DIR}/assets/data/cf-dns/${full_domain}.iplist"
     local result_file="${ROOT_DIR}/assets/data/cf-ip/result_${full_domain}.csv"
     
     # 使用 jq 直接生成配置
