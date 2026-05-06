@@ -138,8 +138,35 @@ if ! command -v jq &> /dev/null; then
     exit 1
 fi
 
-# 从 JSON 读取配置
-export ENABLED=$(jq -r '.enabled // false' "$CONFIG_FILE")
+# ==================== 【性能优化】一次性读取配置文件 ====================
+# 从 JSON 读取配置（【优化】只调用 1 次 jq，避免 20+ 次 fork + 文件 I/O）
+declare -A CFG
+while IFS='=' read -r key value; do
+    [[ -n "$key" ]] && CFG["$key"]="$value"
+done < <(jq -r '
+    [
+        "enabled=\(.enabled // false)",
+        "api_id=\(.api.id // \"\")",
+        "api_token=\(.api.token // \"\")",
+        "timeout=\(.api.timeout // 10)",
+        "max_retries=\(.api.max_retries // 5)",
+        "domain=\(.dns.domain // \"\")",
+        "sub_domain=\(.dns.sub_domain // \"www\")",
+        "ttl=\(.dns.ttl // 600)",
+        "ip_file=\(.ip_source.file_path // \"\")",
+        "mode=\(.dns.mode // \"single\")",
+        "max_ips_per_record=\(.dns.max_ips_per_record // 2)",
+        "subdomain_strategy=\(.dns.subdomain_strategy // \"separate\")",
+        "sub_domain_unified=\(.dns.sub_domain_unified // \"dns\")",
+        "sub_domain_default=\(.dns.sub_domains.default // \"default\")",
+        "sub_domain_unicom=\(.dns.sub_domains.unicom // \"unicom\")",
+        "sub_domain_mobile=\(.dns.sub_domains.mobile // \"mobile\")",
+        "sub_domain_telecom=\(.dns.sub_domains.telecom // \"telecom\")",
+        "isp_lines=\(.dns.isp_lines // \"默认\")"
+    ] | .[]
+' "$CONFIG_FILE")
+
+export ENABLED="${CFG[enabled]}"
 
 # 检查启用状态
 if [[ "${ENABLED}" != "true" ]]; then
@@ -148,35 +175,35 @@ if [[ "${ENABLED}" != "true" ]]; then
 fi
 
 # API 配置（【安全修复】不要 export，避免通过 /proc/<pid>/environ 泄露）
-SECRETID=$(jq -r '.api.id // empty' "$CONFIG_FILE")
-SECRETKEY=$(jq -r '.api.token // empty' "$CONFIG_FILE")
-REQUEST_TIMEOUT=$(jq -r '.api.timeout // 10' "$CONFIG_FILE")
-MAX_RETRIES=$(jq -r '.api.max_retries // 5' "$CONFIG_FILE")
+SECRETID="${CFG[api_id]}"
+SECRETKEY="${CFG[api_token]}"
+REQUEST_TIMEOUT="${CFG[timeout]}"
+MAX_RETRIES="${CFG[max_retries]}"
 
 # DNS 配置
-export DOMAIN=$(jq -r '.dns.domain // empty' "$CONFIG_FILE")
-export SUB_DOMAIN=$(jq -r '.dns.sub_domain // "www"' "$CONFIG_FILE")
-export TTL=$(jq -r '.dns.ttl // 600' "$CONFIG_FILE")
+export DOMAIN="${CFG[domain]}"
+export SUB_DOMAIN="${CFG[sub_domain]}"
+export TTL="${CFG[ttl]}"
 
 # IP 源配置
-export IP_FILE=$(jq -r '.ip_source.file_path // empty' "$CONFIG_FILE")
+export IP_FILE="${CFG[ip_file]}"
 
 # 多线路模式配置（mode 字段已移至 dns 对象内）
-export MODE=$(jq -r '.dns.mode // "single"' "$CONFIG_FILE")
-export MAX_IPS_PER_RECORD=$(jq -r '.dns.max_ips_per_record // 2' "$CONFIG_FILE")
-export SUBDOMAIN_STRATEGY=$(jq -r '.dns.subdomain_strategy // "separate"' "$CONFIG_FILE")
+export MODE="${CFG[mode]}"
+export MAX_IPS_PER_RECORD="${CFG[max_ips_per_record]}"
+export SUBDOMAIN_STRATEGY="${CFG[subdomain_strategy]}"
 
 # 统一模式子域名
-export SUB_DOMAIN_UNIFIED=$(jq -r '.dns.sub_domain_unified // "dns"' "$CONFIG_FILE")
+export SUB_DOMAIN_UNIFIED="${CFG[sub_domain_unified]}"
 
 # 分离模式子域名
-export SUB_DOMAIN_DEFAULT=$(jq -r '.dns.sub_domains.default // "default"' "$CONFIG_FILE")
-export SUB_DOMAIN_UNICOM=$(jq -r '.dns.sub_domains.unicom // "unicom"' "$CONFIG_FILE")
-export SUB_DOMAIN_MOBILE=$(jq -r '.dns.sub_domains.mobile // "mobile"' "$CONFIG_FILE")
-export SUB_DOMAIN_TELECOM=$(jq -r '.dns.sub_domains.telecom // "telecom"' "$CONFIG_FILE")
+export SUB_DOMAIN_DEFAULT="${CFG[sub_domain_default]}"
+export SUB_DOMAIN_UNICOM="${CFG[sub_domain_unicom]}"
+export SUB_DOMAIN_MOBILE="${CFG[sub_domain_mobile]}"
+export SUB_DOMAIN_TELECOM="${CFG[sub_domain_telecom]}"
 
 # ISP 线路列表（空格分隔的字符串）
-export ISP_LINES=$(jq -r '.dns.isp_lines // "默认"' "$CONFIG_FILE")
+export ISP_LINES="${CFG[isp_lines]}"
 
 # 验证必要配置
 if [[ -z "${DOMAIN}" ]] || [[ -z "${SECRETID}" ]] || [[ -z "${SECRETKEY}" ]]; then

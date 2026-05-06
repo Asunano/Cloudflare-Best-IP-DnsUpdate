@@ -130,17 +130,37 @@ if [ ! -f "$CONFIG_FILE" ]; then
     fi
 fi
 
-# 从 JSON 读取配置（【安全修复】不要 export，避免通过 /proc/<pid>/environ 泄露）
-ENABLED=$(jq -r '.enabled // false' "$CONFIG_FILE")
-CF_API_TOKEN=$(jq -r '.api.token // empty' "$CONFIG_FILE")
-CF_ZONE_ID=$(jq -r '.api.zone_id // empty' "$CONFIG_FILE")
-CF_DNS_NAME=$(jq -r '.dns.record_name // empty' "$CONFIG_FILE")
-CF_DOMAIN=$(jq -r '.dns.domain // empty' "$CONFIG_FILE")
-IP_FILE=$(jq -r '.ip_source.file_path // empty' "$CONFIG_FILE")
-MAX_IPS_PER_RECORD=$(jq -r '.dns.max_ips_per_record // 2' "$CONFIG_FILE")
-REQUEST_TIMEOUT=$(jq -r '.api.timeout // 10' "$CONFIG_FILE")
-MAX_RETRIES=$(jq -r '.api.max_retries // 5' "$CONFIG_FILE")
-LOG_DIR=$(jq -r '.logging.log_dir // empty' "$CONFIG_FILE")
+# ==================== 【性能优化】一次性读取配置文件 ====================
+# 从 JSON 读取配置（【优化】只调用 1 次 jq，避免 10 次 fork + 文件 I/O）
+declare -A CFG
+while IFS='=' read -r key value; do
+    [[ -n "$key" ]] && CFG["$key"]="$value"
+done < <(jq -r '
+    [
+        "enabled=\(.enabled // false)",
+        "api_token=\(.api.token // \"\")",
+        "zone_id=\(.api.zone_id // \"\")",
+        "dns_name=\(.dns.record_name // \"\")",
+        "domain=\(.dns.domain // \"\")",
+        "ip_file=\(.ip_source.file_path // \"\")",
+        "max_ips_per_record=\(.dns.max_ips_per_record // 2)",
+        "timeout=\(.api.timeout // 10)",
+        "max_retries=\(.api.max_retries // 5)",
+        "log_dir=\(.logging.log_dir // \"\")"
+    ] | .[]
+' "$CONFIG_FILE")
+
+# 导出配置变量（【安全修复】不要 export，避免通过 /proc/<pid>/environ 泄露）
+ENABLED="${CFG[enabled]}"
+CF_API_TOKEN="${CFG[api_token]}"
+CF_ZONE_ID="${CFG[zone_id]}"
+CF_DNS_NAME="${CFG[dns_name]}"
+CF_DOMAIN="${CFG[domain]}"
+IP_FILE="${CFG[ip_file]}"
+MAX_IPS_PER_RECORD="${CFG[max_ips_per_record]}"
+REQUEST_TIMEOUT="${CFG[timeout]}"
+MAX_RETRIES="${CFG[max_retries]}"
+LOG_DIR="${CFG[log_dir]}"
 
 # 检查启用状态
 if [ "${ENABLED:-false}" != "true" ]; then

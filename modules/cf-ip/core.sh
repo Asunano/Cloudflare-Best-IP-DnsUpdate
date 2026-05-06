@@ -120,27 +120,57 @@ if [[ ! -f "${CONFIG_FILE}" ]]; then
     fi
 fi
 
-# 从 JSON 读取配置
-export CFST_DIR=$(jq -r '.cfst.directory // empty' "$CONFIG_FILE")
-export TAKE_IP_NUM=$(jq -r '.speed_test.take_ip_num // 5' "$CONFIG_FILE")
-export CFST_THREADS=$(jq -r '.cfst.threads // 200' "$CONFIG_FILE")
-export CFST_COLO=$(jq -r '.cfst.colo // "HKG,NRT"' "$CONFIG_FILE")
-export CFST_PING_TIMES=$(jq -r '.cfst.ping_times // 4' "$CONFIG_FILE")
-export CFST_DOWNLOAD_COUNT=$(jq -r '.cfst.download_count // 10' "$CONFIG_FILE")
-export CFST_DOWNLOAD_TIME=$(jq -r '.cfst.download_time // 10' "$CONFIG_FILE")
-export CFST_PORT=$(jq -r '.cfst.port // 443' "$CONFIG_FILE")
-export CFST_URL=$(jq -r '.cfst.url // "https://cf-ns.com/cdn-cgi/trace"' "$CONFIG_FILE")
-export CFST_HTTPING=$(jq -r '.cfst.httping // false' "$CONFIG_FILE")
-export CFST_LATENCY_MAX=$(jq -r '.cfst.latency_max // 9999' "$CONFIG_FILE")
-export CFST_PACKET_LOSS_MAX=$(jq -r '.cfst.packet_loss_max // 100' "$CONFIG_FILE")
-export CFST_SPEED_MIN=$(jq -r '.cfst.speed_min // 0' "$CONFIG_FILE")
-export CFST_SHOW_COUNT=$(jq -r '.cfst.show_count // 20' "$CONFIG_FILE")
-export CFST_IP_FILE=$(jq -r '.cfst.ip_file // empty' "$CONFIG_FILE")
-export CFST_DISABLE_DOWNLOAD=$(jq -r '.cfst.disable_download // false' "$CONFIG_FILE")
-export CFST_ALL_IP=$(jq -r '.cfst.all_ip // false' "$CONFIG_FILE")
-export OUTPUT_HTML=$(jq -r '.speed_test.output_html // true' "$CONFIG_FILE")
-export MAX_RETRY=$(jq -r '.speed_test.max_retry // 3' "$CONFIG_FILE")
-export ENABLE_LOG=$(jq -r '.speed_test.enable_log // true' "$CONFIG_FILE")
+# ==================== 【性能优化】一次性读取配置文件 ====================
+# 从 JSON 读取配置（【优化】只调用 1 次 jq，避免 20 次 fork + 文件 I/O）
+declare -A CFG
+while IFS='=' read -r key value; do
+    [[ -n "$key" ]] && CFG["$key"]="$value"
+done < <(jq -r '
+    [
+        "cfst_dir=\(.cfst.directory // \"\")",
+        "take_ip_num=\(.speed_test.take_ip_num // 5)",
+        "cfst_threads=\(.cfst.threads // 200)",
+        "cfst_colo=\(.cfst.colo // \"HKG,NRT\")",
+        "cfst_ping_times=\(.cfst.ping_times // 4)",
+        "cfst_download_count=\(.cfst.download_count // 10)",
+        "cfst_download_time=\(.cfst.download_time // 10)",
+        "cfst_port=\(.cfst.port // 443)",
+        "cfst_url=\(.cfst.url // \"https://cf-ns.com/cdn-cgi/trace\")",
+        "cfst_httping=\(.cfst.httping // false)",
+        "cfst_latency_max=\(.cfst.latency_max // 9999)",
+        "cfst_packet_loss_max=\(.cfst.packet_loss_max // 100)",
+        "cfst_speed_min=\(.cfst.speed_min // 0)",
+        "cfst_show_count=\(.cfst.show_count // 20)",
+        "cfst_ip_file=\(.cfst.ip_file // \"\")",
+        "cfst_disable_download=\(.cfst.disable_download // false)",
+        "cfst_all_ip=\(.cfst.all_ip // false)",
+        "output_html=\(.speed_test.output_html // true)",
+        "max_retry=\(.speed_test.max_retry // 3)",
+        "enable_log=\(.speed_test.enable_log // true)"
+    ] | .[]
+' "$CONFIG_FILE")
+
+# 导出配置变量（保持向后兼容）
+export CFST_DIR="${CFG[cfst_dir]}"
+export TAKE_IP_NUM="${CFG[take_ip_num]}"
+export CFST_THREADS="${CFG[cfst_threads]}"
+export CFST_COLO="${CFG[cfst_colo]}"
+export CFST_PING_TIMES="${CFG[cfst_ping_times]}"
+export CFST_DOWNLOAD_COUNT="${CFG[cfst_download_count]}"
+export CFST_DOWNLOAD_TIME="${CFG[cfst_download_time]}"
+export CFST_PORT="${CFG[cfst_port]}"
+export CFST_URL="${CFG[cfst_url]}"
+export CFST_HTTPING="${CFG[cfst_httping]}"
+export CFST_LATENCY_MAX="${CFG[cfst_latency_max]}"
+export CFST_PACKET_LOSS_MAX="${CFG[cfst_packet_loss_max]}"
+export CFST_SPEED_MIN="${CFG[cfst_speed_min]}"
+export CFST_SHOW_COUNT="${CFG[cfst_show_count]}"
+export CFST_IP_FILE="${CFG[cfst_ip_file]}"
+export CFST_DISABLE_DOWNLOAD="${CFG[cfst_disable_download]}"
+export CFST_ALL_IP="${CFG[cfst_all_ip]}"
+export OUTPUT_HTML="${CFG[output_html]}"
+export MAX_RETRY="${CFG[max_retry]}"
+export ENABLE_LOG="${CFG[enable_log]}"
 
 # 优先使用配置文件中的路径，否则使用默认路径
 if [[ -z "${CFST_DIR:-}" ]]; then
