@@ -209,6 +209,12 @@ else
 fi
 
 # --- 自动归位逻辑：确保脚本在标准目录下运行 ---
+# 【安全修复】添加循环检测标记，防止 exec 失败时的无限重试
+if [[ "${CFOPT_RELOCATED:-}" = "1" ]]; then
+    echo -e "${RED}[ERROR] 归位后重启失败，请手动执行: ${INSTALL_DIR}/cfopt.sh${NC}"
+    exit 1
+fi
+
 CURRENT_SCRIPT_PATH="$(readlink -f "$0")"
 TARGET_SCRIPT_PATH="${INSTALL_DIR}/cfopt.sh"
 
@@ -220,8 +226,12 @@ if [[ "${CURRENT_SCRIPT_PATH}" != "${TARGET_SCRIPT_PATH}" ]]; then
     if safe_move "${CURRENT_SCRIPT_PATH}" "${TARGET_SCRIPT_PATH}" "脚本迁移"; then
         chmod +x "${TARGET_SCRIPT_PATH}"
         log_success "迁移成功，正在从新位置启动..."
-        # 使用 exec 替换当前进程，从新位置重新启动
-        exec bash "${TARGET_SCRIPT_PATH}"
+        # 设置环境变量标记，防止 exec 失败时的循环
+        export CFOPT_RELOCATED=1
+        exec bash "${TARGET_SCRIPT_PATH}" "$@"
+        # exec 不会返回，如果到达此处说明 exec 失败
+        echo -e "${RED}[ERROR] exec 失败，请手动运行: ${TARGET_SCRIPT_PATH}${NC}"
+        exit 1
     else
         log_error "迁移失败，请检查权限。"
         exit 1
