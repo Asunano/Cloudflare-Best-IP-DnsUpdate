@@ -132,26 +132,26 @@ if [[ "${CF_IP_CFG_LOADED:-}" != "true" ]]; then
         [[ -n "$key" ]] && CFG["$key"]="$value"
     done < <(jq -r '
         [
-            "cfst_dir=\(.cfst.directory // \"\")",
-            "take_ip_num=\(.speed_test.take_ip_num // 5)",
-            "cfst_threads=\(.cfst.threads // 200)",
-            "cfst_colo=\(.cfst.colo // \"HKG,NRT\")",
-            "cfst_ping_times=\(.cfst.ping_times // 4)",
-            "cfst_download_count=\(.cfst.download_count // 10)",
-            "cfst_download_time=\(.cfst.download_time // 10)",
-            "cfst_port=\(.cfst.port // 443)",
-            "cfst_url=\(.cfst.url // \"https://cf-ns.com/cdn-cgi/trace\")",
-            "cfst_httping=\(.cfst.httping // false)",
-            "cfst_latency_max=\(.cfst.latency_max // 9999)",
-            "cfst_packet_loss_max=\(.cfst.packet_loss_max // 100)",
-            "cfst_speed_min=\(.cfst.speed_min // 0)",
-            "cfst_show_count=\(.cfst.show_count // 20)",
-            "cfst_ip_file=\(.cfst.ip_file // \"\")",
-            "cfst_disable_download=\(.cfst.disable_download // false)",
-            "cfst_all_ip=\(.cfst.all_ip // false)",
-            "output_html=\(.speed_test.output_html // true)",
-            "max_retry=\(.speed_test.max_retry // 3)",
-            "enable_log=\(.speed_test.enable_log // true)"
+            "cfst_dir=" + (.cfst.directory // ""),
+            "take_ip_num=" + (.speed_test.take_ip_num // 5 | tostring),
+            "cfst_threads=" + (.cfst.threads // 200 | tostring),
+            "cfst_colo=" + (.cfst.colo // "HKG,NRT"),
+            "cfst_ping_times=" + (.cfst.ping_times // 4 | tostring),
+            "cfst_download_count=" + (.cfst.download_count // 10 | tostring),
+            "cfst_download_time=" + (.cfst.download_time // 10 | tostring),
+            "cfst_port=" + (.cfst.port // 443 | tostring),
+            "cfst_url=" + (.cfst.url // "https://cf-ns.com/cdn-cgi/trace"),
+            "cfst_httping=" + (.cfst.httping // false | tostring),
+            "cfst_latency_max=" + (.cfst.latency_max // 9999 | tostring),
+            "cfst_packet_loss_max=" + (.cfst.packet_loss_max // 100 | tostring),
+            "cfst_speed_min=" + (.cfst.speed_min // 0 | tostring),
+            "cfst_show_count=" + (.cfst.show_count // 20 | tostring),
+            "cfst_ip_file=" + (.cfst.ip_file // ""),
+            "cfst_disable_download=" + (.cfst.disable_download // false | tostring),
+            "cfst_all_ip=" + (.cfst.all_ip // false | tostring),
+            "output_html=" + (.speed_test.output_html // true | tostring),
+            "max_retry=" + (.speed_test.max_retry // 3 | tostring),
+            "enable_log=" + (.speed_test.enable_log // true | tostring)
         ] | .[]
     ' "$CONFIG_FILE")
 else
