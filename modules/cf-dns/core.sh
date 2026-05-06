@@ -402,6 +402,39 @@ http_delete() {
     _http_request "DELETE" "$1" "${2:-}"
 }
 
+# ==================== 【智能判断】是否需要更新 DNS 记录 ====================
+# 参数：$1=现有 IP 数组名, $2=目标 IP 数组名
+# 返回：0=需要更新，1=无需更新
+needs_update() {
+    local -n _existing="$1"  # 现有 IP 数组（nameref）
+    local -n _target="$2"    # 目标 IP 数组（nameref）
+    
+    # 数量不同，肯定需要更新
+    if [[ ${#_existing[@]} -ne ${#_target[@]} ]]; then
+        return 0  # 需要更新
+    fi
+    
+    # 构建现有 IP 的关联数组（集合）
+    local -A _existing_set=()
+    for ip in "${_existing[@]}"; do
+        # 清理空白字符
+        local clean_ip
+        clean_ip=$(echo "$ip" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
+        _existing_set["$clean_ip"]=1
+    done
+    
+    # 检查目标 IP 是否都在现有集合中
+    for ip in "${_target[@]}"; do
+        local clean_ip
+        clean_ip=$(echo "$ip" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
+        if [[ -z "${_existing_set[$clean_ip]+x}" ]]; then
+            return 0  # 发现新 IP，需要更新
+        fi
+    done
+    
+    return 1  # 集合完全相同，无需更新
+}
+
 # ==================== API 调用函数 ====================
 
 # 从文件读取优选 IP
@@ -923,38 +956,16 @@ main() {
         record_count=$new_record_count
     fi
     
-    # 3. 检查是否需要更新（只有当记录数和 IP 数相同且位置不同时）
+    # 3. 【修复】检查是否需要更新（使用集合比较替代位置比较）
     local -a ips_to_update=()
     local -a update_record_ids=()
     
-    # 只有当记录数和 IP 数相同，且有 IP 不在目标列表中时，才进行更新
-    if [ "$record_count" -eq ${#ip_addresses[@]} ] && [ ${#records_to_delete_ids[@]} -eq 0 ]; then
-        # 检查是否有位置不同的 IP
-        local has_position_diff=false
-        for ((i=0; i<record_count; i++)); do
-            local existing_ip="${current_values[$i]}"
-            local target_ip="${ip_addresses[$i]}"
-            local clean_existing
-            clean_existing=$(echo "$existing_ip" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
-            local clean_target
-            clean_target=$(echo "$target_ip" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
-            
-            if [ "$clean_existing" != "$clean_target" ]; then
-                has_position_diff=true
-                break
-            fi
-        done
+    # 【修复】使用 needs_update 函数精确判断是否需要更新
+    if needs_update current_values ip_addresses; then
+        log "  ${CYAN}[INFO]${NC} 检测到 IP 变化，开始更新..."
         
-        # 如果所有 IP 都存在但位置不同，不需要更新（集合相同即可）
-        if [ "$has_position_diff" = true ]; then
-            log "  ${CYAN}[INFO]${NC} IP 集合相同但顺序不同，无需更新"
-            skipped_count=${#ip_addresses[@]}
-        else
-            # 完全相同，跳过
-            skipped_count=${#ip_addresses[@]}
-        fi
-    elif [ "$record_count" -gt 0 ] && [ ${#ip_addresses[@]} -gt 0 ]; then
         # 记录数和 IP 数不同，或者有需要删除的记录，进行智能匹配更新
+        if [ "$record_count" -gt 0 ] && [ ${#ip_addresses[@]} -gt 0 ]; then
         # 找出可以直接保留的记录（IP 和位置都相同）
         local -a matched_indices=()
         
@@ -1036,6 +1047,10 @@ main() {
         done
         echo ""  # 换行
         log "  [OK] 已更新 ${updated_count} 条记录"
+    else
+        # 【修复】无需更新，所有 IP 已存在且相同
+        log_ok "$MODULE_NAME" "所有 IP 已存在且相同，无需更新"
+        skipped_count=${#ip_addresses[@]}
     fi
     
     # 4. 如果还有剩余的 IP，创建新记录
