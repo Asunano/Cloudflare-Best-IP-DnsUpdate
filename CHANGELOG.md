@@ -42,6 +42,34 @@
 ### Fixed - 修复
 
 #### 代码质量优化 (Code Quality)
+- **删除死代码：移除未使用的 run_sh 入口校验** (2026-05-06)
+  - 文件：`modules/cf-ip/menu.sh` 第71行、第302行
+  - 问题：入口校验中包含 `run_sh` 分支，但该值从未被任何代码设置
+  - 分析：
+    ```bash
+    # 修复前：包含未使用的 run_sh 分支
+    if [[ "${CF_OPT_ENTRY:-}" != "main_menu" ]] && [[ "${CF_OPT_ENTRY:-}" != "run_sh" ]]; then
+        # ❌ run_sh 从未被设置，属于死代码
+    fi
+    
+    # 实际调用方分析：
+    # 1. cfopt.sh 第879行：export CF_OPT_ENTRY="main_menu"
+    # 2. scheduler/run.sh：直接调用 cf-ip/core.sh，不调用 menu.sh
+    # 3. 无其他代码设置 CF_OPT_ENTRY=run_sh
+    ```
+  - 修复：删除 `run_sh` 分支，仅保留 `main_menu` 校验
+    ```bash
+    # 修复后：简化校验逻辑
+    if [[ "${CF_OPT_ENTRY:-}" != "main_menu" ]]; then
+        echo -e "${RED}[ERROR] 请使用 'cfopt' 命令进入主菜单运行此模块。${NC}"
+        exit 1
+    fi
+    ```
+  - 效果：
+    - ✅ 消除死代码，提高可维护性
+    - ✅ 简化校验逻辑，减少混淆
+    - ✅ 保持原有功能不变（仍阻止直接运行）
+
 - **修复 set -u 下未初始化变量** (2026-05-06)
   - 文件：`cfopt.sh`
   - 问题：第12行设置了 `set -uo pipefail`，但以下变量可能在未初始化时被引用
