@@ -215,7 +215,11 @@ done < <(jq -r '
         "sub_domain_unicom=\(.dns.sub_domains.unicom // \"unicom\")",
         "sub_domain_mobile=\(.dns.sub_domains.mobile // \"mobile\")",
         "sub_domain_telecom=\(.dns.sub_domains.telecom // \"telecom\")",
-        "isp_lines=\(.dns.isp_lines // \"默认\")"
+        "isp_lines=\(.dns.isp_lines // \"默认\")",
+        "ip_file_default=\(.ip_source.files.default // \"\")",
+        "ip_file_unicom=\(.ip_source.files.unicom // \"\")",
+        "ip_file_mobile=\(.ip_source.files.mobile // \"\")",
+        "ip_file_telecom=\(.ip_source.files.telecom // \"\")"
     ] | .[]
 ' "$CONFIG_FILE")
 
@@ -498,22 +502,22 @@ get_cf_ip_from_file_by_line() {
     local line_name="$1"
     local ip_file=""
     
-    # 从配置文件动态读取 IP 文件路径
+    # 【性能优化】从预读取的配置中获取 IP 文件路径，避免重复 fork jq
     case "$line_name" in
         "默认")
-            ip_file=$(jq -r '.ip_source.files.default // empty' "$CONFIG_FILE")
+            ip_file="${CFG[ip_file_default]}"
             [[ -z "$ip_file" ]] && ip_file="$(get_default_ip_file "default")"
             ;;
         "联通")
-            ip_file=$(jq -r '.ip_source.files.unicom // empty' "$CONFIG_FILE")
+            ip_file="${CFG[ip_file_unicom]}"
             [[ -z "$ip_file" ]] && ip_file="$(get_default_ip_file "unicom")"
             ;;
         "移动")
-            ip_file=$(jq -r '.ip_source.files.mobile // empty' "$CONFIG_FILE")
+            ip_file="${CFG[ip_file_mobile]}"
             [[ -z "$ip_file" ]] && ip_file="$(get_default_ip_file "mobile")"
             ;;
         "电信")
-            ip_file=$(jq -r '.ip_source.files.telecom // empty' "$CONFIG_FILE")
+            ip_file="${CFG[ip_file_telecom]}"
             [[ -z "$ip_file" ]] && ip_file="$(get_default_ip_file "telecom")"
             ;;
         *)
