@@ -222,19 +222,37 @@ if [[ "${CURRENT_SCRIPT_PATH}" != "${TARGET_SCRIPT_PATH}" ]]; then
     echo -e "${CYAN}[INFO] 检测到脚本位于非标准目录，正在迁移至: ${INSTALL_DIR}${NC}"
     mkdir -p "${INSTALL_DIR}"
     
-    # 移动脚本并保留执行权限
-    if safe_move "${CURRENT_SCRIPT_PATH}" "${TARGET_SCRIPT_PATH}" "脚本迁移"; then
-        chmod +x "${TARGET_SCRIPT_PATH}"
-        log_success "迁移成功，正在从新位置启动..."
-        # 设置环境变量标记，防止 exec 失败时的循环
-        export CFOPT_RELOCATED=1
-        exec bash "${TARGET_SCRIPT_PATH}" "$@"
-        # exec 不会返回，如果到达此处说明 exec 失败
-        echo -e "${RED}[ERROR] exec 失败，请手动运行: ${TARGET_SCRIPT_PATH}${NC}"
-        exit 1
+    # 【安全修复】如果目标文件已存在，直接复制而非移动（避免破坏正在运行的脚本）
+    if [[ -f "${TARGET_SCRIPT_PATH}" ]]; then
+        log_info "目标位置已存在脚本，正在更新..."
+        if safe_copy "${CURRENT_SCRIPT_PATH}" "${TARGET_SCRIPT_PATH}" "脚本更新"; then
+            chmod +x "${TARGET_SCRIPT_PATH}"
+            log_success "更新成功，正在从新位置启动..."
+            # 设置环境变量标记，防止 exec 失败时的循环
+            export CFOPT_RELOCATED=1
+            exec bash "${TARGET_SCRIPT_PATH}" "$@"
+            # exec 不会返回，如果到达此处说明 exec 失败
+            echo -e "${RED}[ERROR] exec 失败，请手动运行: ${TARGET_SCRIPT_PATH}${NC}"
+            exit 1
+        else
+            log_error "脚本更新失败，请检查权限。"
+            exit 1
+        fi
     else
-        log_error "迁移失败，请检查权限。"
-        exit 1
+        # 移动脚本并保留执行权限
+        if safe_move "${CURRENT_SCRIPT_PATH}" "${TARGET_SCRIPT_PATH}" "脚本迁移"; then
+            chmod +x "${TARGET_SCRIPT_PATH}"
+            log_success "迁移成功，正在从新位置启动..."
+            # 设置环境变量标记，防止 exec 失败时的循环
+            export CFOPT_RELOCATED=1
+            exec bash "${TARGET_SCRIPT_PATH}" "$@"
+            # exec 不会返回，如果到达此处说明 exec 失败
+            echo -e "${RED}[ERROR] exec 失败，请手动运行: ${TARGET_SCRIPT_PATH}${NC}"
+            exit 1
+        else
+            log_error "迁移失败，请检查权限。"
+            exit 1
+        fi
     fi
 fi
 
