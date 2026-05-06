@@ -357,10 +357,12 @@ download_with_retry() {
     
     # 判断是否为 GitHub raw 链接，如果是则启用镜像回退
     local use_mirror=false
+    local mirror_url=""  # 【修复】在函数开头初始化，避免作用域混淆
+    
     if [[ "${url}" == *"raw.githubusercontent.com"* ]]; then
         use_mirror=true
         # 将原始 URL 转换为镜像 URL
-        local mirror_url="${REMOTE_URL_MIRROR}${url#*main}"
+        mirror_url="${REMOTE_URL_MIRROR}${url#*main}"
     fi
     
     while [[ "${retry_count}" -lt "${max_retries}" ]]; do
@@ -789,7 +791,7 @@ show_main_menu() {
         echo ""
         
         # 使用自定义镜像源下载（仅支持 amd64，服务器主流架构）
-        local cfst_url="http://mirror.drxian.qzz.io/resource/cfst_linux_amd64.tar.gz"
+        local cfst_url="https://mirror.drxian.qzz.io/resource/cfst_linux_amd64.tar.gz"
         local cfst_temp="/tmp/cfst_download.tar.gz"
         
         mkdir -p "${INSTALL_DIR}/assets/cfst"
@@ -1072,10 +1074,6 @@ show_panel_commands() {
     echo -e "${YELLOW}提示:${NC} 请确保面板中的执行用户有权限访问 ${INSTALL_DIR} 目录。"
     read -r -p "按回车键返回..."
 }
-
-# ====================== 【安装全局命令】 ======================
-# 【修复】已删除重复的 install_system_cmd 函数定义（原第1077-1103行）
-# 保留第264-321行的完整版（包含交互式确认、智能检测）
 
 # --- 一键跑路逻辑 (卸载清理) ---
 uninstall_cfopt() {
