@@ -11,6 +11,46 @@
 
 ### Added - 新增
 
+#### 功能增强 (Features)
+- **实现统一结构化日志系统** (2026-05-06)
+  - 文件：
+    - `cfopt.sh`
+    - `modules/cf-dns/core.sh`
+    - `modules/dnspod-dns/core.sh`
+    - `modules/cf-ip/core.sh`
+  - 问题：各模块日志格式不统一，缺少结构化信息
+  - 现状对比：
+    | 模块 | 有时间戳 | 有级别 | 有模块名 |
+    |------|---------|--------|----------|
+    | cfopt.sh | ✅ | ✅ | ❌ |
+    | cf-dns/core.sh | ✅ | ❌ | ❌ |
+    | dnspod-dns/core.sh | ✅ | ✅ | ❌ |
+    | cf-ip/core.sh | ❌ | ❌ | ❌ |
+  - 修复：实现统一的结构化日志格式
+    ```bash
+    # 统一格式: [2026-05-06 09:30:00] [INFO ] [cf-dns] message
+    log() {
+        local level="$1"
+        shift
+        local timestamp
+        timestamp="$(date '+%Y-%m-%d %H:%M:%S')"
+        printf "[%s] [%-5s] [%s] %s\n" \
+            "$timestamp" "$level" "$MODULE_NAME" "$*" | tee -a "$LOG_FILE"
+    }
+    
+    # 便捷函数
+    log_info() { log "INFO" "$@"; }
+    log_warn() { log "WARN" "$@"; }
+    log_error() { log "ERROR" "$@"; }
+    log_success() { log "OK" "$@"; }
+    ```
+  - 效果：
+    - ✅ **格式统一**：所有模块使用相同的日志格式
+    - ✅ **结构清晰**：时间 + 级别 + 模块名 + 消息
+    - ✅ **易于解析**：固定格式便于日志分析工具处理
+    - ✅ **级别对齐**：`%-5s` 确保级别字段对齐（INFO / WARN / ERROR）
+    - ✅ **双重输出**：同时输出到终端和日志文件
+
 #### CI/CD 工作流增强
 - **添加 ShellCheck 静态检查** (2026-05-06)
   - 功能：在 GitHub Actions 中自动运行 ShellCheck 检查所有 .sh 文件
