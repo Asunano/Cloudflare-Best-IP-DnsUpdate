@@ -11,6 +11,21 @@
 
 ### Fixed - 修复
 
+#### 安全性修复 (Security)
+- **修复 API Token 环境变量泄露** (2026-05-06)
+  - 问题：`export CF_API_TOKEN` 和 `export SECRETKEY` 将敏感信息导出为环境变量
+  - 影响：所有子进程可通过 `/proc/<pid>/environ` 读取 Token，存在严重安全风险
+  - 修复：
+    - `modules/cf-dns/core.sh` 第135行：删除 `export`，改为局部变量
+    - `modules/dnspod-dns/core.sh` 第152行：删除 `export`，改为局部变量
+  - 原理：Bash 中未 export 的变量只在当前 shell 可见，不会传递给子进程
+  
+- **修复 status.conf 权限缺失** (2026-05-06)
+  - 问题：`cfopt.sh` 第1501行创建 `conf/status.conf` 时未设置文件权限
+  - 影响：默认权限可能为 644，其他用户可读，存在信息泄露风险
+  - 修复：添加 `chmod 600 "${STATUS_CONF}"` 设置严格权限
+  - 位置：`cfopt.sh` 第1510行
+
 #### cfopt.sh
 - **修复 pkill 误杀问题** (2026-05-06)
   - 问题：`pkill -9 -f "/cfopt\.sh"` 会匹配所有包含 `/cfopt.sh` 的进程

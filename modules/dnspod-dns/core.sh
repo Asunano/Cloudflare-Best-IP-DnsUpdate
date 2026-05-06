@@ -147,11 +147,11 @@ if [[ "${ENABLED}" != "true" ]]; then
     exit 0
 fi
 
-# API 配置
-export SECRETID=$(jq -r '.api.id // empty' "$CONFIG_FILE")
-export SECRETKEY=$(jq -r '.api.token // empty' "$CONFIG_FILE")
-export REQUEST_TIMEOUT=$(jq -r '.api.timeout // 10' "$CONFIG_FILE")
-export MAX_RETRIES=$(jq -r '.api.max_retries // 5' "$CONFIG_FILE")
+# API 配置（【安全修复】不要 export，避免通过 /proc/<pid>/environ 泄露）
+SECRETID=$(jq -r '.api.id // empty' "$CONFIG_FILE")
+SECRETKEY=$(jq -r '.api.token // empty' "$CONFIG_FILE")
+REQUEST_TIMEOUT=$(jq -r '.api.timeout // 10' "$CONFIG_FILE")
+MAX_RETRIES=$(jq -r '.api.max_retries // 5' "$CONFIG_FILE")
 
 # DNS 配置
 export DOMAIN=$(jq -r '.dns.domain // empty' "$CONFIG_FILE")
