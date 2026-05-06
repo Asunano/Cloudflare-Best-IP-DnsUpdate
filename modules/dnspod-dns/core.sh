@@ -128,9 +128,12 @@ record_dnspod_update_history() {
     # 确保目录存在
     mkdir -p "${ROOT_DIR}/conf"
     
-    # 写入 JSONL 格式的历史记录
-    printf '{"time":"%s","action":"dnspod_update","domain":"%s","records_updated":%d,"records_created":%d,"records_skipped":%d}\n' \
-        "$timestamp" "$domain" "$records_updated" "$records_created" "$records_skipped" >> "$history_file"
+    # 【修复】使用 flock 保护并发写入，防止多进程同时写入导致数据损坏
+    (
+        flock -n 200 || { log_msg "WARN" "无法获取历史记录写入锁"; return 1; }
+        printf '{"time":"%s","action":"dnspod_update","domain":"%s","records_updated":%d,"records_created":%d,"records_skipped":%d}\n' \
+            "$timestamp" "$domain" "$records_updated" "$records_created" "$records_skipped" >> "$history_file"
+    ) 200>"${history_file}.lock"
 }
 
 # ==================== 模式切换检测（供 setup.sh 调用） ====================
