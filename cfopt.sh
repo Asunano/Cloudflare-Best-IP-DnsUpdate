@@ -245,6 +245,9 @@ echo -e "${CYAN}----------------------------------------${NC}"
 # --- 系统命令安装逻辑 ---
 SYSTEM_CMD_PATH="/usr/local/bin/cfopt"
 
+# 【新增】卸载锁文件路径，防止卸载过程中重复执行
+CFOPT_UNINSTALL_LOCK="/tmp/.cfopt_uninstalling"
+
 # 检查全局命令是否有效
 check_system_cmd() {
     if [[ -L "${SYSTEM_CMD_PATH}" ]] || [[ -x "${SYSTEM_CMD_PATH}" ]]; then
@@ -1186,15 +1189,18 @@ uninstall_cfopt() {
         return
     fi
 
+    # 【新增】创建卸载锁，防止卸载过程中重复执行
+    touch "${CFOPT_UNINSTALL_LOCK}"
+
     # 1. 清理所有相关的 Crontab 定时任务
     echo -e "${CYAN}[INFO] 正在清理 Crontab 定时任务...${NC}"
     if command -v crontab &> /dev/null; then
         local current_cron
         current_cron=$(crontab -l 2>/dev/null || true)
         if [[ -n "${current_cron}" ]]; then
-            # 清理所有包含 cfopt 路径的任务（更全面）
+            # 【修复】精确匹配 INSTALL_DIR 路径，避免误删其他包含 cfopt 的任务
             local cleaned_cron
-            cleaned_cron=$(echo "${current_cron}" | grep -v "cfopt" | grep -v "scheduler/run.sh")
+            cleaned_cron=$(echo "${current_cron}" | grep -v "${INSTALL_DIR}/" | grep -v "scheduler/run\.sh")
             if [[ -n "${cleaned_cron}" ]]; then
                 echo "${cleaned_cron}" | crontab -
             else
@@ -1222,12 +1228,11 @@ uninstall_cfopt() {
     echo -e "${CYAN}[INFO] 检查用户配置文件...${NC}"
     local config_files=("${HOME}/.bashrc" "${HOME}/.zshrc" "${HOME}/.profile")
     for config_file in "${config_files[@]}"; do
-        if [[ -f "${config_file}" ]]; then
-            if grep -q "cfopt" "${config_file}" 2>/dev/null; then
-                log_warning "检测到 ${config_file} 中包含 cfopt 相关配置"
-                log_warning "请手动清理以下行："
-                grep "cfopt" "${config_file}" | sed 's/^/  /'
-            fi
+        if [[ -f "${config_file}" ]] && grep -q "cfopt" "${config_file}" 2>/dev/null; then
+            # 【新增】自动清理 cfopt 相关配置并备份
+            cp "${config_file}" "${config_file}.bak.cfopt"
+            sed -i '/cfopt/d' "${config_file}"
+            log_success "已从 ${config_file} 清理 cfopt 相关配置 (备份: ${config_file}.bak.cfopt)"
         fi
     done
 
@@ -1275,8 +1280,15 @@ sleep 3
 # bash 会正确处理带空格或特殊字符的路径（因为调用时使用了双引号）
 INSTALL_DIR="$1"
 LOG_FILE="/tmp/cfopt_cleanup.log"
+CFOPT_UNINSTALL_LOCK="/tmp/.cfopt_uninstalling"
 
 echo "[$(date)] 开始清理: ${INSTALL_DIR}" >> "${LOG_FILE}"
+
+# 【新增】清理卸载锁文件
+if [[ -f "${CFOPT_UNINSTALL_LOCK}" ]]; then
+    rm -f "${CFOPT_UNINSTALL_LOCK}"
+    echo "[$(date)] [OK] 已删除卸载锁文件" >> "${LOG_FILE}"
+fi
 
 if [[ -d "${INSTALL_DIR}" ]]; then
     # 第一遍：尝试终止所有相关进程（排除当前清理脚本）
@@ -1394,6 +1406,12 @@ check_and_update_components() {
 
 # --- 初始化流程 ---
 init_cfopt() {
+    # 【新增】检查卸载锁，防止在卸载过程中重复执行
+    if [[ -f "${CFOPT_UNINSTALL_LOCK}" ]]; then
+        echo -e "${RED}[ERROR] cfopt 正在卸载中，请稍后再试${NC}"
+        exit 1
+    fi
+
     # 0. 检查是否有待应用的新版本 cfopt.sh
     if [[ -f "${INSTALL_DIR}/cfopt.sh.new" ]]; then
         log_info "检测到新版本主脚本，正在应用..."
