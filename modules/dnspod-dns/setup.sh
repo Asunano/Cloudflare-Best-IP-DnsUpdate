@@ -1526,8 +1526,8 @@ modify_ip_files() {
         echo "当前 IP 文件: ${current_ip_file}"
         echo ""
         echo -e "${CYAN}提示: IP 文件包含优选的 Cloudflare IP 列表"
-        echo "   格式: 每行一个 IP,或用逗号分隔"
-        echo "   示例: $ROOT_DIR/assets/data/dnspod-dns/mobile.txt"
+        echo "   格式: .iplist 标准格式 (IP|延迟|速度|地区码)"
+        echo "   示例: $ROOT_DIR/assets/data/dnspod-dns/mobile.iplist"
         echo ""
         read -r -p "请输入新的 IP 文件路径 [${current_ip_file}]: " new_ip_file
         new_ip_file=${new_ip_file:-$current_ip_file}
@@ -2857,15 +2857,15 @@ fi
 echo ""
 echo -e "${CYAN}提示: 优选 IP 将从文本文件读取"
 echo "   测速软件会自动生成 IP 列表到默认路径"
-echo "   文件格式: 每行一个 IP 或用逗号分隔"
+echo "   文件格式: .iplist 标准格式 (IP|延迟|速度|地区码)"
 echo ""
 
 if [ "$MODE" = "multi" ]; then
     echo "多线路模式下,每个线路有独立的 IP 文件:"
-    echo "  - assets/data/dnspod-dns/default.txt    (默认线路)"
-    echo "  - assets/data/dnspod-dns/unicom.txt     (联通线路)"
-    echo "  - assets/data/dnspod-dns/mobile.txt     (移动线路)"
-    echo "  - assets/data/dnspod-dns/telecom.txt    (电信线路)"
+    echo "  - assets/data/dnspod-dns/default.iplist    (默认线路)"
+    echo "  - assets/data/dnspod-dns/unicom.iplist     (联通线路)"
+    echo "  - assets/data/dnspod-dns/mobile.iplist     (移动线路)"
+    echo "  - assets/data/dnspod-dns/telecom.iplist    (电信线路)"
     echo ""
     echo "IP 文件将自动生成到 $ROOT_DIR/assets/data/dnspod-dns/ 目录"
     
@@ -2879,25 +2879,25 @@ if [ "$MODE" = "multi" ]; then
             base_path="$ROOT_DIR/assets/data/dnspod-dns"
         fi
         
-        IP_FILE_DEFAULT="${base_path}/default.txt"
-        IP_FILE_UNICOM="${base_path}/unicom.txt"
-        IP_FILE_MOBILE="${base_path}/mobile.txt"
-        IP_FILE_TELECOM="${base_path}/telecom.txt"
+        IP_FILE_DEFAULT="${base_path}/default.iplist"
+        IP_FILE_UNICOM="${base_path}/unicom.iplist"
+        IP_FILE_MOBILE="${base_path}/mobile.iplist"
+        IP_FILE_TELECOM="${base_path}/telecom.iplist"
         
         echo -e "\n${GREEN}[OK] IP 文件基础路径: ${base_path}"
     else
         # shellcheck disable=SC2034
-        IP_FILE_DEFAULT="$ROOT_DIR/assets/data/dnspod-dns/default.txt"
+        IP_FILE_DEFAULT="$ROOT_DIR/assets/data/dnspod-dns/default.iplist"
         # shellcheck disable=SC2034
-        IP_FILE_UNICOM="$ROOT_DIR/assets/data/dnspod-dns/unicom.txt"
+        IP_FILE_UNICOM="$ROOT_DIR/assets/data/dnspod-dns/unicom.iplist"
         # shellcheck disable=SC2034
-        IP_FILE_MOBILE="$ROOT_DIR/assets/data/dnspod-dns/mobile.txt"
+        IP_FILE_MOBILE="$ROOT_DIR/assets/data/dnspod-dns/mobile.iplist"
         # shellcheck disable=SC2034
-        IP_FILE_TELECOM="$ROOT_DIR/assets/data/dnspod-dns/telecom.txt"
+        IP_FILE_TELECOM="$ROOT_DIR/assets/data/dnspod-dns/telecom.iplist"
         echo -e "\n${GREEN}[OK] 使用默认路径: $ROOT_DIR/assets/data/dnspod-dns"
     fi
 else
-    echo -e "${CYAN}默认路径: $ROOT_DIR/assets/data/dnspod-dns/default.txt"
+    echo -e "${CYAN}默认路径: $ROOT_DIR/assets/data/dnspod-dns/default.iplist"
     echo ""
     read -r -p "是否需要更改 IP 文件路径? (y/n, 默认 n): " change_path
     
@@ -2905,12 +2905,12 @@ else
         read -r -p "请输入新的 IP 文件路径: " IP_FILE_SINGLE
         
         if [ -z "$IP_FILE_SINGLE" ]; then
-            IP_FILE_SINGLE="$ROOT_DIR/assets/data/dnspod-dns/default.txt"
+            IP_FILE_SINGLE="$ROOT_DIR/assets/data/dnspod-dns/default.iplist"
         fi
         
         echo -e "\n${GREEN}[OK] IP 文件路径: ${IP_FILE_SINGLE}"
     else
-        IP_FILE_SINGLE="$ROOT_DIR/assets/data/dnspod-dns/default.txt"
+        IP_FILE_SINGLE="$ROOT_DIR/assets/data/dnspod-dns/default.iplist"
         echo -e "\n${GREEN}[OK] 使用默认路径: ${IP_FILE_SINGLE}"
     fi
 fi
