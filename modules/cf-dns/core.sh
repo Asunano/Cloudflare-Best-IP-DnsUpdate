@@ -53,18 +53,13 @@ acquire_lock() {
     domain_safe=$(echo "${DOMAIN_NAME:-default}" | sed 's/[^a-zA-Z0-9._-]/_/g')
     LOCK_FILE="$ROOT_DIR/modules/cf-dns/.core_${domain_safe}.lock"
     
-    if [ -f "$LOCK_FILE" ]; then
-        local pid
-        pid=$(cat "$LOCK_FILE")
-        if kill -0 "$pid" 2>/dev/null; then
-            echo "[ERROR] 检测到另一个 CF-DNS 更新进程正在运行 (PID: $pid, Domain: ${DOMAIN_NAME:-default})"
-            exit 1
-        else
-            rm -f "$LOCK_FILE"
-        fi
+    # 【安全修复】使用 flock 避免 TOCTOU 竞态条件
+    exec 9>"$LOCK_FILE"
+    if ! flock -n 9; then
+        echo "[ERROR] 无法获取锁，另一个 CF-DNS 更新进程正在运行 (Domain: ${DOMAIN_NAME:-default})"
+        exit 1
     fi
-    echo $$ > "$LOCK_FILE"
-    trap 'rm -f "$LOCK_FILE"' EXIT INT TERM HUP
+    # 锁会在脚本退出时自动释放（fd 9 关闭）
 }
 
 acquire_lock

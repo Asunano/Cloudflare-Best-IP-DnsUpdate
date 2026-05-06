@@ -51,21 +51,14 @@ LOCK_FILE="$ROOT_DIR/modules/dnspod-dns/.setup.lock"
 
 # 获取执行锁
 acquire_lock() {
-    if [[ -f "$LOCK_FILE" ]]; then
-        local lock_pid
-        lock_pid=$(cat "$LOCK_FILE" 2>/dev/null)
-        if [[ -n "$lock_pid" ]] && kill -0 "$lock_pid" 2>/dev/null; then
-            echo -e "${RED}[ERROR] 另一个实例正在运行 (PID: ${lock_pid})"
-            echo -e "${YELLOW}提示: 如果确定没有运行，请删除 ${LOCK_FILE}"
-            exit 1
-        else
-            # 清理残留的无效锁文件
-            rm -f "$LOCK_FILE"
-        fi
+    # 【安全修复】使用 flock 避免 TOCTOU 竞态条件
+    exec 9>"$LOCK_FILE"
+    if ! flock -n 9; then
+        echo -e "${RED}[ERROR] 另一个实例正在运行，无法获取锁"
+        echo -e "${YELLOW}提示: 如果确定没有运行，请删除 ${LOCK_FILE}"
+        exit 1
     fi
-    
-    echo $$ > "$LOCK_FILE"
-    trap 'rm -f "$LOCK_FILE"' EXIT INT TERM
+    # 锁会在脚本退出时自动释放（fd 9 关闭）
 }
 
 # 释放执行锁
