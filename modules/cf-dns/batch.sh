@@ -5,6 +5,7 @@
 # Description: 遍历 conf/cf-dns/ 目录中的所有域名配置，依次执行 DNS 更新
 # Usage: bash modules/cf-dns/batch.sh
 # ==============================================================================
+set -euo pipefail
 SCRIPT_VERSION="0.1"
 
 # ==================== 路径初始化 ====================
@@ -56,6 +57,15 @@ SKIP_COUNT=0
 for config_file in "${CONFIG_FILES[@]}"; do
     domain_name=$(basename "$config_file" .json)
     
+    # 【安全修复】清理文件名中的非域名字符，防止特殊字符注入
+    domain_name=$(echo "$domain_name" | tr -cd 'a-zA-Z0-9.-')
+    
+    if [[ -z "$domain_name" ]]; then
+        echo -e "${RED}[ERROR] 无效的配置文件名: $(basename "$config_file")${NC}"
+        FAIL_COUNT=$((FAIL_COUNT + 1))
+        continue
+    fi
+    
     echo -e "${CYAN}+------------------------------------------------------------+${NC}"
     echo -e " ${YELLOW}正在处理域名: ${domain_name}${NC}"
     echo -e "${CYAN}+------------------------------------------------------------+${NC}"
@@ -65,7 +75,7 @@ for config_file in "${CONFIG_FILES[@]}"; do
         enabled=$(jq -r '.enabled // false' "$config_file" 2>/dev/null)
         if [[ "$enabled" != "true" ]]; then
             echo -e "${YELLOW}[SKIP] 域名 ${domain_name} 已禁用 (enabled=false)${NC}"
-            ((SKIP_COUNT++))
+            SKIP_COUNT=$((SKIP_COUNT + 1))
             echo ""
             continue
         fi
@@ -75,10 +85,10 @@ for config_file in "${CONFIG_FILES[@]}"; do
     echo -e "${CYAN}[INFO] 启动 CF-DNS 更新进程...${NC}"
     if CF_DNS_DOMAIN="$domain_name" bash "${ROOT_DIR}/modules/cf-dns/core.sh" "$config_file"; then
         echo -e "${GREEN}[OK] 域名 ${domain_name} 更新成功${NC}"
-        ((SUCCESS_COUNT++))
+        SUCCESS_COUNT=$((SUCCESS_COUNT + 1))
     else
         echo -e "${RED}[FAIL] 域名 ${domain_name} 更新失败${NC}"
-        ((FAIL_COUNT++))
+        FAIL_COUNT=$((FAIL_COUNT + 1))
     fi
     
     echo ""
