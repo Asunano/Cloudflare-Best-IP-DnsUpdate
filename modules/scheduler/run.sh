@@ -34,6 +34,35 @@ echo -e " ${MAGENTA}项目仓库: https://github.com/Asunano/Cloudflare-Best-IP-
 echo -e " 启动时间: $(date '+%Y-%m-%d %H:%M:%S')"
 echo -e "${CYAN}+------------------------------------------------------------+${NC}"
 
+# ==================== 【安全配置】测速超时保护 ====================
+# 防止 cfst 进程挂起导致 scheduler 无限等待
+SCHEDULER_TIMEOUT=${SCHEDULER_TIMEOUT:-600}  # 默认 10 分钟，可通过环境变量覆盖
+
+# 启动看门狗定时器
+start_watchdog() {
+    local timeout="$1"
+    local task_name="$2"
+    
+    (
+        sleep "$timeout"
+        echo -e "\n${RED}[TIMEOUT] ${task_name} 超时 (${timeout}秒)，强制终止所有子进程${NC}"
+        # 终止当前进程组的所有子进程
+        kill -- -$$ 2>/dev/null || true
+        exit 1
+    ) &
+    WATCHDOG_PID=$!
+    echo -e "${YELLOW}[INFO] 已启动看门狗：${timeout}秒后超时${NC}"
+}
+
+# 停止看门狗定时器
+stop_watchdog() {
+    if [[ -n "${WATCHDOG_PID:-}" ]]; then
+        kill "$WATCHDOG_PID" 2>/dev/null || true
+        wait "$WATCHDOG_PID" 2>/dev/null || true
+        unset WATCHDOG_PID
+    fi
+}
+
 # ==================== 核心函数定义 ====================
 
 # 任务执行封装函数
@@ -118,7 +147,10 @@ if [[ "${ENABLE_MULTI_LINE}" = "true" ]]; then
     
     # 等待所有后台测速任务完成
     echo -e "${YELLOW}[INFO] 等待所有线路测速任务完成...${NC}"
+    # 【安全修复】启动看门狗，防止无限等待
+    start_watchdog "$SCHEDULER_TIMEOUT" "多线路测速"
     wait
+    stop_watchdog
 else
     # 【优化】单线路模式：扫描所有已配置的域名，为每个域名独立测速
     echo -e "${YELLOW}[INFO] 单线路模式，正在扫描已配置的域名...${NC}"
@@ -161,7 +193,10 @@ else
     else
         # 等待所有后台测速任务完成
         echo -e "${YELLOW}[INFO] 等待所有域名测速任务完成...${NC}"
+        # 【安全修复】启动看门狗，防止无限等待
+        start_watchdog "$SCHEDULER_TIMEOUT" "多域名测速"
         wait
+        stop_watchdog
     fi
 fi
 echo -e "${GREEN}[OK] IP 优选测速执行成功。${NC}"
