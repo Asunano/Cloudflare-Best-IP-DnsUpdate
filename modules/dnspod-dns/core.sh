@@ -91,22 +91,10 @@ done
 # DNSPod IP 数据默认路径
 DEFAULT_IP_DIR="${ROOT_DIR}/assets/data/dnspod-dns"
 
-# 【功能增强】优先使用 .iplist 格式，fallback 到 .txt
+# 【标准化】统一使用 .iplist 标准格式
 get_default_ip_file() {
     local line_name="$1"
-    local iplist_file="${DEFAULT_IP_DIR}/${line_name}.iplist"
-    local txt_file="${DEFAULT_IP_DIR}/${line_name}.txt"
-    
-    # 优先返回 .iplist
-    if [[ -f "$iplist_file" ]]; then
-        echo "$iplist_file"
-    elif [[ -f "$txt_file" ]]; then
-        log_warn "检测到旧格式 .txt 文件: ${txt_file}，建议转换为 .iplist 格式"
-        echo "$txt_file"
-    else
-        # 默认返回 .iplist 路径（即使不存在）
-        echo "$iplist_file"
-    fi
+    echo "${DEFAULT_IP_DIR}/${line_name}.iplist"
 }
 
 # ====================== 【统一结构化日志系统】 ======================
@@ -312,7 +300,7 @@ else
                 ;;
             "电信")
                 ip_file=$(jq -r '.ip_source.files.telecom // empty' "$CONFIG_FILE")
-                [[ -z "$ip_file" ]] && ip_file="${DEFAULT_IP_DIR}/telecom.txt"
+                [[ -z "$ip_file" ]] && ip_file="$(get_default_ip_file "telecom")"
                 ;;
             *)
                 log_msg "WARN" "未知线路: ${line}，跳过检查"
@@ -511,19 +499,19 @@ get_cf_ip_from_file_by_line() {
     case "$line_name" in
         "默认")
             ip_file=$(jq -r '.ip_source.files.default // empty' "$CONFIG_FILE")
-            [[ -z "$ip_file" ]] && ip_file="${DEFAULT_IP_DIR}/default.txt"
+            [[ -z "$ip_file" ]] && ip_file="$(get_default_ip_file "default")"
             ;;
         "联通")
             ip_file=$(jq -r '.ip_source.files.unicom // empty' "$CONFIG_FILE")
-            [[ -z "$ip_file" ]] && ip_file="${DEFAULT_IP_DIR}/unicom.txt"
+            [[ -z "$ip_file" ]] && ip_file="$(get_default_ip_file "unicom")"
             ;;
         "移动")
             ip_file=$(jq -r '.ip_source.files.mobile // empty' "$CONFIG_FILE")
-            [[ -z "$ip_file" ]] && ip_file="${DEFAULT_IP_DIR}/mobile.txt"
+            [[ -z "$ip_file" ]] && ip_file="$(get_default_ip_file "mobile")"
             ;;
         "电信")
             ip_file=$(jq -r '.ip_source.files.telecom // empty' "$CONFIG_FILE")
-            [[ -z "$ip_file" ]] && ip_file="${DEFAULT_IP_DIR}/telecom.txt"
+            [[ -z "$ip_file" ]] && ip_file="$(get_default_ip_file "telecom")"
             ;;
         *)
             log_msg "ERROR" "未知的线路名称: ${line_name}"

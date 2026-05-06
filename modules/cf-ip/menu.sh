@@ -536,7 +536,7 @@ configure_advanced() {
     read -r -p "显示结果数量（0=不显示，默认: 0）: " CFST_SHOW_COUNT
     CFST_SHOW_COUNT=${CFST_SHOW_COUNT:-0}
     
-    read -r -p "IP段数据文件名（留空=使用默认ip.txt）: " CFST_IP_FILE
+    read -r -p "IP段数据文件名（留空=使用默认ip.iplist）: " CFST_IP_FILE
     
     read -r -p "禁用下载测速？(true/false，默认留空): " CFST_DISABLE_DOWNLOAD
     

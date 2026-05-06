@@ -1101,7 +1101,7 @@ manage_ip_content() {
     local ip_file
     ip_file=$(jq -r '.ip_source.file_path // empty' "$CONFIG_FILE")
     if [ -z "$ip_file" ]; then
-        ip_file="$ROOT_DIR/assets/data/cf-dns/ip_list.txt"
+        ip_file="$ROOT_DIR/assets/data/cf-dns/ip_list.iplist"
     fi
     
     echo "当前 IP 文件: ${ip_file}"

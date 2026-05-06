@@ -502,10 +502,10 @@ generate_dnspod_config() {
             --arg token "$dnspod_token" \
             --arg mode "multi" \
             --arg record_name "$record_name" \
-            --arg ip_file_default "${ROOT_DIR}/assets/data/dnspod-dns/ip_list_default.txt" \
-            --arg ip_file_unicom "${ROOT_DIR}/assets/data/dnspod-dns/ip_list_unicom.txt" \
-            --arg ip_file_mobile "${ROOT_DIR}/assets/data/dnspod-dns/ip_list_mobile.txt" \
-            --arg ip_file_telecom "${ROOT_DIR}/assets/data/dnspod-dns/ip_list_telecom.txt" \
+            --arg ip_file_default "${ROOT_DIR}/assets/data/dnspod-dns/ip_list_default.iplist" \
+            --arg ip_file_unicom "${ROOT_DIR}/assets/data/dnspod-dns/ip_list_unicom.iplist" \
+            --arg ip_file_mobile "${ROOT_DIR}/assets/data/dnspod-dns/ip_list_mobile.iplist" \
+            --arg ip_file_telecom "${ROOT_DIR}/assets/data/dnspod-dns/ip_list_telecom.iplist" \
             '{
                 "_comment": "DNSPod DNS 更新器配置",
                 "_version": "0.1",
@@ -1626,10 +1626,10 @@ deploy_dnspod_multi() {
         echo -e "${CYAN}正在同步 IP 数据...${NC}"
         bash "${ROOT_DIR}/modules/ip-sync/sync.sh" || true
         echo -e "${GREEN}[OK] IP 数据已同步到:${NC}"
-        echo -e "   • ${ROOT_DIR}/assets/data/dnspod-dns/ip_list_default.txt"
-        echo -e "   • ${ROOT_DIR}/assets/data/dnspod-dns/ip_list_unicom.txt"
-        echo -e "   • ${ROOT_DIR}/assets/data/dnspod-dns/ip_list_mobile.txt"
-        echo -e "   • ${ROOT_DIR}/assets/data/dnspod-dns/ip_list_telecom.txt"
+        echo -e "   • ${ROOT_DIR}/assets/data/dnspod-dns/ip_list_default.iplist"
+        echo -e "   • ${ROOT_DIR}/assets/data/dnspod-dns/ip_list_unicom.iplist"
+        echo -e "   • ${ROOT_DIR}/assets/data/dnspod-dns/ip_list_mobile.iplist"
+        echo -e "   • ${ROOT_DIR}/assets/data/dnspod-dns/ip_list_telecom.iplist"
     fi
     
     # 第5步：设置定时任务
