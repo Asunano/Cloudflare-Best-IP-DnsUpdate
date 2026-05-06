@@ -243,10 +243,17 @@ if [[ "${CURRENT_SCRIPT_PATH}" != "${TARGET_SCRIPT_PATH}" ]]; then
             
             # 设置环境变量标记，防止 exec 失败时的循环
             export CFOPT_RELOCATED=1
-            exec bash "${TARGET_SCRIPT_PATH}" "$@"
-            # exec 不会返回，如果到达此处说明 exec 失败
-            echo -e "${RED}[ERROR] exec 失败，请手动运行: ${TARGET_SCRIPT_PATH}${NC}"
-            exit 1
+            
+            # 【安全修复】先测试目标文件是否可以正常执行
+            if bash -n "${TARGET_SCRIPT_PATH}" 2>/tmp/cfopt_syntax_check.log; then
+                log_info "语法检查通过，正在启动..."
+                exec bash "${TARGET_SCRIPT_PATH}" "$@"
+            else
+                log_error "目标文件语法检查失败:"
+                cat /tmp/cfopt_syntax_check.log >&2
+                log_error "请手动运行: ${TARGET_SCRIPT_PATH}"
+                exit 1
+            fi
         else
             log_error "脚本更新失败，请检查权限。"
             exit 1
@@ -272,8 +279,17 @@ if [[ "${CURRENT_SCRIPT_PATH}" != "${TARGET_SCRIPT_PATH}" ]]; then
             # 设置环境变量标记，防止 exec 失败时的循环
             export CFOPT_RELOCATED=1
             
-            # 【安全修复】使用 bash 显式执行，确保兼容性
-            exec bash "${TARGET_SCRIPT_PATH}" "$@"
+            # 【安全修复】先测试目标文件是否可以正常执行
+            if bash -n "${TARGET_SCRIPT_PATH}" 2>/tmp/cfopt_syntax_check.log; then
+                log_info "语法检查通过，正在启动..."
+                # 使用 exec 替换当前进程
+                exec bash "${TARGET_SCRIPT_PATH}" "$@"
+            else
+                log_error "目标文件语法检查失败:"
+                cat /tmp/cfopt_syntax_check.log >&2
+                log_error "请手动运行: ${TARGET_SCRIPT_PATH}"
+                exit 1
+            fi
         else
             log_error "迁移失败，请检查权限。"
             exit 1
