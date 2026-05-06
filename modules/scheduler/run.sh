@@ -152,10 +152,12 @@ if [[ "${ENABLE_MULTI_LINE}" = "true" ]]; then
     ISP_COLOS["mobile"]="${COLO_MOBILE:-HKG,SIN,TYO,LON}"
     ISP_COLOS["telecom"]="${COLO_TELECOM:-SJC,LAX,TYO,SIN}"
 
+    # 【安全修复】改为串行执行，避免 cfst 竞争导致的测速不准确
+    echo -e "${YELLOW}[INFO] 多线路模式：串行执行测速（确保结果准确）${NC}"
     for isp in "${!ISP_COLOS[@]}"; do
         colo_list="${ISP_COLOS[$isp]}"
         output_file="${ROOT_DIR}/assets/data/cf-ip/result_${isp}.csv"
-        echo -e "${CYAN}  -> 正在后台启动 ${isp} 线路测速 (Colo: ${colo_list})...${NC}"
+        echo -e "${CYAN}  -> 正在执行 ${isp} 线路测速 (Colo: ${colo_list})...${NC}"
         # 【优化】通过环境变量传递配置，避免 core.sh 重复读取文件
         export CF_IP_CFG_LOADED="true"
         export CFG_MULTI_LINE_ENABLED="${ENABLE_MULTI_LINE}"
@@ -163,16 +165,14 @@ if [[ "${ENABLE_MULTI_LINE}" = "true" ]]; then
         export CFG_COLO_UNICOM="${COLO_UNICOM}"
         export CFG_COLO_TELECOM="${COLO_TELECOM}"
         # 传入第三个参数作为线路标识，用于进程锁隔离
-        # 使用 & 符号让其在后台运行，实现多线程并发测速
-        bash "${ROOT_DIR}/modules/cf-ip/core.sh" "${colo_list}" "${output_file}" "${isp}" &
+        # 【修复】串行执行，等待当前线路完成后再执行下一条
+        bash "${ROOT_DIR}/modules/cf-ip/core.sh" "${colo_list}" "${output_file}" "${isp}"
+        
+        # 检查退出码
+        if [[ $? -ne 0 ]]; then
+            echo -e "${RED}[WARN] ${isp} 线路测速失败，继续执行下一条线路${NC}"
+        fi
     done
-    
-    # 等待所有后台测速任务完成
-    echo -e "${YELLOW}[INFO] 等待所有线路测速任务完成...${NC}"
-    # 【安全修复】启动看门狗，防止无限等待
-    start_watchdog "$SCHEDULER_TIMEOUT" "多线路测速"
-    wait
-    stop_watchdog
 else
     # 【优化】单线路模式：扫描所有已配置的域名，为每个域名独立测速
     echo -e "${YELLOW}[INFO] 单线路模式，正在扫描已配置的域名...${NC}"
@@ -200,7 +200,14 @@ else
             echo -e "${CYAN}  -> 正在为 ${domain_name} 执行测速 (节点: ${colo_nodes})...${NC}"
             # 【优化】通过环境变量传递配置，避免 core.sh 重复读取文件
             export CF_IP_CFG_LOADED="true"
-            bash "${ROOT_DIR}/modules/cf-ip/core.sh" "${colo_nodes}" "${result_file}" "${domain_name}" &
+            # 【修复】串行执行，避免 cfst 竞争
+            bash "${ROOT_DIR}/modules/cf-ip/core.sh" "${colo_nodes}" "${result_file}" "${domain_name}"
+            
+            # 检查退出码
+            if [[ $? -ne 0 ]]; then
+                echo -e "${RED}[WARN] ${domain_name} 测速失败，继续执行下一个域名${NC}"
+            fi
+            
             has_cf_dns=true
             
         done < <(find "${cf_dns_dir}" -name "*.json" -type f -print0 2>/dev/null)
@@ -212,13 +219,6 @@ else
         # 【优化】通过环境变量传递配置，避免 core.sh 重复读取文件
         export CF_IP_CFG_LOADED="true"
         bash "${ROOT_DIR}/modules/cf-ip/core.sh" || exit 1
-    else
-        # 等待所有后台测速任务完成
-        echo -e "${YELLOW}[INFO] 等待所有域名测速任务完成...${NC}"
-        # 【安全修复】启动看门狗，防止无限等待
-        start_watchdog "$SCHEDULER_TIMEOUT" "多域名测速"
-        wait
-        stop_watchdog
     fi
 fi
 echo -e "${GREEN}[OK] IP 优选测速执行成功。${NC}"
