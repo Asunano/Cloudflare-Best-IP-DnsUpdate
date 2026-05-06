@@ -1218,6 +1218,8 @@ uninstall_cfopt() {
     if [[ -L /usr/local/bin/cfopt ]] || [[ -f /usr/local/bin/cfopt ]]; then
         if rm -f /usr/local/bin/cfopt 2>/dev/null; then
             log_success "全局命令已删除"
+            # 【安全修复】清除 Bash 哈希表缓存，防止 "No such file or directory" 错误
+            hash -r 2>/dev/null || true
         else
             log_warning "删除全局命令失败，可能需要手动清理: sudo rm -f /usr/local/bin/cfopt"
         fi
@@ -1379,9 +1381,13 @@ CLEANUP_EOF
     echo -e "${YELLOW}感谢曾经的陪伴，再见！${NC}"
     echo ""
     
+    # 【安全修复】清除 Bash 哈希表缓存
+    hash -r 2>/dev/null || true
+    
     # 如果是通过全局命令运行的，提示用户
     if [[ "$(readlink -f "$0" 2>/dev/null)" = "/usr/local/bin/cfopt" ]]; then
         echo -e "${YELLOW}[提示] 如果您是通过 'cfopt' 命令运行的，该命令已被删除${NC}"
+        echo -e "${YELLOW}[提示] 当前会话中可能需要执行 'hash -r' 清除缓存${NC}"
         echo ""
     fi
     
