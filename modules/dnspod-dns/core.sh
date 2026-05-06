@@ -1116,15 +1116,24 @@ main_multi() {
         fi
         log_msg "INFO" ""
         
-        # 确定要使用的 IP (循环使用可用的 IP)
+        # 【安全修复】确定要处理的记录数（取 IP 数量和现有记录数的较小值）
         log_msg "INFO" "步骤 3: 更新/创建 DNS 记录"
         local updated=0
         local skipped=0
         local failed=0
         local created=0
         
-        for ((i=0; i<${#ip_addresses[@]}; i++)); do
-            # 循环使用 IP 地址
+        # 【安全修复】检查 IP 数量与记录数量的关系
+        if [[ ${#ip_addresses[@]} -lt ${record_count} ]]; then
+            log_msg "WARN" "IP 数量(${#ip_addresses[@]})少于记录数量(${record_count})"
+            log_msg "WARN" "部分 IP 将被循环使用，建议增加 IP 数量或减少 DNS 记录"
+        fi
+        
+        # 【安全修复】计算需要处理的记录数（取最大值以确保所有 IP 都被处理）
+        local process_count=$(([ ${#ip_addresses[@]} -gt ${record_count} ] ? ${#ip_addresses[@]} : ${record_count}))
+        
+        for ((i=0; i<process_count; i++)); do
+            # 【安全修复】循环使用 IP 地址（当 IP 数量少于记录数时）
             local ip_index=$((i % ${#ip_addresses[@]}))
             local new_ip="${ip_addresses[$ip_index]}"
             
@@ -1138,7 +1147,7 @@ main_multi() {
                 local current_value="${current_values[$i]}"
                         
                 # 【功能增强】显示进度
-                printf "\r    [%d/%d] 正在处理 %s..." "$((i+1))" "${#ip_addresses[@]}" "$new_ip"
+                printf "\r    [%d/%d] 正在处理 %s..." "$((i+1))" "${process_count}" "$new_ip"
                         
                 # 检查 IP 是否变化 (去除空格后比较)
                 local clean_current
@@ -1169,7 +1178,7 @@ main_multi() {
             else
                 # 自动新建记录
                 # 【功能增强】显示进度
-                printf "\r    [%d/%d] 正在创建 %s..." "$((i+1))" "${#ip_addresses[@]}" "$new_ip"
+                printf "\r    [%d/%d] 正在创建 %s..." "$((i+1))" "${process_count}" "$new_ip"
                         
                 local create_response
                 create_response="$(create_record_by_line "${new_ip}" "${line}")"
@@ -1189,6 +1198,12 @@ main_multi() {
             fi
         done
         echo ""  # 换行
+        
+        # 【安全修复】如果 IP 数量少于记录数，提示跳过的记录
+        if [[ ${#ip_addresses[@]} -lt ${record_count} ]]; then
+            local skipped_records=$((record_count - ${#ip_addresses[@]}))
+            log_msg "INFO" "跳过第 $(( ${#ip_addresses[@]} + 1 ))-${record_count} 条记录（无对应 IP）"
+        fi
         
         log_msg "INFO" ""
         log_msg "INFO" "线路完成统计:"
