@@ -6,6 +6,9 @@
 # Description: 负责调用 cfst 程序进行 Cloudflare IP 测速并生成 result.csv
 # Usage: bash modules/cf-ip/core.sh [COLO] [OUTPUT_CSV] [LINE_TAG]
 # ==============================================================================
+# 【安全修复】启用严格模式，防止错误传播
+set -euo pipefail
+
 SCRIPT_VERSION="0.1"
 
 # ==================== 终端显示配置 ====================
@@ -425,17 +428,17 @@ parse_and_display_progress() {
     
     if [[ "${current_stage}" = "ping" ]]; then
         # 延迟阶段：提取 "可用: XXXX / YYYY" 格式
-        # 【修复】优化：只读取最后 50 行，提高性能
+        # 【修复】优化：只读取最后 50 行，提高性能（使用 || true 防止 grep 无匹配时退出）
         local ping_line
-        ping_line=$(tail -n 50 "${log_file}" 2>/dev/null | grep '可用:' | tail -1)
+        ping_line=$(tail -n 50 "${log_file}" 2>/dev/null | grep '可用:' | tail -1 || true)
         
         if [[ -n "${ping_line}" ]]; then
             # 【修复】使用更精确的正则提取 "可用: X / Y" 中的数字
             local available_count
             local total_count
-            # 提取 "可用:" 后面的所有数字
-            available_count=$(echo "${ping_line}" | grep -oP '可用:\s*\K[0-9]+')
-            total_count=$(echo "${ping_line}" | grep -oP '可用:\s*[0-9]+\s*/\s*\K[0-9]+')
+            # 提取 "可用:" 后面的所有数字（使用 || true 防止 grep 无匹配时退出）
+            available_count=$(echo "${ping_line}" | grep -oP '可用:\s*\K[0-9]+' || true)
+            total_count=$(echo "${ping_line}" | grep -oP '可用:\s*[0-9]+\s*/\s*\K[0-9]+' || true)
             
             # 【修复】严格校验：非空 + 纯数字 + 总数大于 0
             if [[ -n "${available_count}" ]] && [[ -n "${total_count}" ]] && \
@@ -449,17 +452,17 @@ parse_and_display_progress() {
         printf "\r%-80s" "${CYAN}  [进度] 正在测速中...${NC}   "
     else
         # 下载阶段：提取 "X / 10" 格式的进度
-        # 【修复】允许行首有空格，匹配 cfst 实际输出格式
+        # 【修复】允许行首有空格，匹配 cfst 实际输出格式（使用 || true 防止 grep 无匹配时退出）
         local download_line
-        download_line=$(tail -n 50 "${log_file}" 2>/dev/null | grep -E '[0-9]+\s*/\s*[0-9]+' | tail -1)
+        download_line=$(tail -n 50 "${log_file}" 2>/dev/null | grep -E '[0-9]+\s*/\s*[0-9]+' | tail -1 || true)
         
         if [[ -n "${download_line}" ]]; then
-            # 【修复】使用更精确的正则提取 "X / Y" 中的数字
+            # 【修复】使用更精确的正则提取 "X / Y" 中的数字（使用 || true 防止 grep 无匹配时退出）
             local download_current
             local download_total
             # 提取第一个数字（当前值）和第二个数字（总值）
-            download_current=$(echo "${download_line}" | grep -oP '^\s*\K[0-9]+(?=\s*/)')
-            download_total=$(echo "${download_line}" | grep -oP '\d+\s*/\s*\K\d+')
+            download_current=$(echo "${download_line}" | grep -oP '^\s*\K[0-9]+(?=\s*/)' || true)
+            download_total=$(echo "${download_line}" | grep -oP '\d+\s*/\s*\K\d+' || true)
             
             # 【修复】严格校验：非空 + 纯数字 + 总数大于 0
             if [[ -n "${download_current}" ]] && [[ -n "${download_total}" ]] && \
@@ -517,7 +520,7 @@ monitor_progress() {
             last_displayed_size=${current_log_size}
             
             # 检测是否进入第二阶段（下载测速）
-            # 优化：只检查最后 100 行
+            # 优化：只检查最后 100 行（使用 || true 防止 grep 无匹配时退出）
             if [[ "${stage}" = "ping" ]] && tail -n 100 "${log_file}" 2>/dev/null | grep -q "开始下载测速"; then
                 stage="download"
                 # 修复：阶段切换时用 \n 换行，保持界面整洁
