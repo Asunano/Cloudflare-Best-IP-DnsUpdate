@@ -387,6 +387,10 @@ download_with_retry() {
     local max_retries=3
     local retry_count=0
     
+    # 【安全修复】在函数开头初始化变量，防止未定义导致误判
+    local http_code=""
+    local curl_exit=0
+    
     # 判断是否为 GitHub raw 链接，如果是则启用镜像回退
     local use_mirror=false
     local mirror_url=""  # 【修复】在函数开头初始化，避免作用域混淆
@@ -417,9 +421,8 @@ download_with_retry() {
         fi
         
         # 使用 curl 进行下载，仅显示进度条
-        local http_code
         http_code=$(curl -sfL --connect-timeout 10 --max-time 60 --create-dirs -o "${output}" -w "%{http_code}" "${current_url}" 2>/dev/null)
-        local curl_exit=$?
+        curl_exit=$?
         
         if [[ ${curl_exit} -eq 0 ]] && [[ "${http_code}" = "200" ]]; then
             # 【增强】多重完整性校验
