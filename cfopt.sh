@@ -209,12 +209,6 @@ else
 fi
 
 # --- 自动归位逻辑：确保脚本在标准目录下运行 ---
-# 【安全修复】添加循环检测标记，防止 exec 失败时的无限重试
-if [[ "${CFOPT_RELOCATED:-}" = "1" ]]; then
-    echo -e "${RED}[ERROR] 归位后重启失败，请手动执行: ${INSTALL_DIR}/cfopt.sh${NC}"
-    exit 1
-fi
-
 CURRENT_SCRIPT_PATH="$(readlink -f "$0")"
 TARGET_SCRIPT_PATH="${INSTALL_DIR}/cfopt.sh"
 
@@ -241,26 +235,13 @@ if [[ "${CURRENT_SCRIPT_PATH}" != "${TARGET_SCRIPT_PATH}" ]]; then
             log_info "文件权限: $(stat -c '%a' "${TARGET_SCRIPT_PATH}" 2>/dev/null || stat -f '%Lp' "${TARGET_SCRIPT_PATH}" 2>/dev/null)"
             log_info "文件头: $(head -1 "${TARGET_SCRIPT_PATH}")"
             
-            # 设置环境变量标记，防止 exec 失败时的循环
-            export CFOPT_RELOCATED=1
-            
             # 【安全修复】先测试目标文件是否可以正常执行
             if bash -n "${TARGET_SCRIPT_PATH}" 2>/tmp/cfopt_syntax_check.log; then
                 log_info "语法检查通过，正在启动..."
                 
-                # 【调试】输出 exec 前的环境信息
-                log_info "当前 PID: $$"
-                log_info "参数数量: $#"
-                log_info "CFOPT_RELOCATED: ${CFOPT_RELOCATED:-unset}"
-                
                 # 【标准做法】使用 exec 替换当前进程
                 # exec 会用新进程完全替换当前进程，包括文件描述符
-                exec bash "${TARGET_SCRIPT_PATH}" "$@" || {
-                    EXEC_EXIT_CODE=$?
-                    log_error "exec 退出码: ${EXEC_EXIT_CODE}"
-                    log_error "请手动运行: ${TARGET_SCRIPT_PATH}"
-                    exit ${EXEC_EXIT_CODE}
-                }
+                exec bash "${TARGET_SCRIPT_PATH}" "$@"
             else
                 log_error "目标文件语法检查失败:"
                 cat /tmp/cfopt_syntax_check.log >&2
@@ -289,26 +270,13 @@ if [[ "${CURRENT_SCRIPT_PATH}" != "${TARGET_SCRIPT_PATH}" ]]; then
             log_info "文件权限: $(stat -c '%a' "${TARGET_SCRIPT_PATH}" 2>/dev/null || stat -f '%Lp' "${TARGET_SCRIPT_PATH}" 2>/dev/null)"
             log_info "文件头: $(head -1 "${TARGET_SCRIPT_PATH}")"
             
-            # 设置环境变量标记，防止 exec 失败时的循环
-            export CFOPT_RELOCATED=1
-            
             # 【安全修复】先测试目标文件是否可以正常执行
             if bash -n "${TARGET_SCRIPT_PATH}" 2>/tmp/cfopt_syntax_check.log; then
                 log_info "语法检查通过，正在启动..."
                 
-                # 【调试】输出 exec 前的环境信息
-                log_info "当前 PID: $$"
-                log_info "参数数量: $#"
-                log_info "CFOPT_RELOCATED: ${CFOPT_RELOCATED:-unset}"
-                
                 # 【标准做法】使用 exec 替换当前进程
                 # exec 会用新进程完全替换当前进程，包括文件描述符
-                exec bash "${TARGET_SCRIPT_PATH}" "$@" || {
-                    EXEC_EXIT_CODE=$?
-                    log_error "exec 退出码: ${EXEC_EXIT_CODE}"
-                    log_error "请手动运行: ${TARGET_SCRIPT_PATH}"
-                    exit ${EXEC_EXIT_CODE}
-                }
+                exec bash "${TARGET_SCRIPT_PATH}" "$@"
             else
                 log_error "目标文件语法检查失败:"
                 cat /tmp/cfopt_syntax_check.log >&2
