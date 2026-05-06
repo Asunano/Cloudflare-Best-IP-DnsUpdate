@@ -68,7 +68,8 @@ acquire_lock() {
 }
 
 # ====================== 【入口权限校验】 ======================
-if [[ "${CF_OPT_ENTRY:-}" != "main_menu" ]] && [[ "${CF_OPT_ENTRY:-}" != "run_sh" ]]; then
+# 【修复】删除未使用的 run_sh 分支，仅保留 main_menu
+if [[ "${CF_OPT_ENTRY:-}" != "main_menu" ]]; then
     echo -e "${RED}[ERROR] 请使用 'cfopt' 命令进入主菜单运行此模块。${NC}"
     echo -e "${YELLOW}[INFO] 当前 CF_OPT_ENTRY='${CF_OPT_ENTRY:-空}'${NC}"
     echo -e "${CYAN}提示:${NC} 请运行 'cfopt' 命令，然后选择 '2. CF IP 优选管理'"
@@ -298,7 +299,8 @@ manage_config() {
 # ====================== 【函数：简单配置】 ======================
 configure_simple() {
     # 调试：检查环境变量
-    if [[ "${CF_OPT_ENTRY:-}" != "main_menu" ]] && [[ "${CF_OPT_ENTRY:-}" != "run_sh" ]]; then
+    # 【修复】删除未使用的 run_sh 分支，仅保留 main_menu
+    if [[ "${CF_OPT_ENTRY:-}" != "main_menu" ]]; then
         echo -e "${RED}[ERROR] 环境变量 CF_OPT_ENTRY 未设置或值不正确: '${CF_OPT_ENTRY:-空}'${NC}"
         echo -e "${RED}[ERROR] 请通过 'cfopt' 命令启动程序${NC}"
         return 1
