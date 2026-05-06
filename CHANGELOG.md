@@ -207,6 +207,35 @@
     - ✅ 零维护：不需要担心遗漏恢复逻辑
     - ✅ 符合 Unix 哲学：利用子进程隔离副作用
 
+- **统一重试次数配置** (2026-05-06)
+  - 文件：`modules/ip-sync/sync.sh`
+  - 问题：`auto_retry_test()` 函数硬编码 `max_retries=5`，与 `cf-ip/core.sh` 的配置化策略不一致
+  - 对比：
+    - `cf-ip/core.sh`：从配置文件读取 `.speed_test.max_retry`（默认3）
+    - `ip-sync/sync.sh`：硬编码为 5 次 ❌
+  - 影响：
+    - ❌ 策略不统一：两个模块的重试行为不一致
+    - ❌ 配置无效：用户修改配置文件对 ip-sync 无效
+    - ❌ 维护困难：需要同时修改多处代码
+  - 修复：
+    ```bash
+    # 1. 添加配置加载逻辑
+    CONFIG_FILE="${ROOT_DIR}/conf/cf-ip.json"
+    if [[ -f "${CONFIG_FILE}" ]]; then
+        export MAX_RETRY=$(jq -r '.speed_test.max_retry // 3' "${CONFIG_FILE}")
+    else
+        export MAX_RETRY=3
+    fi
+    
+    # 2. 修改 auto_retry_test 函数
+    local max_retries=${MAX_RETRY:-3}  # ✅ 使用配置文件中的值
+    ```
+  - 效果：
+    - ✅ 策略统一：所有模块都从配置文件读取重试次数
+    - ✅ 配置驱动：用户只需修改一处配置
+    - ✅ 向后兼容：配置文件不存在时使用默认值3
+    - ✅ 易于维护：集中管理重试策略
+
 #### 安全性修复 (Security)
 - **修复 API Token 环境变量泄露** (2026-05-06)
   - 问题：`export CF_API_TOKEN` 和 `export SECRETKEY` 将敏感信息导出为环境变量
