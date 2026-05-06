@@ -42,6 +42,48 @@
 ### Fixed - 修复
 
 #### 安全修复 (Security)
+- **添加测速任务超时保护** (2026-05-06)
+  - 文件：`modules/scheduler/run.sh`
+  - 问题：`wait` 命令没有超时机制，如果 cfst 进程挂起（网络卡死、DNS 解析阻塞），scheduler 会永远等待
+  - 影响：
+    - ❌ **Cron 任务堆积**：每次触发都创建新实例，旧实例永不退出
+    - ❌ **资源耗尽**：进程数无限增长，最终耗尽系统资源
+    - ❌ **服务中断**：服务器负载过高，影响其他服务
+  - 修复：实现看门狗（Watchdog）机制
+    ```bash
+    # 配置超时时间（默认 10 分钟）
+    SCHEDULER_TIMEOUT=${SCHEDULER_TIMEOUT:-600}
+    
+    # 启动看门狗
+    start_watchdog() {
+        local timeout="$1"
+        local task_name="$2"
+        
+        (
+            sleep "$timeout"
+            echo "[TIMEOUT] ${task_name} 超时，强制终止所有子进程"
+            kill -- -$$ 2>/dev/null || true  # 终止整个进程组
+            exit 1
+        ) &
+        WATCHDOG_PID=$!
+    }
+    
+    # 使用示例
+    start_watchdog "$SCHEDULER_TIMEOUT" "多线路测速"
+    wait
+    stop_watchdog  # 正常完成，取消看门狗
+    ```
+  - 技术说明：
+    - 看门狗在后台运行，独立于主流程
+    - 超时后发送 `kill -- -$$` 终止整个进程组
+    - 正常完成时调用 `stop_watchdog` 取消定时器
+    - 可通过环境变量 `SCHEDULER_TIMEOUT` 自定义超时时间
+  - 效果：
+    - ✅ **防止无限等待**：最多等待 10 分钟
+    - ✅ **自动清理**：超时后强制终止所有子进程
+    - ✅ **灵活配置**：支持环境变量自定义
+    - ✅ **资源保护**：避免 Cron 任务堆积
+
 - **消除进程锁 TOCTOU 竞态条件** (2026-05-06)
   - 文件：
     - `modules/cf-dns/core.sh`
