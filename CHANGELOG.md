@@ -12,6 +12,53 @@
 ### Added - 新增
 
 #### 功能增强 (Features)
+- **定义标准 IP 列表格式 (.iplist)** (2026-05-06)
+  - 文件：
+    - `docs/IP_LIST_FORMAT.md`（格式规范文档）
+    - `modules/ip-sync/sync.sh`（转换工具）
+  - 问题：模块间通过文件传递数据，没有统一的数据格式约定
+  - 现状：
+    ```
+    cf-ip/core.sh → result.csv (CSV格式)
+         ↓
+    ip-sync/sync.sh → ip_list.txt (纯文本)
+         ↓
+    cf-dns/core.sh ← 读取 txt
+    ```
+  - 影响：
+    - ❌ **格式不统一**：CSV → TXT → IP List，三次格式转换
+    - ❌ **信息丢失**：TXT 格式只保留 IP，丢失延迟、速度等元数据
+    - ❌ **耦合度高**：任何一环格式变化都会导致下游断裂
+    - ❌ **难以扩展**：无法添加新的字段（如更新时间、质量评分等）
+  - 修复：定义标准 .iplist 格式并提供转换工具
+    ```bash
+    # 标准 .iplist 格式
+    # IP地址|延迟(ms)|下载速度(MB/s)|地区码
+    104.16.132.229|45|12.5|HKG
+    104.16.133.229|48|11.8|NRT
+    104.16.134.229|52|10.2|HKG
+    ```
+  - 转换工具：
+    ```bash
+    # CSV → .iplist
+    csv_to_iplist "result.csv" "result.iplist"
+    
+    # .iplist → TXT（兼容旧模块）
+    iplist_to_txt "result.iplist" "ip_list.txt"
+    
+    # TXT → .iplist（补充默认元数据）
+    txt_to_iplist "ip_list.txt" "ip_list.iplist"
+    
+    # 自动检测并转换
+    detect_and_convert "source.csv" "target.iplist" "iplist"
+    ```
+  - 效果：
+    - ✅ **统一格式**：所有模块使用相同的 .iplist 格式
+    - ✅ **保留元数据**：延迟、速度、地区码完整保留
+    - ✅ **向后兼容**：完全支持旧的 CSV 和 TXT 格式
+    - ✅ **易于扩展**：可以轻松添加新字段
+    - ✅ **自动转换**：提供智能检测和转换机制
+
 - **为配置向导添加“返回上一步”功能** (2026-05-06)
   - 文件：`modules/cf-dns/setup.sh`
   - 问题：配置向导是线性的，用户输错后只能重新开始
