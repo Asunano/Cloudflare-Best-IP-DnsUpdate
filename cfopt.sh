@@ -325,7 +325,9 @@ install_system_cmd() {
         # 非 Root 用户尝试提权处理
         if [[ "${EUID}" -ne 0 ]]; then
             if command -v sudo >/dev/null 2>&1; then
-                if safe_execute "安装全局命令" sudo bash -c "ln -sf '${script_path}' '${SYSTEM_CMD_PATH}' && chmod +x '${SYSTEM_CMD_PATH}'"; then
+                # 【安全修复】直接执行命令，避免 bash -c 字符串拼接
+                if safe_execute "安装全局命令" sudo ln -sf "${script_path}" "${SYSTEM_CMD_PATH}" && \
+                   safe_execute "设置执行权限" sudo chmod +x "${SYSTEM_CMD_PATH}"; then
                     if check_system_cmd; then
                         log_success "全局命令已安装: ${SYSTEM_CMD_PATH}"
                         return 0
@@ -540,17 +542,15 @@ check_environment() {
         echo -e "${RED}[ERROR] 缺失必要工具: ${missing_tools[*]}${NC}"
         echo -e "${YELLOW}[INFO] 正在尝试自动安装...${NC}"
         
-        local install_cmd=""
-        if command -v apt-get &> /dev/null; then
-            install_cmd="apt-get install -y"
-        elif command -v yum &> /dev/null; then
-            install_cmd="yum install -y"
-        elif command -v apk &> /dev/null; then
-            install_cmd="apk add"
-        fi
-
-        if [[ -n "${install_cmd}" ]]; then
-            sudo bash -c "${install_cmd} ${missing_tools[*]}" 2>/dev/null || true
+        # 【安全修复】直接调用包管理器，避免 bash -c 字符串拼接导致的命令注入
+        if command -v apt-get &>/dev/null; then
+            sudo apt-get install -y "${missing_tools[@]}" 2>/dev/null || true
+        elif command -v yum &>/dev/null; then
+            sudo yum install -y "${missing_tools[@]}" 2>/dev/null || true
+        elif command -v dnf &>/dev/null; then
+            sudo dnf install -y "${missing_tools[@]}" 2>/dev/null || true
+        elif command -v apk &>/dev/null; then
+            sudo apk add "${missing_tools[@]}" 2>/dev/null || true
         fi
         
         # 安装后二次检查，若仍缺失则报错退出
@@ -762,24 +762,31 @@ system_health_check() {
             # 修复依赖
             if [[ ${#missing_tools[@]} -gt 0 ]]; then
                 echo -n "正在安装依赖工具... "
-                local install_cmd=""
+                # 【安全修复】直接调用包管理器，避免 bash -c 字符串拼接
+                local install_success=false
                 if command -v apt-get &>/dev/null; then
-                    install_cmd="apt-get install -y"
+                    if sudo apt-get install -y "${missing_tools[@]}" &>/dev/null; then
+                        install_success=true
+                    fi
                 elif command -v yum &>/dev/null; then
-                    install_cmd="yum install -y"
+                    if sudo yum install -y "${missing_tools[@]}" &>/dev/null; then
+                        install_success=true
+                    fi
+                elif command -v dnf &>/dev/null; then
+                    if sudo dnf install -y "${missing_tools[@]}" &>/dev/null; then
+                        install_success=true
+                    fi
                 elif command -v apk &>/dev/null; then
-                    install_cmd="apk add"
+                    if sudo apk add "${missing_tools[@]}" &>/dev/null; then
+                        install_success=true
+                    fi
                 fi
                 
-                if [[ -n "${install_cmd}" ]]; then
-                    if sudo bash -c "${install_cmd} ${missing_tools[*]}" &>/dev/null; then
-                        echo -e "${GREEN}成功${NC}"
-                        ((fixed_count++))
-                    else
-                        echo -e "${RED}失败${NC} (请手动安装)"
-                    fi
+                if [[ "${install_success}" = true ]]; then
+                    echo -e "${GREEN}成功${NC}"
+                    ((fixed_count++))
                 else
-                    echo -e "${YELLOW}跳过${NC} (无法识别包管理器)"
+                    echo -e "${RED}失败${NC} (请手动安装)"
                 fi
             fi
             
@@ -1020,30 +1027,34 @@ setup_auto_cron() {
         INSTALL_CRON="${INSTALL_CRON:-y}"
         
         if [[ "${INSTALL_CRON}" =~ ^[Yy]$ ]]; then
-            local install_cmd=""
-            if command -v apt-get &> /dev/null; then
-                install_cmd="apt-get update && apt-get install -y cron"
-            elif command -v yum &> /dev/null; then
-                install_cmd="yum install -y cronie"
-            elif command -v dnf &> /dev/null; then
-                install_cmd="dnf install -y cronie"
-            elif command -v apk &> /dev/null; then
-                install_cmd="apk add --no-cache busybox-suid openrc && rc-update add cron default && service cron start"
+            # 【安全修复】直接调用包管理器，避免 bash -c 字符串拼接
+            local install_success=false
+            if command -v apt-get &>/dev/null; then
+                if sudo apt-get update &>/dev/null && sudo apt-get install -y cron &>/dev/null; then
+                    install_success=true
+                fi
+            elif command -v yum &>/dev/null; then
+                if sudo yum install -y cronie &>/dev/null; then
+                    install_success=true
+                fi
+            elif command -v dnf &>/dev/null; then
+                if sudo dnf install -y cronie &>/dev/null; then
+                    install_success=true
+                fi
+            elif command -v apk &>/dev/null; then
+                if sudo apk add --no-cache busybox-suid openrc &>/dev/null; then
+                    sudo rc-update add cron default 2>/dev/null || true
+                    sudo service cron start 2>/dev/null || true
+                    install_success=true
+                fi
             fi
 
-            if [[ -n "${install_cmd}" ]]; then
-                echo -e "${CYAN}[INFO] 正在执行安装命令...${NC}"
-                if sudo bash -c "${install_cmd}"; then
-                    # 尝试启动服务
-                    sudo systemctl enable crond 2>/dev/null || sudo service cron start 2>/dev/null || true
-                    echo -e "${GREEN}[OK] 安装成功！正在进入配置界面...${NC}"
-                else
-                    echo -e "${RED}[ERROR] 自动安装失败，请手动安装后重试。${NC}"
-                    read -r -p "按回车键继续..."
-                    return
-                fi
+            if [[ "${install_success}" = true ]]; then
+                echo -e "${GREEN}[OK] 安装成功！正在进入配置界面...${NC}"
+                # 尝试启动服务
+                sudo systemctl enable crond 2>/dev/null || sudo service cron start 2>/dev/null || true
             else
-                echo -e "${RED}[ERROR] 无法识别当前系统的包管理器，请手动安装 cron。${NC}"
+                echo -e "${RED}[ERROR] 自动安装失败，请手动安装后重试。${NC}"
                 read -r -p "按回车键继续..."
                 return
             fi
