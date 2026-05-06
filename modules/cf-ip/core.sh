@@ -341,22 +341,19 @@ parse_and_display_progress() {
     
     if [[ "${current_stage}" = "ping" ]]; then
         # 延迟阶段：提取 "可用: XXXX / YYYY" 格式
-        # 优化：只读取最后 100 行，避免全量检索
+        # 【修复】优化：只读取最后 50 行，提高性能
         local ping_line
-        ping_line=$(tail -n 100 "${log_file}" 2>/dev/null | grep '可用:' | tail -1)
+        ping_line=$(tail -n 50 "${log_file}" 2>/dev/null | grep '可用:' | tail -1)
         
         if [[ -n "${ping_line}" ]]; then
-            # 使用 grep -oE 提取纯数字，兼容性更好
-            local all_numbers
-            all_numbers=$(echo "${ping_line}" | grep -oE '[0-9]+' | head -2)
-            
-            if [[ -n "${all_numbers}" ]]; then
-                local available_count
-                local total_count
-                available_count=$(echo "${all_numbers}" | head -1)
-                total_count=$(echo "${all_numbers}" | tail -1)
+            # 【修复】使用更精确的正则提取 "可用: X / Y" 中的数字
+            local available_count
+            local total_count
+            # 提取 "可用:" 后面的所有数字
+            available_count=$(echo "${ping_line}" | grep -oP '可用:\s*\K[0-9]+')
+            total_count=$(echo "${ping_line}" | grep -oP '可用:\s*[0-9]+\s*/\s*\K[0-9]+')
                 
-                # 严格校验：非空 + 纯数字 + 总数大于 0
+                # 【修复】严格校验：非空 + 纯数字 + 总数大于 0
                 if [[ -n "${available_count}" ]] && [[ -n "${total_count}" ]] && \
                    [[ "${available_count}" =~ ^[0-9]+$ ]] && [[ "${total_count}" =~ ^[0-9]+$ ]] && \
                    [[ "${total_count}" -gt 0 ]]; then
@@ -371,20 +368,17 @@ parse_and_display_progress() {
         # 下载阶段：提取 "X / 10" 格式的进度
         # 【修复】允许行首有空格，匹配 cfst 实际输出格式
         local download_line
-        download_line=$(tail -n 100 "${log_file}" 2>/dev/null | grep -E '[0-9]+ / [0-9]+' | tail -1)
+        download_line=$(tail -n 50 "${log_file}" 2>/dev/null | grep -E '[0-9]+\s*/\s*[0-9]+' | tail -1)
         
         if [[ -n "${download_line}" ]]; then
-            # 使用 grep -oE 提取纯数字
-            local all_numbers
-            all_numbers=$(echo "${download_line}" | grep -oE '[0-9]+' | head -2)
-            
-            if [[ -n "${all_numbers}" ]]; then
-                local download_current
-                local download_total
-                download_current=$(echo "${all_numbers}" | head -1)
-                download_total=$(echo "${all_numbers}" | tail -1)
+            # 【修复】使用更精确的正则提取 "X / Y" 中的数字
+            local download_current
+            local download_total
+            # 提取第一个数字（当前值）和第二个数字（总值）
+            download_current=$(echo "${download_line}" | grep -oP '^\s*\K[0-9]+(?=\s*/)')
+            download_total=$(echo "${download_line}" | grep -oP '\d+\s*/\s*\K\d+')
                 
-                # 严格校验：非空 + 纯数字 + 总数大于 0
+                # 【修复】严格校验：非空 + 纯数字 + 总数大于 0
                 if [[ -n "${download_current}" ]] && [[ -n "${download_total}" ]] && \
                    [[ "${download_current}" =~ ^[0-9]+$ ]] && [[ "${download_total}" =~ ^[0-9]+$ ]] && \
                    [[ "${download_total}" -gt 0 ]]; then
