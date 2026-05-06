@@ -481,9 +481,9 @@ parse_and_display_progress() {
     
     if [[ "${current_stage}" = "ping" ]]; then
         # 延迟阶段：提取 "可用: XXXX / YYYY" 格式
-        # 【修复】优化：只读取最后 50 行，提高性能（使用 || true 防止 grep 无匹配时退出）
+        # 【修复】使用 tac + grep -m 1 从后向前匹配，减少读写竞态窗口（使用 || true 防止无匹配时退出）
         local ping_line
-        ping_line=$(tail -n 50 "${log_file}" 2>/dev/null | grep '可用:' | tail -1 || true)
+        ping_line=$(tac "${log_file}" 2>/dev/null | grep -m 1 '可用:' || true)
         
         if [[ -n "${ping_line}" ]]; then
             # 【修复】使用更精确的正则提取 "可用: X / Y" 中的数字
@@ -505,9 +505,9 @@ parse_and_display_progress() {
         printf "\r%-80s" "${CYAN}  [进度] 正在测速中...${NC}   "
     else
         # 下载阶段：提取 "X / 10" 格式的进度
-        # 【修复】允许行首有空格，匹配 cfst 实际输出格式（使用 || true 防止 grep 无匹配时退出）
+        # 【修复】使用 tac + grep -m 1 从后向前匹配，减少读写竞态窗口（使用 || true 防止无匹配时退出）
         local download_line
-        download_line=$(tail -n 50 "${log_file}" 2>/dev/null | grep -E '[0-9]+\s*/\s*[0-9]+' | tail -1 || true)
+        download_line=$(tac "${log_file}" 2>/dev/null | grep -m 1 -E '[0-9]+\s*/\s*[0-9]+' || true)
         
         if [[ -n "${download_line}" ]]; then
             # 【修复】使用更精确的正则提取 "X / Y" 中的数字（使用 || true 防止 grep 无匹配时退出）
@@ -573,8 +573,8 @@ monitor_progress() {
             last_displayed_size=${current_log_size}
             
             # 检测是否进入第二阶段（下载测速）
-            # 优化：只检查最后 100 行（使用 || true 防止 grep 无匹配时退出）
-            if [[ "${stage}" = "ping" ]] && tail -n 100 "${log_file}" 2>/dev/null | grep -q "开始下载测速"; then
+            # 【修复】使用 tac + grep -m 1 从后向前匹配，减少读写竞态窗口（使用 || true 防止无匹配时退出）
+            if [[ "${stage}" = "ping" ]] && tac "${log_file}" 2>/dev/null | grep -q -m 1 "开始下载测速"; then
                 stage="download"
                 # 修复：阶段切换时用 \n 换行，保持界面整洁
                 echo ""
