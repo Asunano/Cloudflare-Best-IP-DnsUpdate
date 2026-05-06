@@ -41,6 +41,53 @@
 
 ### Fixed - 修复
 
+#### 安全修复 (Security)
+- **消除进程锁 TOCTOU 竞态条件** (2026-05-06)
+  - 文件：
+    - `modules/cf-dns/core.sh`
+    - `modules/dnspod-dns/core.sh`
+    - `modules/cf-ip/core.sh`
+    - `modules/cf-ip/menu.sh`
+    - `modules/cf-dns/setup.sh`
+    - `modules/dnspod-dns/setup.sh`
+  - 问题：使用 PID 文件实现进程锁，存在 "检查-然后-执行" 的 TOCTOU 竞态条件
+  - 影响：
+    - ❌ **竞态窗口**：两个进程可能同时检查到锁文件不存在
+    - ❌ **并发失效**：两个进程可能同时写入自己的 PID
+    - ❌ **数据损坏**：可能导致配置文件被并发修改
+    - ❌ **安全风险**：PID 可被伪造，存在安全隐患
+  - 修复：使用 `flock` 系统调用实现原子锁
+    ```bash
+    # 修复前：TOCTOU 竞态条件
+    if [ -f "$LOCK_FILE" ]; then
+        pid=$(cat "$LOCK_FILE")
+        if kill -0 "$pid" 2>/dev/null; then
+            exit 1
+        else
+            rm -f "$LOCK_FILE"  # ← 竞态窗口
+        fi
+    fi
+    echo $$ > "$LOCK_FILE"  # ← 竞态窗口
+    
+    # 修复后：原子锁操作
+    exec 9>"$LOCK_FILE"
+    if ! flock -n 9; then
+        echo "[ERROR] 无法获取锁，另一个进程正在运行"
+        exit 1
+    fi
+    # 锁会在脚本退出时自动释放（fd 9 关闭）
+    ```
+  - 技术说明：
+    - `exec 9>file`：打开文件描述符 9
+    - `flock -n 9`：非阻塞式获取锁
+    - 内核保证 `flock` 的原子性
+    - 进程退出时 fd 自动关闭，锁自动释放
+  - 效果：
+    - ✅ **消除竞态**：内核级原子操作，无竞态窗口
+    - ✅ **提高安全性**：无法伪造 PID
+    - ✅ **简化代码**：删除 38 行复杂的 PID 管理逻辑
+    - ✅ **自动清理**：无需 trap 手动清理锁文件
+
 #### 性能优化 (Performance)
 - **优化 IP 文件读取性能** (2026-05-06)
   - 文件：
