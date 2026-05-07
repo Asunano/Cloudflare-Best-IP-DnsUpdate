@@ -106,7 +106,16 @@ log() {
     shift
     local timestamp
     timestamp=$(date +"%Y-%m-%d %H:%M:%S")
-    printf "[%s] [%-5s] [cf-dns] %s\n" "$timestamp" "$level" "$*" | tee -a "$LOG_FILE"
+    
+    # 【修复】写入文件时剥离 ANSI 颜色码，终端输出保留颜色
+    local plain_message
+    plain_message=$(echo "$*" | sed 's/\x1b\[[0-9;]*m//g')
+    
+    # 写入日志文件（纯文本）
+    printf "[%s] [%-5s] [cf-dns] %s\n" "$timestamp" "$level" "$plain_message" >> "$LOG_FILE"
+    
+    # 终端输出（带颜色）
+    printf "[%s] [%-5s] [cf-dns] %s\n" "$timestamp" "$level" "$*"
 }
 
 # 便捷函数
