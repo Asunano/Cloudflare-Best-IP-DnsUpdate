@@ -249,6 +249,8 @@ show_main_menu() {
         echo -e " ${GREEN}[OK] 配置文件: 已就绪"
     elif [[ "${config_status}" -eq 3 ]]; then
         echo -e " ${YELLOW}[WARN] 配置文件: 存在但未完成配置"
+    elif [[ "${config_status}" -eq 2 ]]; then
+        echo -e " ${RED}[ERROR] 配置文件: JSON 格式错误"
     else
         echo -e " ${RED}[NONE] 配置文件: 未找到 (请先运行 cfopt 安装)"
     fi
@@ -947,7 +949,9 @@ setup_cron() {
             CRON_HOUR=$(echo "${CRON_TIME}" | awk '{print $1}')
             CRON_MIN=$(echo "${CRON_TIME}" | awk '{print $2}')
             CRON_EXPR="${CRON_MIN} ${CRON_HOUR} * * ${CRON_WEEKDAY}"
-            CRON_DESC="每周日${CRON_HOUR}点${CRON_MIN}分"
+            # 【修复】根据用户选择的星期几动态生成描述
+            declare -a DAY_NAMES=([0]="周日" [1]="周一" [2]="周二" [3]="周三" [4]="周四" [5]="周五" [6]="周六" [7]="周日")
+            CRON_DESC="每${DAY_NAMES[${CRON_WEEKDAY}]:-周日}${CRON_HOUR}点${CRON_MIN}分"
             ;;
         5)
             echo "请输入cron表达式（格式：分 时 日 月 周）"
