@@ -29,13 +29,33 @@ convert_colo_to_name() {
     colo_code=$(echo "${colo_code}" | tr '[:lower:]' '[:upper:]')
     
     case "${colo_code}" in
+        # 亚太地区
         HKG) echo "香港" ;;
         NRT|TYO) echo "东京" ;;
+        ICN) echo "首尔" ;;
         SIN) echo "新加坡" ;;
+        TPE) echo "台北" ;;
+        KUL) echo "吉隆坡" ;;
+        BKK) echo "曼谷" ;;
+        MNL) echo "马尼拉" ;;
+        
+        # 北美地区
         LAX) echo "洛杉矶" ;;
         SJC) echo "圣何塞" ;;
         SEA) echo "西雅图" ;;
-        LON) echo "伦敦" ;;
+        LAS) echo "拉斯维加斯" ;;
+        DEN) echo "丹佛" ;;
+        MIA) echo "迈阿密" ;;
+        YVR) echo "温哥华" ;;
+        YYZ) echo "多伦多" ;;
+        YUL) echo "蒙特利尔" ;;
+        IAD) echo "华盛顿" ;;
+        ORD) echo "芝加哥" ;;
+        DFW) echo "达拉斯" ;;
+        ATL) echo "亚特兰大" ;;
+        
+        # 欧洲地区
+        LON|LHR) echo "伦敦" ;;
         FRA) echo "法兰克福" ;;
         AMS) echo "阿姆斯特丹" ;;
         CDG) echo "巴黎" ;;
@@ -46,29 +66,31 @@ convert_colo_to_name() {
         WAW) echo "华沙" ;;
         PRG) echo "布拉格" ;;
         BUD) echo "布达佩斯" ;;
+        ARN) echo "斯德哥尔摩" ;;
         IST) echo "伊斯坦布尔" ;;
+        
+        # 中东和南亚
         DXB) echo "迪拜" ;;
         BOM) echo "孟买" ;;
         DEL) echo "德里" ;;
+        
+        # 大洋洲
         SYD) echo "悉尼" ;;
         MEL) echo "墨尔本" ;;
         AKL) echo "奥克兰" ;;
+        
+        # 南美
         GRU) echo "圣保罗" ;;
         GIG) echo "里约热内卢" ;;
         EZE) echo "布宜诺斯艾利斯" ;;
         SCL) echo "圣地亚哥" ;;
         BOG) echo "波哥大" ;;
         LIM) echo "利马" ;;
+        
+        # 北美（墨西哥）
         QRO) echo "克雷塔罗" ;;
         MEX) echo "墨西哥城" ;;
-        YYZ) echo "多伦多" ;;
-        YUL) echo "蒙特利尔" ;;
-        YVR) echo "温哥华" ;;
-        IAD) echo "华盛顿" ;;
-        ORD) echo "芝加哥" ;;
-        DFW) echo "达拉斯" ;;
-        ATL) echo "亚特兰大" ;;
-        MIA) echo "迈阿密" ;;
+        
         *   ) echo "${colo_code}" ;;  # 未知代码，返回原值
     esac
 }
@@ -368,6 +390,10 @@ record_speed_test_history() {
     local best_ip="$3"
     local latency="$4"
     local speed="$5"
+    
+    # 【修复】将 N/A 转换为 0，避免 printf %.2f 报错
+    [[ "${latency}" = "N/A" ]] && latency=0
+    [[ "${speed}" = "N/A" ]] && speed=0
     
     local history_file="${ROOT_DIR}/conf/history.jsonl"
     local timestamp
