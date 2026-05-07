@@ -953,8 +953,13 @@ show_main_menu() {
         source "${STATUS_CONF}"
     fi
     
-    # 【修复】确保 SCHEDULER_ENABLED 已定义（status.conf 可能不包含此变量）
+    # 【修复】确保所有从 status.conf 加载的变量都有默认值，避免 set -u 报错
+    CF_IP_ENABLED="${CF_IP_ENABLED:-true}"
+    CF_DNS_ENABLED="${CF_DNS_ENABLED:-false}"
+    DNSPOD_ENABLED="${DNSPOD_ENABLED:-false}"
     SCHEDULER_ENABLED="${SCHEDULER_ENABLED:-false}"
+    LAST_UPDATE_TIME="${LAST_UPDATE_TIME:-}"
+    INSTALL_CHECKED="${INSTALL_CHECKED:-false}"
     
     # 【新增】检测并自动下载 cfst（如果缺失）
     local cfst_bin="${INSTALL_DIR}/assets/cfst/cfst"
