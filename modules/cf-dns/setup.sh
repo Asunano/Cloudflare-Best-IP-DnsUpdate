@@ -864,8 +864,7 @@ EOF
             echo -e "${CYAN}正在创建 CF-IP 基础配置...${NC}"
             mkdir -p "${ROOT_DIR}/conf"
             
-            # 使用 jq 安全地生成 JSON 配置文件
-            local temp_file
+            # 【修复】复用已声明的 temp_file 变量，避免重复 local 声明
             temp_file=$(mktemp)
             
             jq -n '{
