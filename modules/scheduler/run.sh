@@ -59,6 +59,7 @@ rotate_log "${ROOT_DIR}/logs/error.log"
 # ==================== 【安全配置】测速超时保护 ====================
 # 防止 cfst 进程挂起导致 scheduler 无限等待
 SCHEDULER_TIMEOUT=${SCHEDULER_TIMEOUT:-600}  # 默认 10 分钟，可通过环境变量覆盖
+TASK_PID=""  # 【新增】记录当前任务的 PID
 
 # 启动看门狗定时器
 start_watchdog() {
@@ -68,8 +69,11 @@ start_watchdog() {
     (
         sleep "$timeout"
         echo -e "\n${RED}[TIMEOUT] ${task_name} 超时 (${timeout}秒)，强制终止所有子进程${NC}"
-        # 【修复】使用 pkill 精确杀死父进程的子进程，避免 PGID 不一致问题
-        pkill -P $$ 2>/dev/null || true
+        # 【修复】使用 TASK_PID 精确杀死任务进程及其所有子进程
+        if [[ -n "${TASK_PID:-}" ]]; then
+            pkill -P "${TASK_PID}" 2>/dev/null || true
+            kill "${TASK_PID}" 2>/dev/null || true
+        fi
         exit 1
     ) &
     WATCHDOG_PID=$!
@@ -105,8 +109,12 @@ run_task() {
     fi
     
     # 执行脚本并捕获退出码
-    bash "${script_path}"
+    # 【修复】后台启动任务以获取 PID，确保看门狗能正确杀死所有子进程
+    bash "${script_path}" &
+    TASK_PID=$!
+    wait "${TASK_PID}"
     local exit_code=$?
+    TASK_PID=""  # 清空 TASK_PID
     
     if [[ "${exit_code}" -ne 0 ]]; then
         echo -e "${RED}[FAIL] ${task_name} 执行失败 (Exit Code: ${exit_code})，终止后续任务。${NC}"
