@@ -634,8 +634,14 @@ sha256_hex() {
         printf '%s' "$1" | sha256sum | awk '{print $1}'
     elif command -v shasum &>/dev/null; then
         printf '%s' "$1" | shasum -a 256 | awk '{print $1}'
+    elif command -v openssl &>/dev/null; then
+        # 【修复】添加 openssl 作为第三级 fallback（macOS 通常预装）
+        printf '%s' "$1" | openssl dgst -sha256 -hex 2>/dev/null | awk '{print $NF}'
     else
-        echo "错误: 未找到 sha256sum 或 shasum 命令" >&2
+        echo "错误: 未找到 sha256sum、shasum 或 openssl 命令" >&2
+        echo "请安装以下任一工具:" >&2
+        echo "  - Linux: apt-get install coreutils (提供 sha256sum)" >&2
+        echo "  - macOS: brew install perl (提供 shasum) 或使用系统预装的 openssl" >&2
         exit 1
     fi
 }
