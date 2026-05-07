@@ -295,7 +295,7 @@ select_colo_nodes() {
     echo -e " ${MAGENTA}项目仓库: https://github.com/Asunano/Cloudflare-Best-IP-DnsUpdate${NC}"
     echo -e "${CYAN}+------------------------------------------------------------+${NC}"
     echo ""
-    echo -e "${CYAN}[步骤 3/5] 选择测速节点（地区）${NC}"
+    echo -e "${CYAN}[选择测速节点（地区）]${NC}"
     echo ""
     echo -e " ${YELLOW}提示: 选择距离您服务器较近的地区可获得更优的延迟${NC}"
     echo ""
@@ -1545,6 +1545,8 @@ deploy_dnspod_single() {
     echo ""
     
     # 第3步：选择测速节点并生成配置
+    show_step_header 3 5 "选择测速节点"
+    
     # 让用户选择测速节点（函数内部会清屏并显示标题）
     local recommended_colo
     recommended_colo=$(select_colo_nodes "$domain")
