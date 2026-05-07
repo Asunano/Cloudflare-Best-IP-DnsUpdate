@@ -129,6 +129,7 @@ if [[ -f "${ROOT_DIR}/conf/cf-ip.json" ]]; then
         [[ -n "$key" ]] && CF_IP_CFG["$key"]="$value"
     done < <(jq -r '
         [
+            "cfst_colo=\(.cfst.colo // \"HKG,NRT\")",
             "multi_line_enabled=\(.multi_line.enabled // false)",
             "colo_mobile=\(.multi_line.colo_mobile // \"HKG,SIN,TYO,LON\")",
             "colo_unicom=\(.multi_line.colo_unicom // \"SJC,LAX,SIN,TYO\")",
@@ -138,6 +139,7 @@ if [[ -f "${ROOT_DIR}/conf/cf-ip.json" ]]; then
 fi
 
 # 检查是否开启多线路测速
+CFST_COLO="${CF_IP_CFG[cfst_colo]:-HKG,NRT}"
 ENABLE_MULTI_LINE="${CF_IP_CFG[multi_line_enabled]:-false}"
 COLO_MOBILE="${CF_IP_CFG[colo_mobile]:-HKG,SIN,TYO,LON}"
 COLO_UNICOM="${CF_IP_CFG[colo_unicom]:-SJC,LAX,SIN,TYO}"
