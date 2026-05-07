@@ -241,6 +241,74 @@ fi
 
 # ==================== 【进程锁管理】 ====================
 LOCK_FILE="${OUTPUT_DIR}/.lock_${LINE_TAG}"
+
+# ==================== 文件大小获取函数 ====================
+# 兼容 Linux、macOS、BSD 系统，返回字节数
+get_file_size() {
+    local file="$1"
+    local size
+    
+    if [[ ! -f "${file}" ]]; then
+        echo "0"
+        return
+    fi
+    
+    # 【修复】优先尝试 macOS/BSD stat（无 --version 参数）
+    if stat -f %z "${file}" >/dev/null 2>&1; then
+        # macOS/BSD stat
+        size=$(stat -f %z "${file}" 2>/dev/null)
+    elif stat -c %s "${file}" >/dev/null 2>&1; then
+        # Linux stat
+        size=$(stat -c %s "${file}" 2>/dev/null)
+    else
+        # 降级方案：wc -c（去除空格）
+        size=$(wc -c < "${file}" 2>/dev/null | tr -d '[:space:]')
+    fi
+    
+    # 最终校验
+    if [[ -z "${size}" ]] || [[ ! "${size}" =~ ^[0-9]+$ ]]; then
+        echo "0"
+    else
+        echo "${size}"
+    fi
+}
+
+# ==================== 文件修改时间获取函数 ====================
+# 兼容 Linux、macOS、BSD 系统，返回 Unix 时间戳
+stat_file_mtime() {
+    local file="$1"
+    local mtime
+    
+    if [[ ! -f "${file}" ]]; then
+        echo "0"
+        return
+    fi
+    
+    # 【修复】优先尝试 macOS/BSD stat
+    if stat -f %m "${file}" >/dev/null 2>&1; then
+        # macOS/BSD stat: %m = 修改时间（Unix 时间戳）
+        mtime=$(stat -f %m "${file}" 2>/dev/null)
+    elif stat -c %Y "${file}" >/dev/null 2>&1; then
+        # Linux stat: %Y = 修改时间（Unix 时间戳）
+        mtime=$(stat -c %Y "${file}" 2>/dev/null)
+    else
+        # 降级方案：使用 date -r（macOS）或 stat 输出解析
+        if date -r "${file}" +%s >/dev/null 2>&1; then
+            mtime=$(date -r "${file}" +%s 2>/dev/null)
+        else
+            echo "0"
+            return
+        fi
+    fi
+    
+    # 最终校验
+    if [[ -z "${mtime}" ]] || [[ ! "${mtime}" =~ ^[0-9]+$ ]]; then
+        echo "0"
+    else
+        echo "${mtime}"
+    fi
+}
+
 acquire_lock() {
     # 【修复】检查残留的锁文件是否过期（超过 30 分钟视为残留）
     if [[ -f "${LOCK_FILE}" ]]; then
@@ -418,73 +486,6 @@ echo -e " ${YELLOW}测速进行中...${NC}"
 echo -e "${CYAN}+------------------------------------------------------------+"
 echo ""
 echo -e "${GRAY}  第一阶段: 延迟测速 (TCP Ping)${NC}"
-
-# ==================== 文件大小获取函数 ====================
-# 兼容 Linux、macOS、BSD 系统
-get_file_size() {
-    local file="$1"
-    local size
-    
-    if [[ ! -f "${file}" ]]; then
-        echo "0"
-        return
-    fi
-    
-    # 【修复】优先尝试 macOS/BSD stat（无 --version 参数）
-    if stat -f %z "${file}" >/dev/null 2>&1; then
-        # macOS/BSD stat
-        size=$(stat -f %z "${file}" 2>/dev/null)
-    elif stat -c %s "${file}" >/dev/null 2>&1; then
-        # Linux stat
-        size=$(stat -c %s "${file}" 2>/dev/null)
-    else
-        # 降级方案：wc -c（去除空格）
-        size=$(wc -c < "${file}" 2>/dev/null | tr -d '[:space:]')
-    fi
-    
-    # 最终校验
-    if [[ -z "${size}" ]] || [[ ! "${size}" =~ ^[0-9]+$ ]]; then
-        echo "0"
-    else
-        echo "${size}"
-    fi
-}
-
-# ==================== 文件修改时间获取函数 ====================
-# 兼容 Linux、macOS、BSD 系统，返回 Unix 时间戳
-stat_file_mtime() {
-    local file="$1"
-    local mtime
-    
-    if [[ ! -f "${file}" ]]; then
-        echo "0"
-        return
-    fi
-    
-    # 【修复】优先尝试 macOS/BSD stat
-    if stat -f %m "${file}" >/dev/null 2>&1; then
-        # macOS/BSD stat: %m = 修改时间（Unix 时间戳）
-        mtime=$(stat -f %m "${file}" 2>/dev/null)
-    elif stat -c %Y "${file}" >/dev/null 2>&1; then
-        # Linux stat: %Y = 修改时间（Unix 时间戳）
-        mtime=$(stat -c %Y "${file}" 2>/dev/null)
-    else
-        # 降级方案：使用 date -r（macOS）或 stat 输出解析
-        if date -r "${file}" +%s >/dev/null 2>&1; then
-            mtime=$(date -r "${file}" +%s 2>/dev/null)
-        else
-            echo "0"
-            return
-        fi
-    fi
-    
-    # 最终校验
-    if [[ -z "${mtime}" ]] || [[ ! "${mtime}" =~ ^[0-9]+$ ]]; then
-        echo "0"
-    else
-        echo "${mtime}"
-    fi
-}
 
 # ==================== 进度条显示函数 ====================
 # 参数：$1=当前值, $2=总值
