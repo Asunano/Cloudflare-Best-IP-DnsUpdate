@@ -129,7 +129,8 @@ auto_retry_test() {
         echo -e "\n${CYAN}[INFO] 检测到测速数据无效，正在自动重新测速 (尝试 ${i}/${max_retries})...${NC}"
         
         # 调用 core.sh 执行测速
-        CF_OPT_ENTRY=1 bash "${ROOT_DIR}/modules/cf-ip/core.sh" "${colo_nodes}" "${result_file}" "${line_id}"
+        # 【修复】传递调用者的 CF_OPT_ENTRY 值，而非硬编码为 1
+        CF_OPT_ENTRY="${CF_OPT_ENTRY:-1}" bash "${ROOT_DIR}/modules/cf-ip/core.sh" "${colo_nodes}" "${result_file}" "${line_id}"
         
         local exit_code=$?
         if [[ ${exit_code} -eq 0 ]] && [[ -f "${result_file}" ]]; then
