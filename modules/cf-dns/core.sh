@@ -779,8 +779,9 @@ update_dns_record() {
     local cf_ip="$3"
     
     local url="https://api.cloudflare.com/client/v4/zones/${CF_ZONE_ID}/dns_records/${record_id}"
-    # 【修复】显式指定 proxied=false，避免 Cloudflare API 重置为默认值
-    local data="{\"type\":\"A\",\"name\":\"${name}\",\"content\":\"${cf_ip}\",\"proxied\":false}"
+    # 【修复】使用 jq 安全构建 JSON，防止特殊字符注入
+    local data
+    data=$(jq -n --arg name "$name" --arg ip "$cf_ip" '{"type":"A","name":$name,"content":$ip,"proxied":false}')
     
     local response
     response=$(http_put "$url" "$data")
@@ -798,7 +799,9 @@ create_dns_record() {
     local cf_ip="$2"
     
     local url="https://api.cloudflare.com/client/v4/zones/${CF_ZONE_ID}/dns_records"
-    local data="{\"type\":\"A\",\"name\":\"${name}\",\"content\":\"${cf_ip}\",\"ttl\":1,\"proxied\":false}"
+    # 【修复】使用 jq 安全构建 JSON，防止特殊字符注入
+    local data
+    data=$(jq -n --arg name "$name" --arg ip "$cf_ip" '{"type":"A","name":$name,"content":$ip,"ttl":1,"proxied":false}')
     
     local response
     response=$(http_post "$url" "$data")
