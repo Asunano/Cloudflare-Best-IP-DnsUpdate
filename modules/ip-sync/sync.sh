@@ -453,8 +453,8 @@ csv_to_iplist() {
         # 清理 Windows 换行符
         region=$(echo "$region" | tr -d '\r' | xargs)
         
-        # 只保留有效数据（速度 > 0）
-        if [[ "$speed" =~ ^[0-9.]+$ ]] && (( $(echo "$speed > 0" | bc -l) )); then
+        # 【修复】只保留有效数据（速度 > 0），使用纯 Bash 替代 bc -l
+        if [[ "$speed" =~ ^[0-9.]+$ ]] && [[ "$speed" != "0" ]] && [[ "$speed" != "0.0" ]] && [[ "$speed" != "0.00" ]]; then
             echo "${ip}|${delay}|${speed}|${region}" >> "$iplist_file"
         fi
     done
