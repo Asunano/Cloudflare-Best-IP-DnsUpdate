@@ -406,8 +406,8 @@ if [[ "${MODE}" = "multi" ]]; then
             log_msg "WARN" "检测到统一模式配置不完整，正在自动补全..."
             ISP_LINES=("默认" "联通" "移动" "电信")
             
-            # 【修复】使用变量构建 isp_lines 字符串，避免硬编码
-            local isp_lines_str="${ISP_LINES[*]}"
+            # 【修复】使用变量构建 isp_lines 字符串，避免硬编码（移除 local，因为在函数外）
+            isp_lines_str="${ISP_LINES[*]}"
             
             # 更新配置文件（使用 jq）
             temp_file=$(mktemp)

@@ -76,6 +76,38 @@ log_info() {
 }
 
 # 触发回滚
+# 【新增】回滚函数（用于 trigger_rollback）
+rollback_on_failure() {
+    log_warn "执行回滚操作..."
+    
+    # 检查是否有备份
+    local backup_dir="${INSTALL_DIR}/backup"
+    if [[ ! -d "${backup_dir}" ]]; then
+        log_error "未找到备份目录: ${backup_dir}"
+        return 1
+    fi
+    
+    # 查找最新的备份
+    local latest_backup
+    latest_backup=$(find "${backup_dir}" -maxdepth 1 -type d -name "backup_*" | sort -r | head -1)
+    
+    if [[ -z "${latest_backup}" ]] || [[ ! -d "${latest_backup}" ]]; then
+        log_error "未找到有效的备份文件"
+        return 1
+    fi
+    
+    log_info "正在从备份恢复: ${latest_backup}"
+    
+    # 恢复备份
+    if cp -r "${latest_backup}/"* "${INSTALL_DIR}/" 2>/dev/null; then
+        log_success "回滚成功"
+        return 0
+    else
+        log_error "回滚失败"
+        return 1
+    fi
+}
+
 trigger_rollback() {
     log_warn "检测到严重错误，尝试回滚到上一版本..."
     if rollback_on_failure; then
@@ -1002,13 +1034,39 @@ show_main_menu() {
         echo -e "${CYAN}+------------------------------------------------------------+${NC}"
     fi
     
-    # 获取各模块状态
+    # 【修复】获取各模块状态（支持多域名架构）
     local cf_ip_status
     cf_ip_status="$(get_module_status "${INSTALL_DIR}/conf/cf-ip.json" "${INSTALL_DIR}/assets/data/cf-ip/result.csv")"
+    
+    # CF DNS：检查 conf/cf-dns/ 目录下是否有启用的配置文件
     local cf_dns_status
-    cf_dns_status="$(get_module_status "${INSTALL_DIR}/conf/cf-dns.json" "${INSTALL_DIR}/assets/data/cf-dns/ip_list.txt")"
+    if [[ -d "${INSTALL_DIR}/conf/cf-dns" ]]; then
+        # 查找第一个启用的配置文件
+        local cf_dns_conf
+        cf_dns_conf=$(find "${INSTALL_DIR}/conf/cf-dns" -name "*.json" -type f -exec sh -c 'jq -r ".enabled // false" "$1" 2>/dev/null | grep -q "true" && echo "$1"' _ {} \; | head -1)
+        if [[ -n "${cf_dns_conf}" ]]; then
+            cf_dns_status="$(get_module_status "${cf_dns_conf}" "")"
+        else
+            cf_dns_status="$(get_module_status "${INSTALL_DIR}/conf/cf-dns.json" "${INSTALL_DIR}/assets/data/cf-dns/ip_list.txt")"
+        fi
+    else
+        cf_dns_status="$(get_module_status "${INSTALL_DIR}/conf/cf-dns.json" "${INSTALL_DIR}/assets/data/cf-dns/ip_list.txt")"
+    fi
+    
+    # DNSPod：检查 conf/dnspod/ 目录下是否有启用的配置文件
     local dnspod_status
-    dnspod_status="$(get_module_status "${INSTALL_DIR}/conf/dnspod.json" "${INSTALL_DIR}/assets/data/dnspod-dns/ip_list.txt")"
+    if [[ -d "${INSTALL_DIR}/conf/dnspod" ]]; then
+        # 查找第一个启用的配置文件
+        local dnspod_conf
+        dnspod_conf=$(find "${INSTALL_DIR}/conf/dnspod" -name "*.json" -type f -exec sh -c 'jq -r ".enabled // false" "$1" 2>/dev/null | grep -q "true" && echo "$1"' _ {} \; | head -1)
+        if [[ -n "${dnspod_conf}" ]]; then
+            dnspod_status="$(get_module_status "${dnspod_conf}" "")"
+        else
+            dnspod_status="$(get_module_status "${INSTALL_DIR}/conf/dnspod.json" "${INSTALL_DIR}/assets/data/dnspod-dns/ip_list.txt")"
+        fi
+    else
+        dnspod_status="$(get_module_status "${INSTALL_DIR}/conf/dnspod.json" "${INSTALL_DIR}/assets/data/dnspod-dns/ip_list.txt")"
+    fi
     local scheduler_status="${SCHEDULER_ENABLED:-false}"
     if [[ "${scheduler_status}" = "true" ]]; then
         scheduler_status="$(echo -e "${GREEN}[RUN]${NC}")"
