@@ -62,6 +62,31 @@ acquire_lock() {
 
 acquire_lock
 
+# 【跨平台】获取文件大小（兼容 Linux/macOS/BSD）
+get_file_size() {
+    local file="$1"
+    local size
+    
+    if [[ ! -f "${file}" ]]; then
+        echo "0"
+        return
+    fi
+    
+    # 【修复】优先尝试 macOS/BSD stat（无 --version 参数）
+    if stat -f %z "${file}" >/dev/null 2>&1; then
+        # macOS/BSD stat
+        size=$(stat -f %z "${file}" 2>/dev/null)
+    elif stat -c %s "${file}" >/dev/null 2>&1; then
+        # Linux stat
+        size=$(stat -c %s "${file}" 2>/dev/null)
+    else
+        # 降级方案：wc -c（去除空格）
+        size=$(wc -c < "${file}" 2>/dev/null | tr -d '[:space:]')
+    fi
+    
+    echo "${size:-0}"
+}
+
 LOG_DIR="${ROOT_DIR}/logs/dnspod-dns"
 mkdir -p "${LOG_DIR}"
 LOG_FILE="${LOG_DIR}/dnspod_$(date +%Y%m%d_%H%M%S).log"
@@ -73,7 +98,8 @@ rotate_log() {
     
     if [[ -f "$log_file" ]]; then
         local file_size
-        file_size=$(stat -c %s "$log_file" 2>/dev/null || echo 0)
+        # 【跨平台】使用 get_file_size 替代 stat -c %s
+        file_size=$(get_file_size "$log_file")
         
         if [[ "$file_size" -gt "$max_size" ]]; then
             mv "$log_file" "${log_file}.old"
