@@ -173,7 +173,7 @@ $HOME/cfopt/
     "download_count": 10,
     "download_time": 10,
     "port": 443,
-    "url": "https://cf-ns.com/cdn-cgi/trace"
+    "url": "https://mirror.drxian.qzz.io/index.html"
   },
   "speed_test": {
     "take_ip_num": 5

@@ -624,7 +624,7 @@ generate_config_simple() {
                 "download_count": 10,
                 "download_time": 10,
                 "port": 443,
-                "url": "https://cf-ns.com/cdn-cgi/trace",
+                "url": "https://mirror.drxian.qzz.io/index.html",
                 "httping": false,
                 "latency_max": 9999,
                 "packet_loss_max": 100,
@@ -715,7 +715,7 @@ generate_config_advanced() {
         --argjson download_count "${CFST_DOWNLOAD_COUNT}" \
         --argjson download_time "${CFST_DOWNLOAD_TIME}" \
         --arg port "${CFST_PORT:-443}" \
-        --arg url "${CFST_URL:-https://cf-ns.com/cdn-cgi/trace}" \
+        --arg url "${CFST_URL:-https://mirror.drxian.qzz.io/index.html}" \
         --argjson httping "${CFST_HTTPING}" \
         --arg colo "${CFST_COLO}" \
         --argjson latency_max "${CFST_LATENCY_MAX}" \
