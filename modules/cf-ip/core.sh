@@ -404,7 +404,7 @@ record_speed_test_history() {
     
     # 【修复】使用 flock 保护并发写入，防止多进程同时写入导致数据损坏
     (
-        flock -n 200 || { log_warn "cf-ip" "无法获取历史记录写入锁"; return 1; }
+        flock -n 200 || { log_warn "无法获取历史记录写入锁"; return 1; }
         printf '{"time":"%s","action":"speed_test","domain":"%s","ips_found":%d,"best_ip":"%s","latency":%.2f,"speed":%.2f}\n' \
             "$timestamp" "$domain" "$ips_found" "$best_ip" "$latency" "$speed" >> "$history_file"
     ) 200>"${history_file}.lock"
@@ -658,7 +658,7 @@ progress_bar_width=40
     CFST_PID=$!
     
     # 实时显示进度（通过监控日志文件）
-    monitor_progress "${CFST_PID}" "${LOG_FILE}" "${progress_bar_width}"
+    monitor_progress "${CFST_PID}" "${LOG_FILE}" "${progress_bar_width}" || true
     
     # 等待进程结束（屏蔽错误输出，防止进程已退出时报错）
     wait "${CFST_PID}" 2>/dev/null
@@ -705,7 +705,7 @@ for ((retry=1; retry<=MAX_RETRY; retry++)); do
             echo ""
             echo -e "${GRAY}  第一阶段: 延迟测速 (TCP Ping)${NC}"
             
-            monitor_progress "${CFST_PID}" "${LOG_FILE}" "${progress_bar_width}"
+            monitor_progress "${CFST_PID}" "${LOG_FILE}" "${progress_bar_width}" || true
             
             # 5. 等待进程结束（屏蔽错误输出）
             wait "${CFST_PID}" 2>/dev/null
