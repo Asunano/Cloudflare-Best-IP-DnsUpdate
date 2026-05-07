@@ -383,8 +383,8 @@ has_dnspod_dns_config() {
 # 验证配置一致性（防止 CF-IP 多线路与 DNSPod 单线路冲突）
 validate_config_consistency() {
     local cf_ip_file="${ROOT_DIR}/conf/cf-ip.json"
-    local dnspod_file="${ROOT_DIR}/conf/dnspod.json"
-    local cf_dns_file="${ROOT_DIR}/conf/cf-dns.json"
+    local dnspod_dir="${ROOT_DIR}/conf/dnspod"
+    local cf_dns_dir="${ROOT_DIR}/conf/cf-dns"
     
     # 检查 CF-IP 是否开启多线路
     local cf_multi_enabled=false
@@ -392,16 +392,42 @@ validate_config_consistency() {
         cf_multi_enabled=$(jq -r '.multi_line.enabled // false' "$cf_ip_file")
     fi
     
-    # 检查 DNSPod 模式
+    # 【修复】扫描多域名目录结构中的 DNSPod 配置文件
     local dnspod_mode="single"
-    if [[ -f "$dnspod_file" ]]; then
-        dnspod_mode=$(jq -r '.mode // "single"' "$dnspod_file")
+    local has_dnspod_config=false
+    if [[ -d "$dnspod_dir" ]]; then
+        # 查找所有启用的 DNSPod 配置文件
+        while IFS= read -r -d '' config_file; do
+            has_dnspod_config=true
+            local mode
+            mode=$(jq -r '.mode // "single"' "$config_file" 2>/dev/null)
+            # 如果任何一个配置是多线路，则认为是多线路模式
+            if [[ "$mode" = "multi" ]]; then
+                dnspod_mode="multi"
+                break
+            fi
+        done < <(find "$dnspod_dir" -name "*.json" -type f -print0 2>/dev/null)
+    elif [[ -f "${ROOT_DIR}/conf/dnspod.json" ]]; then
+        # 兼容旧版单文件配置
+        has_dnspod_config=true
+        dnspod_mode=$(jq -r '.mode // "single"' "${ROOT_DIR}/conf/dnspod.json")
     fi
     
-    # 检查 Cloudflare DNS 是否启用
+    # 【修复】扫描多域名目录结构中的 Cloudflare DNS 配置文件
     local cf_dns_enabled=false
-    if [[ -f "$cf_dns_file" ]]; then
-        cf_dns_enabled=$(jq -r '.enabled // false' "$cf_dns_file")
+    if [[ -d "$cf_dns_dir" ]]; then
+        # 查找所有启用的 CF-DNS 配置文件
+        while IFS= read -r -d '' config_file; do
+            local enabled
+            enabled=$(jq -r '.enabled // false' "$config_file" 2>/dev/null)
+            if [[ "$enabled" = "true" ]]; then
+                cf_dns_enabled=true
+                break
+            fi
+        done < <(find "$cf_dns_dir" -name "*.json" -type f -print0 2>/dev/null)
+    elif [[ -f "${ROOT_DIR}/conf/cf-dns.json" ]]; then
+        # 兼容旧版单文件配置
+        cf_dns_enabled=$(jq -r '.enabled // false' "${ROOT_DIR}/conf/cf-dns.json")
     fi
     
     # 验证逻辑
