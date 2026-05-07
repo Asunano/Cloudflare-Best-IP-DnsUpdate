@@ -68,8 +68,8 @@ start_watchdog() {
     (
         sleep "$timeout"
         echo -e "\n${RED}[TIMEOUT] ${task_name} 超时 (${timeout}秒)，强制终止所有子进程${NC}"
-        # 终止当前进程组的所有子进程
-        kill -- -$$ 2>/dev/null || true
+        # 【修复】只杀死当前子 shell 的子进程，不影响父进程组
+        kill -- -${BASHPID} 2>/dev/null || true
         exit 1
     ) &
     WATCHDOG_PID=$!

@@ -291,8 +291,23 @@ sync_dnspod_ips() {
             
             mkdir -p "$(dirname "${target_file}")"
             
+            # 【修复】从配置中读取测速结果文件路径，支持多域名模式
+            local result_file
+            result_file=$(jq -r '.ip_source.result_file // empty' "$json_file")
+            
+            # Fallback：如果未配置 result_file，使用默认路径
+            if [[ -z "${result_file}" ]]; then
+                result_file="${ROOT_DIR}/assets/data/cf-ip/result_${domain_name}.csv"
+            fi
+            
+            # 检查文件是否存在
+            if [[ ! -f "${result_file}" ]]; then
+                echo -e "    ${YELLOW}[WARN]${NC} ${domain_name}: 测速结果文件不存在: ${result_file}"
+                continue
+            fi
+            
             # 【优化】从 CSV 中提取最优 IP（综合考虑下载速度和延迟）
-            awk -F',' 'NR>1 && $6>0 {print $0}' "${RESULT_CSV}" | \
+            awk -F',' 'NR>1 && $6>0 {print $0}' "${result_file}" | \
                 sort -t',' -k6,6 -rn -k5,5 -n | \
                 head -n "${max_ips}" | \
                 awk -F',' '{print $1}' > "${target_file}"
@@ -309,10 +324,10 @@ sync_dnspod_ips() {
                 colo_nodes=$(jq -r '.ip_source.colo_nodes // "HKG,NRT"' "$json_file")
                 
                 # 自动重新测速
-                if auto_retry_test "${RESULT_CSV}" "${colo_nodes}" "${domain_name}"; then
+                if auto_retry_test "${result_file}" "${colo_nodes}" "${domain_name}"; then
                     # 重新测速成功后，再次尝试同步
                     echo -e "    ${CYAN}[INFO]${NC} ${domain_name}: 正在使用新的测速结果进行同步..."
-                    awk -F',' 'NR>1 && $6>0 {print $0}' "${RESULT_CSV}" | \
+                    awk -F',' 'NR>1 && $6>0 {print $0}' "${result_file}" | \
                         sort -t',' -k6,6 -rn -k5,5 -n | \
                         head -n "${max_ips}" | \
                         awk -F',' '{print $1}' > "${target_file}"
