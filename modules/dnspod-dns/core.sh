@@ -288,19 +288,20 @@ else
     for line in "${lines_array[@]}"; do
         case "$line" in
             "默认")
-                ip_file=$(jq -r '.ip_source.files.default // empty' "$CONFIG_FILE")
+                # 【修复】使用预加载的配置，避免重复调用 jq
+                ip_file="${CFG[ip_file_default]}"
                 [[ -z "$ip_file" ]] && ip_file="$(get_default_ip_file "default")"
                 ;;
             "联通")
-                ip_file=$(jq -r '.ip_source.files.unicom // empty' "$CONFIG_FILE")
+                ip_file="${CFG[ip_file_unicom]}"
                 [[ -z "$ip_file" ]] && ip_file="$(get_default_ip_file "unicom")"
                 ;;
             "移动")
-                ip_file=$(jq -r '.ip_source.files.mobile // empty' "$CONFIG_FILE")
+                ip_file="${CFG[ip_file_mobile]}"
                 [[ -z "$ip_file" ]] && ip_file="$(get_default_ip_file "mobile")"
                 ;;
             "电信")
-                ip_file=$(jq -r '.ip_source.files.telecom // empty' "$CONFIG_FILE")
+                ip_file="${CFG[ip_file_telecom]}"
                 [[ -z "$ip_file" ]] && ip_file="$(get_default_ip_file "telecom")"
                 ;;
             *)
