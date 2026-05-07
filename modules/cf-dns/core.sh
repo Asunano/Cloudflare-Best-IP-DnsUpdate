@@ -754,11 +754,12 @@ get_dns_records() {
         return 1
     fi
     
-    # 使用 jq 提取记录数量
+    # 【修复】使用 jq 提取记录数量，添加默认值防止空值
     local count
-    count=$(echo "$response" | jq '.result | length' 2>/dev/null)
+    count=$(echo "$response" | jq '.result | length' 2>/dev/null || echo "0")
     
-    if [ -z "$count" ] || [ "$count" = "null" ] || [ "$count" -eq 0 ]; then
+    # 【修复】验证 count 是否为有效数字
+    if [[ -z "$count" ]] || [[ "$count" = "null" ]] || ! [[ "$count" =~ ^[0-9]+$ ]]; then
         echo "0"
         return 0
     fi
