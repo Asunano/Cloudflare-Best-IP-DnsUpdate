@@ -209,7 +209,7 @@ $HOME/cfopt/
     "max_ips_per_record": 2
   },
   "ip_source": {
-    "file_path": "/root/cfopt/assets/data/cf-dns/ip_list.txt"
+    "file_path": "/root/cfopt/assets/data/cf-dns/ip_list.iplist"
   }
 }
 ```
@@ -241,12 +241,12 @@ $HOME/cfopt/
     "isp_lines": "默认 联通 移动 电信"
   },
   "ip_source": {
-    "file_path": "/root/cfopt/assets/data/dnspod-dns/ip_list.txt",
+    "file_path": "/root/cfopt/assets/data/dnspod-dns/ip_list.iplist",
     "files": {
-      "default": "/root/cfopt/assets/data/dnspod-dns/default.txt",
-      "unicom": "/root/cfopt/assets/data/dnspod-dns/unicom.txt",
-      "mobile": "/root/cfopt/assets/data/dnspod-dns/mobile.txt",
-      "telecom": "/root/cfopt/assets/data/dnspod-dns/telecom.txt"
+      "default": "/root/cfopt/assets/data/dnspod-dns/default.iplist",
+      "unicom": "/root/cfopt/assets/data/dnspod-dns/unicom.iplist",
+      "mobile": "/root/cfopt/assets/data/dnspod-dns/mobile.iplist",
+      "telecom": "/root/cfopt/assets/data/dnspod-dns/telecom.iplist"
     }
   }
 }
