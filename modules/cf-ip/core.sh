@@ -650,7 +650,7 @@ for ((retry=1; retry<=MAX_RETRY; retry++)); do
         
         # 重新执行测速（使用与首次测速相同的后台运行 + 实时进度监控方式）
         # 【重构】使用函数构建命令，消除代码重复
-        local -a RETRY_CMD
+        declare -a RETRY_CMD
         build_cfst_cmd "${TARGET_COLO}" "${OUTPUT_CSV}" "${IP_DATA_FILE}" RETRY_CMD
         
         # 2. 【修复】使用 subshell 隔离目录切换
