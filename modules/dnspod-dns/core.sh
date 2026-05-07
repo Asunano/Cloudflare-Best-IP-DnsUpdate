@@ -687,10 +687,11 @@ call_api() {
             fi
         done
         
-        curl_args+=("-d" "${payload}")
+        # 【安全修复】使用 --data @- 通过 stdin 传递 payload，避免敏感信息泄露到进程列表
+        curl_args+=("--data" "@-")
         
-        # 执行请求
-        result=$(curl "${curl_args[@]}")
+        # 执行请求（通过管道传递 payload）
+        result=$(printf '%s' "${payload}" | curl "${curl_args[@]}")
         
         # 【安全修复】严格验证 API 响应，区分成功和错误
         if echo "${result}" | grep -q "Response"; then
