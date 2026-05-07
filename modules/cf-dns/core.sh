@@ -22,6 +22,28 @@ CYAN='\033[0;36m'
 BOLD='\033[1m'
 NC='\033[0m' # No Color
 
+# ==================== 跨平台文件查找辅助函数 ====================
+# 【修复】跨平台查找最新文件（替代 find -printf，兼容 macOS/BSD）
+# 参数: $1=目录路径, $2=文件名模式 (如 "cfdns_*.log")
+# 返回: 最新文件的完整路径
+find_latest_file() {
+    local search_dir="$1"
+    local pattern="$2"
+    
+    # 方法1: 使用 stat -f '%m' (macOS/BSD)
+    if stat -f '%m' /dev/null >/dev/null 2>&1; then
+        find "${search_dir}" -name "${pattern}" -type f -exec stat -f '%m %N' {} \; 2>/dev/null | \
+            sort -rn | head -n 1 | awk '{print $2}'
+    # 方法2: 使用 stat -c '%Y' (Linux)
+    elif stat -c '%Y' /dev/null >/dev/null 2>&1; then
+        find "${search_dir}" -name "${pattern}" -type f -exec stat -c '%Y %n' {} \; 2>/dev/null | \
+            sort -rn | head -n 1 | awk '{print $2}'
+    # 方法3: 使用 ls -t (备用方案)
+    else
+        ls -t "${search_dir}"/${pattern} 2>/dev/null | head -n 1
+    fi
+}
+
 # ==================== 路径初始化与进程锁管理 ====================
 # 动态获取项目根目录，确保在不同调用环境下路径正确
 SCRIPT_DIR="$( cd -P "$( dirname "${BASH_SOURCE[0]}" )" >/dev/null 2>&1 && pwd )"
@@ -452,12 +474,26 @@ rotate_logs() {
         local excess=$((file_count - max_files))
         log "  ${YELLOW}[INFO]${NC} 日志文件过多 (${file_count} 个)，删除最旧的 ${excess} 个..."
         
-        # 按修改时间排序，删除最旧的文件
-        find "$LOG_DIR" -name "cfdns_*.log" -type f -printf '%T@ %p\n' | \
-            sort -n | \
-            head -n "$excess" | \
-            awk '{print $2}' | \
-            xargs rm -f 2>/dev/null || true
+        # 【修复】跨平台按修改时间排序，删除最旧的文件
+        local oldest_files
+        if stat -c '%Y' /dev/null >/dev/null 2>&1; then
+            # Linux
+            oldest_files=$(find "$LOG_DIR" -name "cfdns_*.log" -type f -exec stat -c '%Y %n' {} \; 2>/dev/null | \
+                sort -n | \
+                head -n "$excess" | \
+                awk '{print $2}')
+        elif stat -f '%m' /dev/null >/dev/null 2>&1; then
+            # macOS/BSD
+            oldest_files=$(find "$LOG_DIR" -name "cfdns_*.log" -type f -exec stat -f '%m %N' {} \; 2>/dev/null | \
+                sort -n | \
+                head -n "$excess" | \
+                awk '{print $2}')
+        else
+            # 备用方案：使用 ls -t
+            oldest_files=$(ls -t "$LOG_DIR"/cfdns_*.log 2>/dev/null | tail -n "$excess")
+        fi
+        
+        echo "$oldest_files" | xargs rm -f 2>/dev/null || true
     fi
 }
 
