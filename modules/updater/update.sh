@@ -336,8 +336,10 @@ download_file() {
         echo -e "  ${YELLOW}[WARN]${NC} 镜像源失败，尝试官方源..."
         local full_url="${RAW_BASE_URL}/${remote_path}"
         rm -f "${temp_file}"
+        # 【修复】移除旧条目，避免 TEMP_FILES 重复注册
+        TEMP_FILES=("${TEMP_FILES[@]/$temp_file}")
         temp_file=$(mktemp)
-        TEMP_FILES+=("${temp_file}")  # 【修复】注册临时文件
+        TEMP_FILES+=("${temp_file}")  # 重新注册
         
         # 【优化】复用统一的重试函数
         if download_with_retry "${full_url}" "${temp_file}"; then

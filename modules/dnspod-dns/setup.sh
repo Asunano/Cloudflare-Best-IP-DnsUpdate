@@ -2605,6 +2605,7 @@ else
             ;;
         5)
             # 进入二级菜单循环
+            should_break_main=false
             while true; do
                 clear
                 modify_config_menu
@@ -2613,17 +2614,22 @@ else
                     # 用户选择返回主菜单
                     break
                 elif [ $result -eq 2 ]; then
-                    # 用户选择全部重新配置,跳出主循环
-                    # shellcheck disable=SC2034
-                    # shellcheck disable=SC2034
+                    # 【修复】用户选择全部重新配置，使用标志变量替代 break 2
                     RECONFIGURE_ALL=true
-                    break 2
+                    should_break_main=true
+                    break
                 elif [ $result -eq 1 ]; then
                     # 修改完成,继续显示二级菜单
                     continue
                 fi
                 # 否则继续显示二级菜单
             done
+            
+            # 【修复】检查是否需要跳出主循环
+            if [[ "${should_break_main}" = true ]]; then
+                break
+            fi
+            
             # 从二级菜单返回,清屏后再显示主菜单
             clear
             ;;
@@ -3351,6 +3357,7 @@ while true; do
             ;;
         7)
             # 修改配置二级菜单
+            should_break_main=false
             while true; do
                 clear
                 modify_config_menu
@@ -3358,13 +3365,20 @@ while true; do
                 if [ $result -eq 0 ]; then
                     break
                 elif [ $result -eq 2 ]; then
-                    # shellcheck disable=SC2034
+                    # 【修复】用户选择全部重新配置，使用标志变量替代 break 2
                     RECONFIGURE_ALL=true
-                    break 2
+                    should_break_main=true
+                    break
                 elif [ $result -eq 1 ]; then
                     continue
                 fi
             done
+            
+            # 【修复】检查是否需要跳出主循环
+            if [[ "${should_break_main}" = true ]]; then
+                break
+            fi
+            
             clear
             ;;
         8)
