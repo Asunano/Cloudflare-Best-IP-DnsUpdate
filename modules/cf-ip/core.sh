@@ -511,11 +511,12 @@ record_speed_test_history() {
     mkdir -p "${ROOT_DIR}/conf"
     
     # 【修复】使用 flock 保护并发写入，防止多进程同时写入导致数据损坏
+    # 【安全修复】添加 || true 防止 set -e 导致脚本退出
     (
-        flock -n 200 || { log_warn "无法获取历史记录写入锁"; return 1; }
+        flock -n 200 || { log_warn "无法获取历史记录写入锁"; exit 0; }
         printf '{"time":"%s","action":"speed_test","domain":"%s","ips_found":%d,"best_ip":"%s","latency":%.2f,"speed":%.2f}\n' \
             "$timestamp" "$domain" "$ips_found" "$best_ip" "$latency" "$speed" >> "$history_file"
-    ) 200>"${history_file}.lock"
+    ) 200>"${history_file}.lock" || true
 }
 
 # 清屏，开始显示进度
