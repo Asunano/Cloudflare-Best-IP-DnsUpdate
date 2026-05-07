@@ -385,7 +385,7 @@ while IFS= read -r line; do
     [[ "$line" =~ ^[[:space:]]*# ]] && continue
     
     # 提取第一个字段（可能是 IP 或 IP|延迟|速度|地区码）
-    local ip_part
+    # 【修复】移除 local，因为在函数外使用（全局作用域）
     ip_part=$(echo "$line" | cut -d'|' -f1 | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
     
     # 检查是否为有效的 IP 地址
