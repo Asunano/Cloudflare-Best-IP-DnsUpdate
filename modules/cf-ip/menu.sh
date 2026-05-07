@@ -482,8 +482,11 @@ configure_advanced() {
     echo ""
     
     echo -e "${YELLOW}【基础配置】${NC}"
-    read -r -p "HTML输出文件路径（默认: /opt/1panel/www/sites/sw/index/index.html）: " OUTPUT_HTML
-    OUTPUT_HTML=${OUTPUT_HTML:-"/opt/1panel/www/sites/sw/index/index.html"}
+    read -r -p "是否生成 HTML 报告？(true/false，默认: true): " ENABLE_HTML
+    ENABLE_HTML=${ENABLE_HTML:-"true"}
+    
+    read -r -p "HTML输出文件路径（默认: /opt/1panel/www/sites/sw/index/index.html）: " OUTPUT_HTML_PATH
+    OUTPUT_HTML_PATH=${OUTPUT_HTML_PATH:-"/opt/1panel/www/sites/sw/index/index.html"}
     
     read -r -p "需要提取的优质IP数量（默认: 5）: " TAKE_IP_NUM
     TAKE_IP_NUM=${TAKE_IP_NUM:-5}
@@ -607,7 +610,7 @@ generate_config_simple() {
             }
         }' > "$temp_file"; then
         rm -f "$temp_file" 2>/dev/null
-        log_error "配置文件生成失败"
+        show_error "配置文件生成失败"
         return 1
     fi
     
@@ -649,6 +652,7 @@ normalize_boolean() {
 generate_config_advanced() {
     # 【修复】规范化布尔值，防止 jq --argjson 类型转换失败
     ENABLE_LOG=$(normalize_boolean "${ENABLE_LOG:-false}")
+    ENABLE_HTML=$(normalize_boolean "${ENABLE_HTML:-true}")
     CFST_HTTPING=$(normalize_boolean "${CFST_HTTPING:-true}")
     CFST_DISABLE_DOWNLOAD=$(normalize_boolean "${CFST_DISABLE_DOWNLOAD:-false}")
     CFST_ALL_IP=$(normalize_boolean "${CFST_ALL_IP:-false}")
@@ -659,7 +663,8 @@ generate_config_advanced() {
     
     jq -n \
         --arg cfst_dir "${CFST_DIR}" \
-        --arg output_html "${OUTPUT_HTML}" \
+        --argjson output_html "${ENABLE_HTML}" \
+        --arg output_html_path "${OUTPUT_HTML_PATH}" \
         --argjson take_ip_num "${TAKE_IP_NUM}" \
         --argjson max_retry "${MAX_RETRY}" \
         --argjson enable_log "${ENABLE_LOG}" \
@@ -706,7 +711,8 @@ generate_config_advanced() {
             "speed_test": {
                 "take_ip_num": $take_ip_num,
                 "max_retry": $max_retry,
-                "output_html": ($output_html == "true"),
+                "output_html": $output_html,
+                "output_html_path": $output_html_path,
                 "enable_log": $enable_log
             },
             "multi_line": {
