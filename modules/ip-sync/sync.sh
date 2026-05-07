@@ -185,6 +185,11 @@ sync_cf_dns_ips() {
             continue
         fi
         
+        # 【修复】将相对路径转换为绝对路径（相对于项目根目录）
+        if [[ "${target_file}" != /* ]]; then
+            target_file="${ROOT_DIR}/${target_file#./}"
+        fi
+        
         # 【修复】如果未配置 result_file，根据域名自动推断
         if [[ -z "${result_file}" ]]; then
             # 优先查找该域名的最新测速结果文件
