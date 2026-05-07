@@ -180,7 +180,8 @@ log() {
     
     # 【修复】写入文件时剥离 ANSI 颜色码，终端输出保留颜色
     local plain_message
-    plain_message=$(echo "$*" | sed 's/\x1b\[[0-9;]*m//g')
+    # 【修复】同时匹配真正的 ESC 字符 (\x1b) 和文本形式的 \033
+    plain_message=$(echo "$*" | sed -e 's/\x1b\[[0-9;]*m//g' -e 's/\\033\[[0-9;]*m//g')
     
     # 写入日志文件（纯文本）
     printf "[%s] [%-5s] [cf-dns] %s\n" "$timestamp" "$level" "$plain_message" >> "$LOG_FILE"
