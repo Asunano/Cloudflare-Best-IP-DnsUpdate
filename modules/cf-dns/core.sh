@@ -337,9 +337,15 @@ if [ ${#CF_API_TOKEN} -lt 30 ]; then
     exit 1
 fi
 
-# 可选：校验是否为有效的十六进制字符串
-if [[ ! "$CF_API_TOKEN" =~ ^[a-fA-F0-9]+$ ]]; then
-    echo -e "${YELLOW}警告${NC}: API Token 包含非十六进制字符，可能无效"
+# 【修复】移除过严的十六进制校验，Cloudflare API Token 可包含 -、_ 等字符
+# 只检查 Token 是否为空和最小长度
+if [[ -z "$CF_API_TOKEN" ]]; then
+    echo -e "${RED}错误${NC}: CF_API_TOKEN 为空"
+    exit 1
+fi
+
+if [[ ${#CF_API_TOKEN} -lt 20 ]]; then
+    echo -e "${YELLOW}警告${NC}: API Token 长度异常 (${#CF_API_TOKEN} 字符)，可能无效"
     echo "建议检查 Token 是否正确复制"
 fi
 
