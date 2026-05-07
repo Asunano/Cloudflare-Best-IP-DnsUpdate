@@ -856,7 +856,7 @@ EOF
                     "download_count": 10,
                     "download_time": 10,
                     "port": 443,
-                    "url": "https://cf-ns.com/cdn-cgi/trace",
+                    "url": "https://mirror.drxian.qzz.io/index.html",
                     "httping": false,
                     "latency_max": 9999,
                     "packet_loss_max": 100,

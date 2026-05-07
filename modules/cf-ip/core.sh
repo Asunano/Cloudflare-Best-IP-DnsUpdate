@@ -162,7 +162,7 @@ if [[ "${CF_IP_CFG_LOADED:-}" != "true" ]]; then
             "cfst_download_count=" + (.cfst.download_count // 10 | tostring),
             "cfst_download_time=" + (.cfst.download_time // 10 | tostring),
             "cfst_port=" + (.cfst.port // 443 | tostring),
-            "cfst_url=" + (.cfst.url // "https://cf-ns.com/cdn-cgi/trace"),
+            "cfst_url=" + (.cfst.url // "https://mirror.drxian.qzz.io/index.html"),
             "cfst_httping=" + (.cfst.httping // false | tostring),
             "cfst_latency_max=" + (.cfst.latency_max // 9999 | tostring),
             "cfst_packet_loss_max=" + (.cfst.packet_loss_max // 100 | tostring),
@@ -193,7 +193,7 @@ else
     CFG["cfst_download_count"]="10"
     CFG["cfst_download_time"]="10"
     CFG["cfst_port"]="443"
-    CFG["cfst_url"]="https://cf-ns.com/cdn-cgi/trace"
+    CFG["cfst_url"]="https://mirror.drxian.qzz.io/index.html"
     CFG["cfst_httping"]="false"
     CFG["cfst_latency_max"]="9999"
     CFG["cfst_packet_loss_max"]="100"
