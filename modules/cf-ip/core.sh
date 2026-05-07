@@ -481,7 +481,15 @@ log() {
     shift
     local timestamp
     timestamp="$(date +"%Y-%m-%d %H:%M:%S")"
-    printf "[%s] [%-5s] [cf-ip] %s\n" "$timestamp" "$level" "$*" | tee -a "${LOG_FILE}"
+    
+    # 【修复】防御性检查：确保 LOG_FILE 已定义，避免写入未定义路径
+    if [[ -z "${LOG_FILE:-}" ]]; then
+        # 如果 LOG_FILE 未定义，只输出到终端
+        printf "[%s] [%-5s] [cf-ip] %s\n" "$timestamp" "$level" "$*"
+    else
+        # 正常情况：同时输出到终端和文件
+        printf "[%s] [%-5s] [cf-ip] %s\n" "$timestamp" "$level" "$*" | tee -a "${LOG_FILE}"
+    fi
 }
 
 # 便捷函数
