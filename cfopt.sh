@@ -28,7 +28,17 @@ rotate_log() {
     
     if [[ -f "$log_file" ]]; then
         local file_size
-        file_size=$(stat -c %s "$log_file" 2>/dev/null || echo 0)
+        # 【修复】跨平台获取文件大小（macOS 不支持 stat -c）
+        if stat -f %z "$log_file" >/dev/null 2>&1; then
+            # macOS/BSD
+            file_size=$(stat -f %z "$log_file")
+        elif stat -c %s "$log_file" >/dev/null 2>&1; then
+            # Linux
+            file_size=$(stat -c %s "$log_file")
+        else
+            # 备用方案：使用 wc -c
+            file_size=$(wc -c < "$log_file" | tr -d ' ')
+        fi
         
         if [[ "$file_size" -gt "$max_size" ]]; then
             # 轮转日志：当前日志 -> .old
