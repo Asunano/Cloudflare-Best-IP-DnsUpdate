@@ -371,8 +371,14 @@ acquire_lock() {
         exit 1
     fi
 
-    # 【修复】注册清理函数，确保退出时删除锁文件
-    cleanup_lock() { rm -f "${LOCK_FILE}" 2>/dev/null || true; }
+    # 【修复】注册清理函数，确保退出时删除锁文件和临时日志
+    cleanup_lock() {
+        rm -f "${LOCK_FILE}" 2>/dev/null || true
+        # 【新增】清理临时日志文件（当 ENABLE_LOG=false 时）
+        if [[ "${ENABLE_LOG:-true}" != "true" ]] && [[ -f "${LOG_FILE:-}" ]]; then
+            rm -f "${LOG_FILE}" 2>/dev/null || true
+        fi
+    }
     trap cleanup_lock EXIT
 }
 
