@@ -1912,6 +1912,45 @@ ${ip}"
         
         echo ""
         read -r -p "按回车键继续..."
+    else
+        # 多线路模式
+        echo "当前运行模式: 多线路解析"
+        echo ""
+        echo "各线路 IP 文件:"
+        
+        local ip_default ip_unicom ip_mobile ip_telecom
+        ip_default=$(json_get ".ip_source.files.default" "")
+        ip_unicom=$(json_get ".ip_source.files.unicom" "")
+        ip_mobile=$(json_get ".ip_source.files.mobile" "")
+        ip_telecom=$(json_get ".ip_source.files.telecom" "")
+        
+        echo "  1) 默认线路: ${ip_default:-未配置}"
+        echo "  2) 联通线路: ${ip_unicom:-未配置}"
+        echo "  3) 移动线路: ${ip_mobile:-未配置}"
+        echo "  4) 电信线路: ${ip_telecom:-未配置}"
+        echo ""
+        echo "  5) 执行 IP 同步（从测速结果自动提取）"
+        echo ""
+        echo -e "  ${RED}➤${NC} 0. 返回主菜单"
+        echo ""
+        read -r -p "  请输入选项 [0-5]: " action
+        
+        case "$action" in
+            5)
+                clear
+                echo -e "${GREEN}正在调用 IP 同步组件...${NC}"
+                bash "$ROOT_DIR/modules/ip-sync/sync.sh"
+                ;;
+            0)
+                return 0
+                ;;
+            *)
+                echo -e "${YELLOW}[INFO] 请使用 ip-sync 模块自动同步多线路 IP${NC}"
+                ;;
+        esac
+        
+        echo ""
+        read -r -p "按回车键继续..."
     fi
 }
 
