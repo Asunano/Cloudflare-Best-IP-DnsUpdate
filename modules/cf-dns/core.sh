@@ -321,17 +321,25 @@ if [ -z "$CF_API_TOKEN" ] || [ -z "$CF_ZONE_ID" ] || [ -z "$CF_DNS_NAME" ]; then
     exit 1
 fi
 
-# 验证 API Token 格式（非空且至少 20 字符）
+# 【修复】验证 API Token 格式（Cloudflare API Token 为 40 字符 hex 字符串）
 if [ -z "$CF_API_TOKEN" ]; then
     echo -e "${RED}错误${NC}: API Token 不能为空"
     echo "请检查 CF_API_TOKEN 配置"
     exit 1
 fi
 
-if [ ${#CF_API_TOKEN} -lt 20 ]; then
+# 严格校验：长度必须 >= 30 且为十六进制字符
+if [ ${#CF_API_TOKEN} -lt 30 ]; then
     echo -e "${RED}错误${NC}: API Token 格式不正确 (长度: ${#CF_API_TOKEN}, 太短)"
+    echo "Cloudflare API Token 应为 40 字符的十六进制字符串"
     echo "请检查 CF_API_TOKEN 配置"
     exit 1
+fi
+
+# 可选：校验是否为有效的十六进制字符串
+if [[ ! "$CF_API_TOKEN" =~ ^[a-fA-F0-9]+$ ]]; then
+    echo -e "${YELLOW}警告${NC}: API Token 包含非十六进制字符，可能无效"
+    echo "建议检查 Token 是否正确复制"
 fi
 
 # 验证 DNS 名称格式（只允许字母、数字、@、.、-、_）
