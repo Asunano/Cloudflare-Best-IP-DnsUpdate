@@ -5,7 +5,7 @@
 # Description: 自动化测速、IP 同步及 DNS 记录更新的综合管理入口
 # Author: cfopt Team
 # ==============================================================================
-set -uo pipefail
+set -euo pipefail
 IFS=$'\n\t'
 
 # --- 终端颜色定义 (必须最先定义，防止 set -u 报错) ---
@@ -1204,7 +1204,7 @@ manage_scheduler() {
                 ;;
             3)
                 if crontab -l 2>/dev/null | grep -q "scheduler/run.sh"; then
-                    (crontab -l 2>/dev/null | grep -v "scheduler/run.sh") | crontab -
+                    (crontab -l 2>/dev/null | { grep -v "scheduler/run.sh" || true; }) | crontab -
                     echo -e "${GREEN}[OK] 定时任务已停止。${NC}"
                 else
                     echo -e "${YELLOW}[INFO] 当前没有正在运行的定时任务。${NC}"
@@ -1311,7 +1311,7 @@ setup_auto_cron() {
     local full_cmd="${cron_expr} /bin/bash ${INSTALL_DIR}/modules/scheduler/run.sh >> ${log_file} 2>&1"
     
     # 移除旧的定时任务，添加新的
-    (crontab -l 2>/dev/null | grep -v "scheduler/run.sh"; echo "${full_cmd}") | crontab -
+    (crontab -l 2>/dev/null | { grep -v "scheduler/run.sh" || true; }; echo "${full_cmd}") | crontab -
     
     echo ""
     echo -e "${GREEN}[OK] 定时任务已成功设置！${NC}"
@@ -1389,7 +1389,8 @@ uninstall_cfopt() {
         if [[ -n "${current_cron}" ]]; then
             # 【修复】精确匹配 INSTALL_DIR 路径，避免误删其他包含 cfopt 的任务
             local cleaned_cron
-            cleaned_cron=$(echo "${current_cron}" | grep -v "${INSTALL_DIR}/" | grep -v "scheduler/run\.sh")
+            cleaned_cron=$(echo "${current_cron}" | grep -v "${INSTALL_DIR}/" || true)
+            cleaned_cron=$(echo "${cleaned_cron}" | grep -v "scheduler/run\.sh" || true)
             if [[ -n "${cleaned_cron}" ]]; then
                 echo "${cleaned_cron}" | crontab -
             else
