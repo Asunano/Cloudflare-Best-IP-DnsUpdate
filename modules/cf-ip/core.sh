@@ -309,6 +309,18 @@ stat_file_mtime() {
     fi
 }
 
+# ==================== 跨平台反向读取文件函数 ====================
+# 兼容 Linux（tac）和 macOS（tail -r）
+reverse_read() {
+    local file="$1"
+    if command -v tac &>/dev/null; then
+        tac "$file"
+    else
+        # macOS 使用 tail -r
+        tail -r "$file" 2>/dev/null || cat "$file"
+    fi
+}
+
 acquire_lock() {
     # 【修复】检查残留的锁文件是否过期（超过 30 分钟视为残留）
     if [[ -f "${LOCK_FILE}" ]]; then
@@ -589,16 +601,6 @@ monitor_progress() {
     local last_displayed_size=0  # 【修复】移除未使用的 last_log_size，只保留 last_displayed_size
     local max_empty_loops=20
     local empty_loop_count=0
-    
-    # 【跨平台】反向读取文件的辅助函数（macOS 不支持 tac）
-    reverse_read() {
-        if command -v tac &>/dev/null; then
-            tac "$1"
-        else
-            # macOS 使用 tail -r
-            tail -r "$1" 2>/dev/null || cat "$1"
-        fi
-    }
     
     while kill -0 "${pid}" 2>/dev/null; do
         # 检查日志文件是否存在
