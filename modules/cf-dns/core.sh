@@ -400,7 +400,25 @@ build_full_domain() {
 
 # 日志轮转（删除7天前的日志）
 rotate_logs() {
+    # 删除 7 天前的日志文件
     find "$LOG_DIR" -name "cfdns_*.log" -mtime +7 -delete 2>/dev/null
+    
+    # 【修复】限制日志文件数量，只保留最近 20 个日志文件
+    local max_files=20
+    local file_count
+    file_count=$(find "$LOG_DIR" -name "cfdns_*.log" -type f | wc -l)
+    
+    if [[ "$file_count" -gt "$max_files" ]]; then
+        local excess=$((file_count - max_files))
+        log "  ${YELLOW}[INFO]${NC} 日志文件过多 (${file_count} 个)，删除最旧的 ${excess} 个..."
+        
+        # 按修改时间排序，删除最旧的文件
+        find "$LOG_DIR" -name "cfdns_*.log" -type f -printf '%T@ %p\n' | \
+            sort -n | \
+            head -n "$excess" | \
+            awk '{print $2}' | \
+            xargs rm -f 2>/dev/null || true
+    fi
 }
 
 # ==================== 【通用 HTTP 请求函数】 ====================
