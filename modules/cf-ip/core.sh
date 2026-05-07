@@ -687,8 +687,14 @@ for ((retry=1; retry<=MAX_RETRY; retry++)); do
     fi
     
     if [[ "${EXIT_CODE}" -eq 0 ]] && [[ -f "${OUTPUT_CSV}" ]]; then
-        # 验证测速结果是否有效
-        valid_ip_count=$(awk -F',' 'NR>1 && $6>0 {count++} END {print count+0}' "${OUTPUT_CSV}")
+        # 【修复】根据是否禁用下载测速，使用不同的验证条件
+        if [[ "${CFST_DISABLE_DOWNLOAD}" = "true" ]]; then
+            # 禁用下载测速时，只验证是否有数据行（IP 字段非空）
+            valid_ip_count=$(awk -F',' 'NR>1 && $1 != "" {count++} END {print count+0}' "${OUTPUT_CSV}")
+        else
+            # 启用下载测速时，验证下载速度大于 0
+            valid_ip_count=$(awk -F',' 'NR>1 && $6>0 {count++} END {print count+0}' "${OUTPUT_CSV}")
+        fi
         
         if [[ "${valid_ip_count}" -gt 0 ]]; then
             # 测速成功且有有效数据
@@ -699,13 +705,22 @@ for ((retry=1; retry<=MAX_RETRY; retry++)); do
         else
             # 数据无效，继续重试
             if [[ ${retry} -lt ${MAX_RETRY} ]]; then
-                echo -e "${YELLOW}[WARN] 第 ${retry} 次测速完成，但所有 IP 下载速度均为 0，数据无效${NC}"
+                if [[ "${CFST_DISABLE_DOWNLOAD}" = "true" ]]; then
+                    echo -e "${YELLOW}[WARN] 第 ${retry} 次测速完成，但未找到有效 IP 数据，数据无效${NC}"
+                else
+                    echo -e "${YELLOW}[WARN] 第 ${retry} 次测速完成，但所有 IP 下载速度均为 0，数据无效${NC}"
+                fi
             else
                 echo -e "${RED}[ERROR] 已重试 ${MAX_RETRY} 次，所有测速结果均无效${NC}"
                 echo -e "${YELLOW}[提示] 可能的原因：${NC}"
-                echo -e "  • 测速地址不可达或网络问题"
-                echo -e "  • 防火墙阻止了下载测试"
-                echo -e "  • Cloudflare CDN 暂时异常"
+                if [[ "${CFST_DISABLE_DOWNLOAD}" = "true" ]]; then
+                    echo -e "  • 无法获取 IP 列表或网络问题"
+                    echo -e "  • Cloudflare CDN 暂时异常"
+                else
+                    echo -e "  • 测速地址不可达或网络问题"
+                    echo -e "  • 防火墙阻止了下载测试"
+                    echo -e "  • Cloudflare CDN 暂时异常"
+                fi
                 echo ""
                 echo -e "${CYAN}[建议] 请检查网络连接后重新运行测速${NC}"
                 exit 1
