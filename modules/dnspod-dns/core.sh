@@ -296,7 +296,9 @@ echo ""
 # 删除指定线路的 DNS 记录
 delete_record_by_line() {
     local record_id="$1"
-    local payload="{\"Domain\":\"${DOMAIN}\",\"RecordId\":${record_id}}"
+    # 【修复】使用 jq 安全构建 JSON
+    local payload
+    payload=$(jq -n --arg domain "$DOMAIN" --argjson record_id "$record_id" '{"Domain":$domain,"RecordId":$record_id}')
     call_api "DeleteRecord" "${payload}"
 }
 
@@ -572,7 +574,9 @@ get_record_by_line() {
     local line="$1"
     local subdomain
     subdomain="$(get_subdomain_for_line "${line}")"
-    local payload="{\"Domain\":\"${DOMAIN}\",\"Subdomain\":\"${subdomain}\",\"RecordType\":\"A\",\"RecordLine\":\"${line}\",\"Limit\":100}"
+    # 【修复】使用 jq 安全构建 JSON
+    local payload
+    payload=$(jq -n --arg domain "$DOMAIN" --arg subdomain "$subdomain" --arg line "$line" '{"Domain":$domain,"Subdomain":$subdomain,"RecordType":"A","RecordLine":$line,"Limit":100}')
     call_api "DescribeRecordList" "${payload}"
 }
 
@@ -583,7 +587,9 @@ modify_record_by_line() {
     local line="$3"
     local subdomain
     subdomain="$(get_subdomain_for_line "${line}")"
-    local payload="{\"Domain\":\"${DOMAIN}\",\"SubDomain\":\"${subdomain}\",\"RecordType\":\"A\",\"RecordLine\":\"${line}\",\"Value\":\"${value}\",\"TTL\":${TTL},\"RecordId\":${record_id}}"
+    # 【修复】使用 jq 安全构建 JSON
+    local payload
+    payload=$(jq -n --arg domain "$DOMAIN" --arg subdomain "$subdomain" --arg line "$line" --arg value "$value" --argjson ttl "$TTL" --argjson record_id "$record_id" '{"Domain":$domain,"SubDomain":$subdomain,"RecordType":"A","RecordLine":$line,"Value":$value,"TTL":$ttl,"RecordId":$record_id}')
     call_api "ModifyRecord" "${payload}"
 }
 
@@ -593,7 +599,9 @@ create_record_by_line() {
     local line="$2"
     local subdomain
     subdomain="$(get_subdomain_for_line "${line}")"
-    local payload="{\"Domain\":\"${DOMAIN}\",\"SubDomain\":\"${subdomain}\",\"RecordType\":\"A\",\"RecordLine\":\"${line}\",\"Value\":\"${value}\",\"TTL\":${TTL}}"
+    # 【修复】使用 jq 安全构建 JSON
+    local payload
+    payload=$(jq -n --arg domain "$DOMAIN" --arg subdomain "$subdomain" --arg line "$line" --arg value "$value" --argjson ttl "$TTL" '{"Domain":$domain,"SubDomain":$subdomain,"RecordType":"A","RecordLine":$line,"Value":$value,"TTL":$ttl}')
     call_api "CreateRecord" "${payload}"
 }
 
@@ -774,7 +782,9 @@ call_api() {
 
 # 获取 DNS 记录
 get_record() {
-    local payload="{\"Domain\":\"${DOMAIN}\",\"Subdomain\":\"${SUB_DOMAIN}\",\"RecordType\":\"A\",\"Limit\":100}"
+    # 【修复】使用 jq 安全构建 JSON
+    local payload
+    payload=$(jq -n --arg domain "$DOMAIN" --arg subdomain "$SUB_DOMAIN" '{"Domain":$domain,"Subdomain":$subdomain,"RecordType":"A","Limit":100}')
     call_api "DescribeRecordList" "${payload}"
 }
 
@@ -782,7 +792,9 @@ get_record() {
 modify_record() {
     local record_id="$1"
     local value="$2"
-    local payload="{\"Domain\":\"${DOMAIN}\",\"SubDomain\":\"${SUB_DOMAIN}\",\"RecordType\":\"A\",\"RecordLine\":\"默认\",\"Value\":\"${value}\",\"TTL\":${TTL},\"RecordId\":${record_id}}"
+    # 【修复】使用 jq 安全构建 JSON
+    local payload
+    payload=$(jq -n --arg domain "$DOMAIN" --arg subdomain "$SUB_DOMAIN" --arg value "$value" --argjson ttl "$TTL" --argjson record_id "$record_id" '{"Domain":$domain,"SubDomain":$subdomain,"RecordType":"A","RecordLine":"默认","Value":$value,"TTL":$ttl,"RecordId":$record_id}')
     call_api "ModifyRecord" "${payload}"
 }
 
@@ -790,7 +802,9 @@ modify_record() {
 create_record() {
     local value="$1"
     local line="${2:-默认}"
-    local payload="{\"Domain\":\"${DOMAIN}\",\"SubDomain\":\"${SUB_DOMAIN}\",\"RecordType\":\"A\",\"RecordLine\":\"${line}\",\"Value\":\"${value}\",\"TTL\":${TTL}}"
+    # 【修复】使用 jq 安全构建 JSON
+    local payload
+    payload=$(jq -n --arg domain "$DOMAIN" --arg subdomain "$SUB_DOMAIN" --arg line "$line" --arg value "$value" --argjson ttl "$TTL" '{"Domain":$domain,"SubDomain":$subdomain,"RecordType":"A","RecordLine":$line,"Value":$value,"TTL":$ttl}')
     call_api "CreateRecord" "${payload}"
 }
 
@@ -1326,7 +1340,9 @@ main_delete() {
         fi
         
         # 查询记录（只按子域名查询，不限制线路）
-        local payload="{\"Domain\":\"${DOMAIN}\",\"Subdomain\":\"${subdomain}\",\"RecordType\":\"A\",\"Limit\":100}"
+        # 【修复】使用 jq 安全构建 JSON
+        local payload
+        payload=$(jq -n --arg domain "$DOMAIN" --arg subdomain "$subdomain" '{"Domain":$domain,"Subdomain":$subdomain,"RecordType":"A","Limit":100}')
         local record_response
         record_response="$(call_api "DescribeRecordList" "${payload}")"
         
@@ -1449,7 +1465,9 @@ main_delete_unified() {
     
     # 只需要查询一次，因为统一模式下所有线路使用同一个子域名
     # 查询记录（按子域名查询，不限制线路）
-    local payload="{\"Domain\":\"${DOMAIN}\",\"Subdomain\":\"${unified_subdomain}\",\"RecordType\":\"A\",\"Limit\":100}"
+    # 【修复】使用 jq 安全构建 JSON
+    local payload
+    payload=$(jq -n --arg domain "$DOMAIN" --arg subdomain "$unified_subdomain" '{"Domain":$domain,"Subdomain":$subdomain,"RecordType":"A","Limit":100}')
     local record_response
     record_response="$(call_api "DescribeRecordList" "${payload}")"
     
@@ -1578,7 +1596,9 @@ main_delete_unified_non_default() {
         
     # 只需要查询一次，因为统一模式下所有线路使用同一个子域名
     # 查询记录（按子域名查询，不限制线路）
-    local payload="{\"Domain\":\"${DOMAIN}\",\"Subdomain\":\"${unified_subdomain}\",\"RecordType\":\"A\",\"Limit\":100}"
+    # 【修复】使用 jq 安全构建 JSON
+    local payload
+    payload=$(jq -n --arg domain "$DOMAIN" --arg subdomain "$unified_subdomain" '{"Domain":$domain,"Subdomain":$subdomain,"RecordType":"A","Limit":100}')
     local record_response
     record_response="$(call_api "DescribeRecordList" "${payload}")"
         
@@ -1783,7 +1803,9 @@ check_records_exist() {
     local subdomain="$1"
     local domain="$2"
     
-    local payload="{\"Domain\":\"${domain}\",\"Subdomain\":\"${subdomain}\",\"RecordType\":\"A\",\"Limit\":1}"
+    # 【修复】使用 jq 安全构建 JSON
+    local payload
+    payload=$(jq -n --arg domain "$domain" --arg subdomain "$subdomain" '{"Domain":$domain,"Subdomain":$subdomain,"RecordType":"A","Limit":1}')
     local response
     response="$(call_api "DescribeRecordList" "$payload")"
     
@@ -1802,7 +1824,9 @@ get_record_count() {
     local subdomain="$1"
     local domain="$2"
     
-    local payload="{\"Domain\":\"${domain}\",\"Subdomain\":\"${subdomain}\",\"RecordType\":\"A\",\"Limit\":100}"
+    # 【修复】使用 jq 安全构建 JSON
+    local payload
+    payload=$(jq -n --arg domain "$domain" --arg subdomain "$subdomain" '{"Domain":$domain,"Subdomain":$subdomain,"RecordType":"A","Limit":100}')
     local response
     response="$(call_api "DescribeRecordList" "$payload")"
     
@@ -1817,7 +1841,9 @@ get_record_details() {
     local subdomain="$1"
     local domain="$2"
     
-    local payload="{\"Domain\":\"${domain}\",\"Subdomain\":\"${subdomain}\",\"RecordType\":\"A\",\"Limit\":100}"
+    # 【修复】使用 jq 安全构建 JSON
+    local payload
+    payload=$(jq -n --arg domain "$domain" --arg subdomain "$subdomain" '{"Domain":$domain,"Subdomain":$subdomain,"RecordType":"A","Limit":100}')
     call_api "DescribeRecordList" "$payload"
 }
 
