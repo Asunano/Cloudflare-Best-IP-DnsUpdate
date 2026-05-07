@@ -6,7 +6,8 @@
 # Description: 提供交互式界面用于配置测速参数、管理定时任务及查看运行状态
 # Usage: bash modules/cf-ip/menu.sh
 # ==============================================================================
-set -uo pipefail
+# 【安全修复】启用严格模式，防止错误传播
+set -euo pipefail
 IFS=$'\n\t'
 # shellcheck disable=SC2034
 SCRIPT_VERSION="0.1"
