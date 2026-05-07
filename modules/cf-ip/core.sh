@@ -691,82 +691,59 @@ monitor_progress() {
 # 实时显示进度（通过监控日志文件）
 progress_bar_width=40
 
-# 【修复】使用 subshell 隔离目录切换，确保任何退出情况下都不影响父 shell
-# 【修复】初始化 EXIT_CODE，避免 set -u 报错
-EXIT_CODE=0
-(
-    # 切换到 cfst 所在目录执行
-    cd "$(dirname "$CFST_BIN")" || exit 1
-    
-    # 启动测速程序（后台运行）
-    "${CMD[@]}" > "${LOG_FILE}" 2>&1 &
-    CFST_PID=$!
-    
-    # 实时显示进度（通过监控日志文件）
-    monitor_progress "${CFST_PID}" "${LOG_FILE}" "${progress_bar_width}" || true
-    
-    # 等待进程结束（屏蔽错误输出，防止进程已退出时报错）
-    wait "${CFST_PID}" 2>/dev/null
-    EXIT_CODE=$?
-    
-    # 修复：固定长度输出，确保覆盖干净
-    echo ""
-    # 【修复】使用 echo -e 正确解释转义码
-    echo -e "${CYAN}  [========================================] 100% 测速完成！${NC}"
-    echo ""
-    
-    # 将退出码传递给父 shell
-    exit ${EXIT_CODE}
-)
-EXIT_CODE=$?
-
 # 【增强】测速结果验证与自动重试
-# 【修复】使用配置文件中的 MAX_RETRY，而不是硬编码为 5
+# 【修复】将首次测速也纳入循环，确保 MAX_RETRY 含义符合用户预期
 for ((retry=1; retry<=MAX_RETRY; retry++)); do
     if [[ ${retry} -gt 1 ]]; then
-        echo -e "\n${CYAN}[INFO] 第 ${retry} 次自动重试测速...${NC}"
+        echo -e "\n${CYAN}[INFO] 第 $((retry - 1)) 次自动重试测速...${NC}"
         # 递增等待时间：10s, 20s, 30s, 40s
         wait_time=$(( (retry - 1) * 10 ))
         echo -e "${YELLOW}[等待] ${wait_time} 秒后重试...${NC}"
         sleep ${wait_time}
-        
-        # 重新执行测速（使用与首次测速相同的后台运行 + 实时进度监控方式）
-        # 【重构】使用函数构建命令，消除代码重复
-        declare -a RETRY_CMD
-        build_cfst_cmd "${TARGET_COLO}" "${OUTPUT_CSV}" "${IP_DATA_FILE}" RETRY_CMD
-        
-        # 2. 【修复】使用 subshell 隔离目录切换
-        (
-            cd "$(dirname "${CFST_BIN}")" || exit 1
-            
-            # 3. 启动测速程序（后台运行）
-            "${RETRY_CMD[@]}" > "${LOG_FILE}" 2>&1 &
-            CFST_PID=$!
-            
-            # 4. 实时显示进度（使用通用监控函数）
-            echo -e "\n${CYAN}+------------------------------------------------------------+"
-            echo -e " ${YELLOW}第 ${retry} 次重试测速中...${NC}"
-            echo -e "${CYAN}+------------------------------------------------------------+"
-            echo ""
-            echo -e "${GRAY}  第一阶段: 延迟测速 (TCP Ping)${NC}"
-            
-            monitor_progress "${CFST_PID}" "${LOG_FILE}" "${progress_bar_width}" || true
-            
-            # 5. 等待进程结束（屏蔽错误输出）
-            wait "${CFST_PID}" 2>/dev/null
-            EXIT_CODE=$?
-            
-            # 修复：固定长度输出，确保覆盖干净
-            echo ""
-            # 【修复】使用 echo -e 正确解释转义码
-            echo -e "${CYAN}  [========================================] 100% 测速完成！${NC}"
-            echo ""
-            
-            # 将退出码传递给父 shell
-            exit ${EXIT_CODE}
-        )
-        EXIT_CODE=$?
+    else
+        echo -e "\n${CYAN}[INFO] 正在执行首次测速...${NC}"
     fi
+    
+    # 重新执行测速（使用与首次测速相同的后台运行 + 实时进度监控方式）
+    # 【重构】使用函数构建命令，消除代码重复
+    declare -a RETRY_CMD
+    build_cfst_cmd "${TARGET_COLO}" "${OUTPUT_CSV}" "${IP_DATA_FILE}" RETRY_CMD
+    
+    # 2. 【修复】使用 subshell 隔离目录切换
+    (
+        cd "$(dirname "${CFST_BIN}")" || exit 1
+        
+        # 3. 启动测速程序（后台运行）
+        "${RETRY_CMD[@]}" > "${LOG_FILE}" 2>&1 &
+        CFST_PID=$!
+        
+        # 4. 实时显示进度（使用通用监控函数）
+        echo -e "\n${CYAN}+------------------------------------------------------------+"
+        if [[ ${retry} -eq 1 ]]; then
+            echo -e " ${YELLOW}首次测速中...${NC}"
+        else
+            echo -e " ${YELLOW}第 $((retry - 1)) 次重试测速中...${NC}"
+        fi
+        echo -e "${CYAN}+------------------------------------------------------------+"
+        echo ""
+        echo -e "${GRAY}  第一阶段: 延迟测速 (TCP Ping)${NC}"
+        
+        monitor_progress "${CFST_PID}" "${LOG_FILE}" "${progress_bar_width}" || true
+        
+        # 5. 等待进程结束（屏蔽错误输出）
+        wait "${CFST_PID}" 2>/dev/null
+        EXIT_CODE=$?
+        
+        # 修复：固定长度输出，确保覆盖干净
+        echo ""
+        # 【修复】使用 echo -e 正确解释转义码
+        echo -e "${CYAN}  [========================================] 100% 测速完成！${NC}"
+        echo ""
+        
+        # 将退出码传递给父 shell
+        exit ${EXIT_CODE}
+    )
+    EXIT_CODE=$?
     
     if [[ "${EXIT_CODE}" -eq 0 ]] && [[ -f "${OUTPUT_CSV}" ]]; then
         # 【修复】根据是否禁用下载测速，使用不同的验证条件
