@@ -288,8 +288,8 @@ delete_domain_config() {
 select_colo_nodes() {
     local domain="$1"
     
-    # 清屏，保持界面整洁
-    clear
+    # 【修复】将 clear 的输出重定向到 /dev/tty，避免污染 stdout 返回值
+    clear >/dev/tty 2>&1 || true
     
     echo -e "${CYAN}+------------------------------------------------------------+${NC}"
     echo -e " ${BOLD}${YELLOW}Cloudflare-Best-IP-DnsUpdate v${SCRIPT_VERSION}${NC}"
@@ -324,8 +324,8 @@ select_colo_nodes() {
         local normalized_colo
         normalized_colo=$(echo "$colo_choice" | tr '[:lower:]' '[:upper:]' | tr -d ' ')
         
-        # 【修复】清屏后再输出，避免菜单残留
-        clear
+        # 【修复】清屏后再输出，避免菜单残留（重定向到 /dev/tty）
+        clear >/dev/tty 2>&1 || true
         echo "$normalized_colo"
         return
     fi
