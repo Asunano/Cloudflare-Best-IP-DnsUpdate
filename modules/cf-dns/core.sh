@@ -364,6 +364,12 @@ REQUEST_TIMEOUT=${REQUEST_TIMEOUT:-10}
 MAX_IPS_PER_RECORD=${MAX_IPS_PER_RECORD:-2}
 # 【修复】默认使用纯 IP 格式文件，与 sync.sh 写入格式一致
 IP_FILE=${IP_FILE:-"$ROOT_DIR/assets/data/cf-dns/ip_list.txt"}
+
+# 【修复】将相对路径转为绝对路径
+if [[ "${IP_FILE}" != /* ]]; then
+    IP_FILE="${ROOT_DIR}/${IP_FILE#./}"
+fi
+
 CF_DEBUG=${CF_DEBUG:-false}  # 调试模式
 
 # ==================== IP 数据文件检测 (启动前校验) ====================

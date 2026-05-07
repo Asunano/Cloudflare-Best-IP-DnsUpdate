@@ -27,22 +27,22 @@ NC='\033[0m'
 # 例如: result_default_20260507_193000.csv
 RESULT_DIR="${ROOT_DIR}/assets/data/cf-ip"
 
+# 【修复】确保结果目录存在
+mkdir -p "${RESULT_DIR}"
+
 # 查找最新的测速结果文件（按修改时间排序）
-# 【修复】确保 RESULT_DIR 存在，避免 find 在空目录报错
-if [[ -d "${RESULT_DIR}" ]]; then
-    RESULT_CSV=$(find "${RESULT_DIR}" -name "result_*.csv" -type f -printf '%T@ %p\n' 2>/dev/null | \
-        sort -rn | \
-        head -n 1 | \
-        awk '{print $2}')
-else
-    RESULT_CSV=""
-fi
+RESULT_CSV=$(find "${RESULT_DIR}" -name "result_*.csv" -type f -printf '%T@ %p\n' 2>/dev/null | \
+    sort -rn | head -n 1 | awk '{print $2}')
 
 if [[ -z "${RESULT_CSV}" ]]; then
-    # 如果没有找到带时间戳的文件，尝试旧的 result.csv
-    if [[ -f "${RESULT_DIR}/result.csv" ]]; then
-        RESULT_CSV="${RESULT_DIR}/result.csv"
-    fi
+    RESULT_CSV="${RESULT_DIR}/result.csv"
+fi
+
+# 【修复】检查结果文件是否存在，不存在则给出明确提示而非静默退出
+if [[ ! -f "${RESULT_CSV}" ]]; then
+    echo -e "${RED}[ERROR] 未找到任何测速结果文件${NC}"
+    echo -e "${YELLOW}[提示] 请先运行 CF-IP 测速: cfopt → 2. CF IP 优选管理 → 3. 立即执行测速${NC}"
+    exit 1
 fi
 
 echo -e "${CYAN}+------------------------------------------------------------+${NC}"
@@ -71,13 +71,6 @@ fi
 
 echo -e "${GREEN}[INFO] 最大重试次数: ${MAX_RETRY}${NC}"
 echo ""
-
-# ==================== 前置条件检查 ====================
-if [[ ! -f "${RESULT_CSV}" ]]; then
-    echo -e "${RED}[ERROR] 未找到测速结果文件: ${RESULT_CSV}${NC}"
-    echo -e "${YELLOW}提示: 请先运行 CF-IP 优选程序进行测速。${NC}"
-    exit 1
-fi
 
 # ==================== 数据有效性校验 ====================
 # 提取第二行（跳过标题）的第一个字段，防止因测速程序 Bug 导致写入全 0 或空数据
