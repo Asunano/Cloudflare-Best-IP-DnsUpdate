@@ -73,11 +73,12 @@ else
 fi
 
 # 根据域名生成独立的锁文件
-LOCK_FILE="$ROOT_DIR/modules/cf-dns/.core.lock"
+# 【修复】统一锁文件命名规范：.${module_name}_${type}_${identifier}.lock
+LOCK_FILE="$ROOT_DIR/modules/cf-dns/.cf-dns_core.lock"
 acquire_lock() {
     local domain_safe
     domain_safe=$(echo "${DOMAIN_NAME:-default}" | sed 's/[^a-zA-Z0-9._-]/_/g')
-    LOCK_FILE="$ROOT_DIR/modules/cf-dns/.core_${domain_safe}.lock"
+    LOCK_FILE="$ROOT_DIR/modules/cf-dns/.cf-dns_core_${domain_safe}.lock"
     
     # 【安全修复】使用 flock 避免 TOCTOU 竞态条件
     exec 9>"$LOCK_FILE"

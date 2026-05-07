@@ -68,7 +68,8 @@ SCRIPT_DIR="$( cd -P "$( dirname "$SOURCE" )" >/dev/null 2>&1 && pwd )"
 ROOT_DIR="$(cd "$SCRIPT_DIR/../.." && pwd)"
 
 # ====================== 【进程锁管理】 ======================
-LOCK_FILE="${ROOT_DIR}/modules/cf-ip/.menu.lock"
+# 【修复】统一锁文件命名规范：.${module_name}_${type}.lock
+LOCK_FILE="${ROOT_DIR}/modules/cf-ip/.cf-ip_menu.lock"
 acquire_lock() {
     # 【安全修复】使用 flock 避免 TOCTOU 竞态条件
     

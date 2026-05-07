@@ -108,7 +108,8 @@ MENU_BORDER_BOTTOM="+-----------------------------------------------------------
 SMALL_BORDER="+--------------------------------------------------+"
 
 CONFIG_FILE="$ROOT_DIR/conf/dnspod.json"  # 仅在菜单显示时使用，实际运行时由 core.sh 动态加载
-LOCK_FILE="$ROOT_DIR/modules/dnspod-dns/.setup.lock"
+# 【修复】统一锁文件命名规范：.${module_name}_${type}.lock
+LOCK_FILE="$ROOT_DIR/modules/dnspod-dns/.dnspod-dns_setup.lock"
 
 # ==================== 进程锁管理 ====================
 # 防止多个配置向导实例同时运行导致配置文件冲突
