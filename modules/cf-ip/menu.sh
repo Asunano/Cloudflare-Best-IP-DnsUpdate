@@ -541,9 +541,11 @@ configure_advanced() {
     
     read -r -p "IP段数据文件名（留空=使用默认ip.iplist）: " CFST_IP_FILE
     
-    read -r -p "禁用下载测速？(true/false，默认留空): " CFST_DISABLE_DOWNLOAD
+    read -r -p "禁用下载测速？(true/false，默认 false): " CFST_DISABLE_DOWNLOAD
+    CFST_DISABLE_DOWNLOAD=${CFST_DISABLE_DOWNLOAD:-"false"}
     
-    read -r -p "测速全部IP？(true/false，默认留空): " CFST_ALL_IP
+    read -r -p "测速全部IP？(true/false，默认 false): " CFST_ALL_IP
+    CFST_ALL_IP=${CFST_ALL_IP:-"false"}
     
     if ! generate_config_advanced; then
         echo -e "${RED}[ERROR] 配置生成失败，请重试${NC}"
@@ -661,7 +663,7 @@ generate_config_advanced() {
     local temp_file
     temp_file=$(mktemp)
     
-    jq -n \
+    if ! jq -n \
         --arg cfst_dir "${CFST_DIR}" \
         --argjson output_html "${ENABLE_HTML}" \
         --arg output_html_path "${OUTPUT_HTML_PATH}" \
@@ -681,8 +683,8 @@ generate_config_advanced() {
         --arg speed_min "${CFST_SPEED_MIN}" \
         --argjson show_count "${CFST_SHOW_COUNT}" \
         --arg ip_file "${CFST_IP_FILE}" \
-        --arg disable_download "${CFST_DISABLE_DOWNLOAD:-false}" \
-        --arg all_ip "${CFST_ALL_IP:-false}" \
+        --arg disable_download "${CFST_DISABLE_DOWNLOAD}" \
+        --arg all_ip "${CFST_ALL_IP}" \
         --arg output_dir "./assets/data/cf-ip" \
         --arg log_dir "./logs/cf-ip" \
         '{
@@ -725,7 +727,17 @@ generate_config_advanced() {
                 "output_dir": $output_dir,
                 "log_dir": $log_dir
             }
-        }' > "$temp_file" && mv "$temp_file" "$CONFIG_FILE"
+        }' > "$temp_file"; then
+        rm -f "$temp_file" 2>/dev/null
+        show_error "配置文件生成失败"
+        return 1
+    fi
+    
+    if ! mv "$temp_file" "$CONFIG_FILE" 2>/dev/null; then
+        rm -f "$temp_file" 2>/dev/null
+        show_error "配置文件保存失败"
+        return 1
+    fi
     
     chmod 600 "$CONFIG_FILE"
     
