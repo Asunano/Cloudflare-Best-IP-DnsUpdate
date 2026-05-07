@@ -28,14 +28,21 @@ NC='\033[0m'
 RESULT_DIR="${ROOT_DIR}/assets/data/cf-ip"
 
 # 查找最新的测速结果文件（按修改时间排序）
-RESULT_CSV=$(find "${RESULT_DIR}" -name "result_*.csv" -type f -printf '%T@ %p\n' 2>/dev/null | \
-    sort -rn | \
-    head -n 1 | \
-    awk '{print $2}')
+# 【修复】确保 RESULT_DIR 存在，避免 find 在空目录报错
+if [[ -d "${RESULT_DIR}" ]]; then
+    RESULT_CSV=$(find "${RESULT_DIR}" -name "result_*.csv" -type f -printf '%T@ %p\n' 2>/dev/null | \
+        sort -rn | \
+        head -n 1 | \
+        awk '{print $2}')
+else
+    RESULT_CSV=""
+fi
 
 if [[ -z "${RESULT_CSV}" ]]; then
     # 如果没有找到带时间戳的文件，尝试旧的 result.csv
-    RESULT_CSV="${RESULT_DIR}/result.csv"
+    if [[ -f "${RESULT_DIR}/result.csv" ]]; then
+        RESULT_CSV="${RESULT_DIR}/result.csv"
+    fi
 fi
 
 echo -e "${CYAN}+------------------------------------------------------------+${NC}"
