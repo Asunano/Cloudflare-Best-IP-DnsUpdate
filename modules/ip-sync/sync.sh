@@ -787,6 +787,9 @@ if batch_update_cf_dns; then
     echo -e "${GREEN}[OK] Cloudflare DNS 批量更新完成${NC}"
 else
     echo -e "${RED}[ERROR] Cloudflare DNS 批量更新失败${NC}"
+    # 【修复】如果批量更新失败，考虑是否继续执行后续步骤
+    # 这里选择继续执行，因为可能是部分域名失败，不影响其他模块
+    echo -e "${YELLOW}[WARN] 部分域名更新失败，但将继续执行 DNSPod 更新${NC}"
 fi
 
 # 4. 【新增】批量更新 DNSPod DNS 记录
@@ -795,6 +798,8 @@ if batch_update_dnspod_dns; then
     echo -e "${GREEN}[OK] DNSPod DNS 批量更新完成${NC}"
 else
     echo -e "${RED}[ERROR] DNSPod DNS 批量更新失败${NC}"
+    # 【修复】记录最终状态，供调用者判断
+    echo -e "${YELLOW}[WARN] DNSPod 批量更新存在失败项${NC}"
 fi
 
 echo -e "\n${CYAN}+------------------------------------------------------------+${NC}"

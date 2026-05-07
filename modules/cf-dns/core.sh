@@ -788,7 +788,14 @@ update_dns_record() {
     response=$(http_put "$url" "$data")
     
     if echo "$response" | jq -r '.success' 2>/dev/null | grep -q 'true'; then
-        echo "success"
+        # 【修复】验证 API 返回的 IP 是否与预期一致
+        local actual_ip
+        actual_ip=$(echo "$response" | jq -r '.result.content' 2>/dev/null)
+        if [[ "$actual_ip" == "$cf_ip" ]]; then
+            echo "success"
+        else
+            echo "failed:API返回的IP(${actual_ip})与预期不符(${cf_ip})"
+        fi
     else
         echo "failed:$response"
     fi
@@ -808,7 +815,14 @@ create_dns_record() {
     response=$(http_post "$url" "$data")
     
     if echo "$response" | jq -r '.success' 2>/dev/null | grep -q 'true'; then
-        echo "success"
+        # 【修复】验证 API 返回的 IP 是否与预期一致
+        local actual_ip
+        actual_ip=$(echo "$response" | jq -r '.result.content' 2>/dev/null)
+        if [[ "$actual_ip" == "$cf_ip" ]]; then
+            echo "success"
+        else
+            echo "failed:API返回的IP(${actual_ip})与预期不符(${cf_ip})"
+        fi
     else
         echo "failed:$response"
     fi
