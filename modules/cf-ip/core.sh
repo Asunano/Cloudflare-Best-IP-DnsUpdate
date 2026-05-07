@@ -684,8 +684,8 @@ monitor_progress() {
             last_displayed_size=${current_log_size}
             
             # 检测是否进入第二阶段（下载测速）
-            # 【修复】使用 tac + grep -m 1 从后向前匹配，减少读写竞态窗口（使用 || true 防止无匹配时退出）
-            if [[ "${stage}" = "ping" ]] && { tac "${log_file}" 2>/dev/null | grep -q -m 1 "开始下载测速" || true; }; then
+            # 【修复】只匹配日志末尾最新的 10 行，避免匹配到历史日志或参数说明
+            if [[ "${stage}" = "ping" ]] && { tail -n 10 "${log_file}" 2>/dev/null | grep -q "开始下载测速" || true; }; then
                 stage="download"
                 # 【修复】阶段切换时先清空当前行，避免进度条残留
                 printf "\r%-80s\n" ""
