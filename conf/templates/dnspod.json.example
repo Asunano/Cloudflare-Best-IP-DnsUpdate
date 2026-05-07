@@ -34,12 +34,12 @@
   },
   
   "ip_source": {
-    "file_path": "./assets/data/dnspod-dns/ip_list.txt",
+    "file_path": "./assets/data/dnspod-dns/ip_list.iplist",
     "files": {
-      "default": "./assets/data/dnspod-dns/default.txt",
-      "unicom": "./assets/data/dnspod-dns/unicom.txt",
-      "mobile": "./assets/data/dnspod-dns/mobile.txt",
-      "telecom": "./assets/data/dnspod-dns/telecom.txt"
+      "default": "./assets/data/dnspod-dns/default.iplist",
+      "unicom": "./assets/data/dnspod-dns/unicom.iplist",
+      "mobile": "./assets/data/dnspod-dns/mobile.iplist",
+      "telecom": "./assets/data/dnspod-dns/telecom.iplist"
     }
   },
   
