@@ -21,8 +21,21 @@ CYAN='\033[0;36m'
 BOLD='\033[1m'
 NC='\033[0m'
 
-# 定义测速结果文件的绝对路径
-RESULT_CSV="${ROOT_DIR}/assets/data/cf-ip/result.csv"
+# 【修复】动态查找最新的测速结果文件
+# cf-ip/core.sh 生成的文件名格式: result_${LINE_TAG}_${timestamp}.csv
+# 例如: result_default_20260507_193000.csv
+RESULT_DIR="${ROOT_DIR}/assets/data/cf-ip"
+
+# 查找最新的测速结果文件（按修改时间排序）
+RESULT_CSV=$(find "${RESULT_DIR}" -name "result_*.csv" -type f -printf '%T@ %p\n' 2>/dev/null | \
+    sort -rn | \
+    head -n 1 | \
+    awk '{print $2}')
+
+if [[ -z "${RESULT_CSV}" ]]; then
+    # 如果没有找到带时间戳的文件，尝试旧的 result.csv
+    RESULT_CSV="${RESULT_DIR}/result.csv"
+fi
 
 echo -e "${CYAN}+------------------------------------------------------------+${NC}"
 echo -e " ${BOLD}${YELLOW}Cloudflare-Best-IP-DnsUpdate v${SCRIPT_VERSION}${NC}"
