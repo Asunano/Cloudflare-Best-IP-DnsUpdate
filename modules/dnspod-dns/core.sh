@@ -117,10 +117,10 @@ done
 # DNSPod IP 数据默认路径
 DEFAULT_IP_DIR="${ROOT_DIR}/assets/data/dnspod-dns"
 
-# 【标准化】统一使用 .iplist 标准格式
+# 【标准化】统一使用 .txt 格式（与 cf-dns 保持一致）
 get_default_ip_file() {
     local line_name="$1"
-    echo "${DEFAULT_IP_DIR}/${line_name}.iplist"
+    echo "${DEFAULT_IP_DIR}/${line_name}.txt"
 }
 
 # ====================== 【统一结构化日志系统】 ======================
