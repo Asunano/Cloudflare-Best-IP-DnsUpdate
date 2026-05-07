@@ -277,8 +277,9 @@ json_get() {
 # 日志脱敏函数
 sanitize_log() {
     local message="$1"
-    # 脱敏 API Token (保留前8位和后4位)
-    echo "$message" | sed -E 's/([A-Za-z0-9]{8})[A-Za-z0-9]+([A-Za-z0-9]{4})/\1...\2/g'
+    # 【修复】只对明确的 Token 字段进行脱敏，避免误脱敏域名、IP 等
+    # 匹配常见的 Token 键名：token, api_token, CF_API_TOKEN 等
+    echo "$message" | sed -E 's/(token["\x27]?[[:space:]]*:[[:space:]]*["\x27]?)([A-Za-z0-9]{8})[A-Za-z0-9]+([A-Za-z0-9]{4})/\1\2...\3/gi'
 }
 
 # 结构化日志输出函数
