@@ -155,9 +155,9 @@ record_dnspod_update_history() {
     mkdir -p "${ROOT_DIR}/conf"
     
     # 【修复】使用 flock 保护并发写入，防止多进程同时写入导致数据损坏
-    # 【安全修复】添加 || true 防止 set -e 导致脚本退出
+    # 【安全修复】子 shell 内用 exit 代替 return，外层用 || true 防止 set -e 中断
     (
-        flock -n 200 || { log_msg "WARN" "无法获取历史记录写入锁"; exit 0; }
+        flock -n 200 || { log_msg "WARN" "无法获取历史记录写入锁"; exit 1; }
         printf '{"time":"%s","action":"dnspod_update","domain":"%s","records_updated":%d,"records_created":%d,"records_skipped":%d}\n' \
             "$timestamp" "$domain" "$records_updated" "$records_created" "$records_skipped" >> "$history_file"
     ) 200>"${history_file}.lock" || true
@@ -1728,9 +1728,10 @@ read_ips_from_file() {
     # 读取文件内容，支持两种格式:
     # 1. 每行一个 IP
     # 2. 逗号分隔的 IP
+    # 3. .iplist 格式（IP|延迟|速度|地区码）
     local content
-    # 【性能优化】使用单次 awk 替代 4 个管道 + 4 次 fork
-    content="$(awk '!/^#/ && !/^$/ { gsub(/#.*/, ""); printf "%s,", $0 }' "${ip_file}" | sed 's/,$//')"
+    # 【修复】支持 .iplist 的 | 分隔，提取第一列 IP
+    content="$(awk '!/^#/ && !/^$/ { gsub(/#.*/, ""); split($0, a, "|"); printf "%s,", a[1] }' "${ip_file}" | sed 's/,$//')"
     
     if [[ -z "${content}" ]]; then
         log_msg "WARN" "IP 文件为空: ${ip_file}"
