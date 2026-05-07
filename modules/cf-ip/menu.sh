@@ -842,24 +842,46 @@ view_config() {
         return
     fi
     
-    # 提取关键配置项
+    # 【修复】使用单次 jq 调用读取所有配置项，避免多次 fork
+    local config_data
+    config_data=$(jq -r '
+        [
+            (.enabled // false | tostring),
+            (.cfst.threads // 200 | tostring),
+            (.cfst.colo // "HKG,NRT"),
+            (.cfst.ping_times // 4 | tostring),
+            (.cfst.download_count // 10 | tostring),
+            (.cfst.latency_max // 9999 | tostring),
+            (.cfst.packet_loss_max // 100 | tostring),
+            (.cfst.speed_min // 0 | tostring),
+            (.cfst.show_count // 20 | tostring),
+            (.speed_test.take_ip_num // 5 | tostring),
+            (.speed_test.max_retry // 3 | tostring),
+            (.speed_test.output_html // true | tostring),
+            (.speed_test.enable_log // true | tostring)
+        ] | join("\n")
+    ' "${CONFIG_FILE}")
+    
+    # 解析配置数据
     local enabled threads colo ping_times download_count
     local latency_max packet_loss_max speed_min show_count
     local take_ip_num max_retry output_html enable_log
     
-    enabled="$(jq -r '.enabled // false' "${CONFIG_FILE}")"
-    threads="$(jq -r '.cfst.threads // 200' "${CONFIG_FILE}")"
-    colo="$(jq -r '.cfst.colo // "HKG,NRT"' "${CONFIG_FILE}")"
-    ping_times="$(jq -r '.cfst.ping_times // 4' "${CONFIG_FILE}")"
-    download_count="$(jq -r '.cfst.download_count // 10' "${CONFIG_FILE}")"
-    latency_max="$(jq -r '.cfst.latency_max // 9999' "${CONFIG_FILE}")"
-    packet_loss_max="$(jq -r '.cfst.packet_loss_max // 100' "${CONFIG_FILE}")"
-    speed_min="$(jq -r '.cfst.speed_min // 0' "${CONFIG_FILE}")"
-    show_count="$(jq -r '.cfst.show_count // 20' "${CONFIG_FILE}")"
-    take_ip_num="$(jq -r '.speed_test.take_ip_num // 5' "${CONFIG_FILE}")"
-    max_retry="$(jq -r '.speed_test.max_retry // 3' "${CONFIG_FILE}")"
-    output_html="$(jq -r '.speed_test.output_html // true' "${CONFIG_FILE}")"
-    enable_log="$(jq -r '.speed_test.enable_log // true' "${CONFIG_FILE}")"
+    IFS=$'\n' read -r -d '' \
+        enabled \
+        threads \
+        colo \
+        ping_times \
+        download_count \
+        latency_max \
+        packet_loss_max \
+        speed_min \
+        show_count \
+        take_ip_num \
+        max_retry \
+        output_html \
+        enable_log \
+        <<< "$config_data"
     
     # 格式化状态显示
     local status_enabled
