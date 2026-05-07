@@ -700,11 +700,11 @@ progress_bar_width=40
 
 # 【增强】测速结果验证与自动重试
 # 【修复】将首次测速也纳入循环，确保 MAX_RETRY 含义符合用户预期
-for ((retry=1; retry<=MAX_RETRY; retry++)); do
-    if [[ ${retry} -gt 1 ]]; then
-        echo -e "\n${CYAN}[INFO] 第 $((retry - 1)) 次自动重试测速...${NC}"
+for ((retry=0; retry<=MAX_RETRY; retry++)); do
+    if [[ ${retry} -gt 0 ]]; then
+        echo -e "\n${CYAN}[INFO] 第 ${retry} 次自动重试测速...${NC}"
         # 递增等待时间：10s, 20s, 30s, 40s
-        wait_time=$(( (retry - 1) * 10 ))
+        wait_time=$(( retry * 10 ))
         echo -e "${YELLOW}[等待] ${wait_time} 秒后重试...${NC}"
         sleep ${wait_time}
     else
@@ -726,10 +726,10 @@ for ((retry=1; retry<=MAX_RETRY; retry++)); do
         
         # 4. 实时显示进度（使用通用监控函数）
         echo -e "\n${CYAN}+------------------------------------------------------------+"
-        if [[ ${retry} -eq 1 ]]; then
+        if [[ ${retry} -eq 0 ]]; then
             echo -e " ${YELLOW}首次测速中...${NC}"
         else
-            echo -e " ${YELLOW}第 $((retry - 1)) 次重试测速中...${NC}"
+            echo -e " ${YELLOW}第 ${retry} 次重试测速中...${NC}"
         fi
         echo -e "${CYAN}+------------------------------------------------------------+"
         echo ""
