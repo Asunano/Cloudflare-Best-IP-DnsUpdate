@@ -84,7 +84,17 @@ rotate_log() {
     
     if [[ -f "$log_file" ]]; then
         local file_size
-        file_size=$(stat -c %s "$log_file" 2>/dev/null || echo 0)
+        # 【修复】跨平台获取文件大小（macOS 不支持 stat -c）
+        if stat -f %z "$log_file" >/dev/null 2>&1; then
+            # macOS/BSD
+            file_size=$(stat -f %z "$log_file")
+        elif stat -c %s "$log_file" >/dev/null 2>&1; then
+            # Linux
+            file_size=$(stat -c %s "$log_file")
+        else
+            # 备用方案：使用 wc -c
+            file_size=$(wc -c < "$log_file" | tr -d ' ')
+        fi
         
         if [[ "$file_size" -gt "$max_size" ]]; then
             mv "$log_file" "${log_file}.old"
@@ -589,20 +599,10 @@ get_dns_records() {
     # 输出结果
     echo "$count"
     
-    # 使用 jq 提取每个记录的 id、type、content
-    for ((i=0; i<count; i++)); do
-        local obj_id
-        obj_id=$(echo "$response" | jq -r ".result[$i].id" 2>/dev/null)
-        local obj_type
-        obj_type=$(echo "$response" | jq -r ".result[$i].type" 2>/dev/null)
-        local obj_content
-        obj_content=$(echo "$response" | jq -r ".result[$i].content" 2>/dev/null)
-        
-        # 只添加 A 类型的记录
-        if [ "$obj_type" = "A" ] && [ -n "$obj_id" ] && [ "$obj_id" != "null" ] && [ -n "$obj_content" ] && [ "$obj_content" != "null" ]; then
-            echo "${obj_id}|${obj_content}"
-        fi
-    done
+    # 【优化】单次 jq 提取所有 A 类型记录的 id 和 content，避免 N+1 次 fork
+    echo "$response" | jq -r '
+        .result[] | select(.type == "A") | "\(.id)|\(.content)"
+    ' 2>/dev/null
 }
 
 # 更新 DNS 记录
