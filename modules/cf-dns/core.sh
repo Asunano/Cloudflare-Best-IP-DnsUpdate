@@ -276,15 +276,15 @@ while IFS='=' read -r key value; do
 done < <(jq -r '
     [
         "enabled=\(.enabled // false)",
-        "api_token=\(.api.token // \"\")",
-        "zone_id=\(.api.zone_id // \"\")",
-        "dns_name=\(.dns.record_name // \"\")",
-        "domain=\(.dns.domain // \"\")",
-        "ip_file=\(.ip_source.file_path // \"\")",
+        "api_token=\(.api.token // "")",
+        "zone_id=\(.api.zone_id // "")",
+        "dns_name=\(.dns.record_name // "")",
+        "domain=\(.dns.domain // "")",
+        "ip_file=\(.ip_source.file_path // "")",
         "max_ips_per_record=\(.dns.max_ips_per_record // 2)",
         "timeout=\(.api.timeout // 10)",
         "max_retries=\(.api.max_retries // 5)",
-        "log_dir=\(.logging.log_dir // \"\")"
+        "log_dir=\(.logging.log_dir // "")"
     ] | .[]
 ' "$CONFIG_FILE")
 
