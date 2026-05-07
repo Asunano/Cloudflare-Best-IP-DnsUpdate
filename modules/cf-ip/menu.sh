@@ -1079,9 +1079,8 @@ remove_cron() {
     NEW_CRON="${CURRENT_CRON}"
     
     for i in "${SELECTED_INDICES[@]}"; do
-        # 转义特殊字符用于 grep
-        ESCAPED_TASK=$(echo "${TASKS[$i]}" | sed 's/[.[\*^$()+?{|\\]/\\&/g')
-        NEW_CRON=$(echo "${NEW_CRON}" | grep -v -F "${TASKS[$i]}")
+        # 【修复】使用 -Fx 进行整行精确匹配，避免子串误删
+        NEW_CRON=$(echo "${NEW_CRON}" | grep -v -Fx "${TASKS[$i]}")
     done
     
     # 更新 crontab
