@@ -1430,16 +1430,18 @@ if [[ -d "${INSTALL_DIR}" ]]; then
     echo "[$(date)] 第5步: 强制删除根目录" >> "${LOG_FILE}"
     rm -rf "${INSTALL_DIR}" 2>/dev/null || true
     
-    # 第六遍：如果还存在，使用更暴力的方法
+    # 第六遍：如果还存在，再次尝试删除
     if [[ -d "${INSTALL_DIR}" ]]; then
-        echo "[$(date)] 第6步: 使用 mount --bind 技巧" >> "${LOG_FILE}"
-        # 创建一个空目录并挂载覆盖
-        tmp_empty=$(mktemp -d)
-        mount --bind "${tmp_empty}" "${INSTALL_DIR}" 2>/dev/null && {
-            umount "${INSTALL_DIR}" 2>/dev/null
-            rm -rf "${INSTALL_DIR}" 2>/dev/null
-        } || true
-        rm -rf "${tmp_empty}" 2>/dev/null || true
+        echo "[$(date)] 第6步: 再次尝试删除" >> "${LOG_FILE}"
+        sleep 1  # 等待可能的文件锁释放
+        rm -rf "${INSTALL_DIR}" 2>/dev/null || true
+    fi
+    
+    # 第七遍：最后尝试
+    if [[ -d "${INSTALL_DIR}" ]]; then
+        echo "[$(date)] 第7步: 最后一次尝试" >> "${LOG_FILE}"
+        chmod -R 777 "${INSTALL_DIR}" 2>/dev/null || true
+        rm -rf "${INSTALL_DIR}" 2>/dev/null || true
     fi
     
     # 验证删除结果
