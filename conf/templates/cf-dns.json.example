@@ -28,7 +28,7 @@
   },
   
   "ip_source": {
-    "file_path": "./assets/data/cf-dns/ip_list.txt",
+    "file_path": "./assets/data/cf-dns/ip_list.iplist",
     "auto_refresh": true,
     "refresh_interval_hours": 6
   },
