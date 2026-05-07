@@ -87,7 +87,8 @@ fi
 # 支持多域名配置：优先使用 conf/cf-dns/{domain}.json，否则使用 conf/cf-dns.json
 # 注意：此变量仅在菜单显示时使用，实际运行时由 core.sh 动态加载
 CONFIG_FILE="$ROOT_DIR/conf/cf-dns.json"
-LOCK_FILE="$ROOT_DIR/modules/cf-dns/.setup_cfdns.lock"
+# 【修复】统一锁文件命名规范：.${module_name}_${type}.lock
+LOCK_FILE="$ROOT_DIR/modules/cf-dns/.cf-dns_setup.lock"
 
 # 自动检测配置文件（支持多域名）
 auto_detect_config_file() {

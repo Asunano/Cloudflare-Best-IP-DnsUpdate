@@ -274,7 +274,8 @@ else
 fi
 
 # ==================== 【进程锁管理】 ====================
-LOCK_FILE="${OUTPUT_DIR}/.lock_${LINE_TAG}"
+# 【修复】统一锁文件命名规范：.${module_name}_${type}_${identifier}.lock
+LOCK_FILE="${OUTPUT_DIR}/.cf-ip_core_${LINE_TAG}.lock"
 
 # ==================== 文件大小获取函数 ====================
 # 兼容 Linux、macOS、BSD 系统，返回字节数
