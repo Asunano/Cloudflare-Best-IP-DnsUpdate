@@ -649,6 +649,8 @@ monitor_progress() {
 progress_bar_width=40
 
 # 【修复】使用 subshell 隔离目录切换，确保任何退出情况下都不影响父 shell
+# 【修复】初始化 EXIT_CODE，避免 set -u 报错
+EXIT_CODE=0
 (
     # 切换到 cfst 所在目录执行
     cd "$(dirname "$CFST_BIN")" || exit 1
