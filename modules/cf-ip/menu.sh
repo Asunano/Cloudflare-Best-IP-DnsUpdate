@@ -1154,13 +1154,14 @@ view_logs() {
     
     LOG_DIR="${ROOT_DIR}/logs/cf-ip"
     mkdir -p "${LOG_DIR}"
-    LOG_FILE="${LOG_DIR}/cfst_auto.log"
+    # 【修复】查找最新的 cfst 日志文件（支持时间戳命名）
+    LOG_FILE=$(find "${LOG_DIR}" -name "cfst_*.log" -type f -printf '%T@ %p\n' 2>/dev/null | sort -rn | head -n 1 | awk '{print $2}')
     CRON_LOG="${LOG_DIR}/cron.log"
     
     echo -e "${CYAN}+------------------------------------------------------------+"
     echo -e " ${YELLOW}请选择要查看的日志"
     echo -e "${CYAN}+------------------------------------------------------------+"
-    echo -e " ${GREEN}➤${NC} 1. 运行日志 (cfst_auto.log)"
+    echo -e " ${GREEN}➤${NC} 1. 运行日志 (最新 cfst 日志)"
     echo -e " ${GREEN}➤${NC} 2. 定时任务日志 (cron.log)"
     echo -e " ${RED}➤${NC} 3. 返回"
     echo -e "${CYAN}+------------------------------------------------------------+"
