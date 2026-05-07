@@ -48,6 +48,23 @@ ROOT_DIR="$(cd "$SCRIPT_DIR/../.." && pwd)"
 LOCK_FILE="${ROOT_DIR}/modules/cf-ip/.menu.lock"
 acquire_lock() {
     # 【安全修复】使用 flock 避免 TOCTOU 竞态条件
+    
+    # 检查残留锁文件（修改时间超过 30 分钟）
+    if [[ -f "${LOCK_FILE}" ]]; then
+        local lock_mtime
+        lock_mtime=$(stat -c %Y "${LOCK_FILE}" 2>/dev/null || stat -f %m "${LOCK_FILE}" 2>/dev/null)
+        if [[ -n "${lock_mtime}" ]]; then
+            local current_time
+            current_time=$(date +%s)
+            local lock_age=$((current_time - lock_mtime))
+            
+            if [[ ${lock_age} -gt 1800 ]]; then
+                echo -e "${YELLOW}[WARN] 发现残留锁文件（已存在 ${lock_age} 秒），自动清理...${NC}"
+                rm -f "${LOCK_FILE}" 2>/dev/null || true
+            fi
+        fi
+    fi
+    
     exec 9>"${LOCK_FILE}"
     if ! flock -n 9; then
         echo -e "${RED}[ERROR] 检测到另一个 CF-IP 管理进程正在运行。${NC}"
