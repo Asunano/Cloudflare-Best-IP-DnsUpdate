@@ -6,7 +6,8 @@
 # Description: 一键完成 CF-IP 测速和 DNS 解析的全流程配置
 # Usage: bash modules/quick-deploy/setup.sh
 # ==============================================================================
-set -uo pipefail
+# 【安全修复】启用严格模式，防止错误传播
+set -euo pipefail
 IFS=$'\n\t'
 
 SCRIPT_VERSION="0.1"
