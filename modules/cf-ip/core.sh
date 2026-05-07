@@ -501,15 +501,15 @@ parse_and_display_progress() {
         # 延迟阶段：提取 "可用: XXXX / YYYY" 格式
         # 【修复】使用 tac + grep -m 1 从后向前匹配，减少读写竞态窗口（使用 || true 防止无匹配时退出）
         local ping_line
-        ping_line=$(tac "${log_file}" 2>/dev/null | grep -m 1 '可用:' || true)
+        ping_line=$(reverse_read "${log_file}" 2>/dev/null | grep -m 1 '可用:' || true)
         
         if [[ -n "${ping_line}" ]]; then
             # 【修复】使用更精确的正则提取 "可用: X / Y" 中的数字
             local available_count
             local total_count
-            # 提取 "可用:" 后面的所有数字（使用 || true 防止 grep 无匹配时退出）
-            available_count=$(echo "${ping_line}" | grep -oP '可用:\s*\K[0-9]+' || true)
-            total_count=$(echo "${ping_line}" | grep -oP '可用:\s*[0-9]+\s*/\s*\K[0-9]+' || true)
+            # 【跨平台】使用 sed 替代 grep -oP（macOS 不支持 -P）
+            available_count=$(echo "${ping_line}" | sed -n 's/.*可用:[[:space:]]*\([0-9]*\).*/\1/p')
+            total_count=$(echo "${ping_line}" | sed -n 's/.*可用:[[:space:]]*[0-9]*[[:space:]]*\/[[:space:]]*\([0-9]*\).*/\1/p')
             
             # 【修复】严格校验：非空 + 纯数字 + 总数大于 0
             if [[ -n "${available_count}" ]] && [[ -n "${total_count}" ]] && \
@@ -525,15 +525,15 @@ parse_and_display_progress() {
         # 下载阶段：提取 "X / 10" 格式的进度
         # 【修复】使用 tac + grep -m 1 从后向前匹配，减少读写竞态窗口（使用 || true 防止无匹配时退出）
         local download_line
-        download_line=$(tac "${log_file}" 2>/dev/null | grep -m 1 -E '[0-9]+\s*/\s*[0-9]+' || true)
+        download_line=$(reverse_read "${log_file}" 2>/dev/null | grep -m 1 -E '[0-9]+\s*/\s*[0-9]+' || true)
         
         if [[ -n "${download_line}" ]]; then
             # 【修复】使用更精确的正则提取 "X / Y" 中的数字（使用 || true 防止 grep 无匹配时退出）
             local download_current
             local download_total
-            # 提取第一个数字（当前值）和第二个数字（总值）
-            download_current=$(echo "${download_line}" | grep -oP '^\s*\K[0-9]+(?=\s*/)' || true)
-            download_total=$(echo "${download_line}" | grep -oP '\d+\s*/\s*\K\d+' || true)
+            # 【跨平台】使用 sed 替代 grep -oP（macOS 不支持 -P）
+            download_current=$(echo "${download_line}" | sed -n 's/^[[:space:]]*\([0-9]*\)[[:space:]]*\/.*/\1/p')
+            download_total=$(echo "${download_line}" | sed -n 's/.*[0-9][[:space:]]*\/[[:space:]]*\([0-9]*\).*/\1/p')
             
             # 【修复】严格校验：非空 + 纯数字 + 总数大于 0
             if [[ -n "${download_current}" ]] && [[ -n "${download_total}" ]] && \
@@ -561,6 +561,16 @@ monitor_progress() {
     local last_displayed_size=0  # 【修复】移除未使用的 last_log_size，只保留 last_displayed_size
     local max_empty_loops=20
     local empty_loop_count=0
+    
+    # 【跨平台】反向读取文件的辅助函数（macOS 不支持 tac）
+    reverse_read() {
+        if command -v tac &>/dev/null; then
+            tac "$1"
+        else
+            # macOS 使用 tail -r
+            tail -r "$1" 2>/dev/null || cat "$1"
+        fi
+    }
     
     while kill -0 "${pid}" 2>/dev/null; do
         # 检查日志文件是否存在
