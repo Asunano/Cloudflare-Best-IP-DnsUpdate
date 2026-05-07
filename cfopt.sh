@@ -1437,7 +1437,14 @@ uninstall_cfopt() {
         if [[ -f "${config_file}" ]] && grep -q "cfopt" "${config_file}" 2>/dev/null; then
             # 【新增】自动清理 cfopt 相关配置并备份
             cp "${config_file}" "${config_file}.bak.cfopt"
-            sed -i '/cfopt/d' "${config_file}"
+            # 【修复】跨平台 sed -i（macOS 需要空字符串参数）
+            if sed --version >/dev/null 2>&1; then
+                # Linux sed
+                sed -i '/cfopt/d' "${config_file}"
+            else
+                # macOS/BSD sed
+                sed -i '' '/cfopt/d' "${config_file}"
+            fi
             log_success "已从 ${config_file} 清理 cfopt 相关配置 (备份: ${config_file}.bak.cfopt)"
         fi
     done
