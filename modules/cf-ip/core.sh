@@ -327,8 +327,9 @@ rotate_log() {
     local max_size=${2:-$((10 * 1024 * 1024))}  # 默认 10MB
     
     if [[ -f "$log_file" ]]; then
+        # 【跨平台】使用 get_file_size 替代 stat -c %s
         local file_size
-        file_size=$(stat -c %s "$log_file" 2>/dev/null || echo 0)
+        file_size=$(get_file_size "$log_file")
         
         if [[ "$file_size" -gt "$max_size" ]]; then
             mv "$log_file" "${log_file}.old"
@@ -338,10 +339,10 @@ rotate_log() {
     fi
 }
 
-# 轮转旧的 cfst 日志文件（保留最近的10个）
-for old_log in "${LOG_DIR}"/cfst_*.log.old; do
-    [[ -f "$old_log" ]] && rotate_log "$old_log" 5242880  # 5MB
-done
+# 【修复】在测速开始前轮转当前日志文件（而非 .old 文件）
+if [[ -n "${LOG_FILE:-}" ]] && [[ -f "${LOG_FILE}" ]]; then
+    rotate_log "${LOG_FILE}" $((10 * 1024 * 1024))  # 10MB
+fi
 
 # ====================== 【统一结构化日志系统】 ======================
 # 格式: [2026-05-06 09:30:00] [INFO ] [cf-ip] message
@@ -806,11 +807,11 @@ delay=$(echo "$best_ip_line" | awk -F',' '{gsub(/\r/, "", $5); print $5}' | xarg
 speed=$(echo "$best_ip_line" | awk -F',' '{gsub(/\r/, "", $6); print $6}' | xargs)  # 第6列是下载速度
 region=$(echo "$best_ip_line" | awk -F',' '{gsub(/\r/, "", $7); print $7}' | xargs)  # 第7列是地区码
 
-# 【修复】数字变量空值校验，为空时设置默认值
-if [[ -z "${delay}" ]] || [[ ! "${delay}" =~ ^[0-9]+$ ]]; then
+# 【修复】数字变量空值校验，支持小数（如 12.54）
+if [[ -z "${delay}" ]] || [[ ! "${delay}" =~ ^[0-9]+\.?[0-9]*$ ]]; then
     delay="N/A"
 fi
-if [[ -z "${speed}" ]] || [[ ! "${speed}" =~ ^[0-9.]+$ ]]; then
+if [[ -z "${speed}" ]] || [[ ! "${speed}" =~ ^[0-9]+\.?[0-9]*$ ]]; then
     speed="N/A"
 fi
 
@@ -838,11 +839,11 @@ head -n 4 "${OUTPUT_CSV}" | tail -n 3 | while IFS= read -r line; do
     speed=$(echo "$line" | awk -F',' '{gsub(/\r/, "", $6); print $6}' | xargs)  # 第6列是下载速度
     region=$(echo "$line" | awk -F',' '{gsub(/\r/, "", $7); print $7}' | xargs)  # 第7列是地区码
     
-    # 【修复】数字变量空值校验
-    if [[ -z "${delay}" ]] || [[ ! "${delay}" =~ ^[0-9]+$ ]]; then
+    # 【修复】数字变量空值校验，支持小数
+    if [[ -z "${delay}" ]] || [[ ! "${delay}" =~ ^[0-9]+\.?[0-9]*$ ]]; then
         delay="N/A"
     fi
-    if [[ -z "${speed}" ]] || [[ ! "${speed}" =~ ^[0-9.]+$ ]]; then
+    if [[ -z "${speed}" ]] || [[ ! "${speed}" =~ ^[0-9]+\.?[0-9]*$ ]]; then
         speed="N/A"
     fi
     
