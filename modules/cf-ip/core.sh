@@ -681,8 +681,8 @@ monitor_progress() {
             # 【修复】使用 tac + grep -m 1 从后向前匹配，减少读写竞态窗口（使用 || true 防止无匹配时退出）
             if [[ "${stage}" = "ping" ]] && { tac "${log_file}" 2>/dev/null | grep -q -m 1 "开始下载测速" || true; }; then
                 stage="download"
-                # 修复：阶段切换时用 \n 换行，保持界面整洁
-                echo ""
+                # 【修复】阶段切换时先清空当前行，避免进度条残留
+                printf "\r%-80s\n" ""
                 echo -e "${CYAN}  [进度] 延迟测速完成，正在进行下载测速...${NC}"
                 echo -e "${GRAY}  第二阶段: 下载速度测试${NC}"
             fi
