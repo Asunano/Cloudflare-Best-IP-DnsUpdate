@@ -836,59 +836,47 @@ system_health_check() {
                         echo -e "${GREEN}成功${NC} (从模板)"
                         ((fixed_count++))
                     else
-                        # 创建最小化配置
+                        # 使用 jq 创建最小化配置
                         case "${cfg}" in
                             "cf-ip.json")
-                                cat > "${target_file}" <<'EOF'
-{
-    "speed_test": {
-        "take_ip_num": 5,
-        "output_html": true,
-        "max_retry": 3,
-        "enable_log": true
-    },
-    "cfst": {
-        "threads": 200,
-        "colo": "HKG,NRT",
-        "ping_times": 4,
-        "download_count": 10,
-        "download_time": 10,
-        "port": 443,
-        "url": "https://cf-ns.com/cdn-cgi/trace",
-        "httping": false,
-        "latency_max": 9999,
-        "packet_loss_max": 100,
-        "speed_min": 0,
-        "show_count": 20,
-        "ip_file": "",
-        "disable_download": false,
-        "all_ip": false
-    }
-}
-EOF
+                                jq -n '{
+                                    "speed_test": {
+                                        "take_ip_num": 5,
+                                        "output_html": true,
+                                        "max_retry": 3,
+                                        "enable_log": true
+                                    },
+                                    "cfst": {
+                                        "threads": 200,
+                                        "colo": "HKG,NRT",
+                                        "ping_times": 4,
+                                        "download_count": 10,
+                                        "download_time": 10,
+                                        "port": 443,
+                                        "url": "",
+                                        "httping": false,
+                                        "latency_max": 9999,
+                                        "packet_loss_max": 100,
+                                        "speed_min": 0,
+                                        "show_count": 20,
+                                        "ip_file": "",
+                                        "disable_download": false,
+                                        "all_ip": false
+                                    }
+                                }' > "${target_file}"
                                 ;;
                             "cf-dns.json")
-                                cat > "${target_file}" <<'EOF'
-{
-    "domains": []
-}
-EOF
+                                jq -n '{"domains": []}' > "${target_file}"
                                 ;;
                             "dnspod.json")
-                                cat > "${target_file}" <<'EOF'
-{
-    "domains": []
-}
-EOF
+                                jq -n '{"domains": []}' > "${target_file}"
                                 ;;
                             "global.json")
-                                cat > "${target_file}" <<'EOF'
-{
-    "auto_update": true,
-    "update_channel": "stable",
-    "mirror_url": ""
-}
-EOF
+                                jq -n '{
+                                    "auto_update": true,
+                                    "update_channel": "stable",
+                                    "mirror_url": ""
+                                }' > "${target_file}"
                                 ;;
                         esac
                         chmod 600 "${target_file}"
