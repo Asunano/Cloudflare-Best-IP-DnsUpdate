@@ -136,13 +136,7 @@ record_dnspod_update_history() {
     ) 200>"${history_file}.lock"
 }
 
-# ==================== 模式切换检测（供 setup.sh 调用） ====================
-if [[ -n "${DNSPOD_MODE_SWITCH:-}" ]]; then
-    # 检测到模式切换请求，执行智能处理
-    log_msg "INFO" "检测到模式切换请求: ${DNSPOD_FROM_MODE} → ${DNSPOD_TO_MODE}"
-    handle_mode_switch "$DNSPOD_FROM_MODE" "$DNSPOD_TO_MODE" "$DNSPOD_STRATEGY"
-    exit $?
-fi
+# ==================== 主逻辑入口 ====================
 
 if [[ ! -f "${CONFIG_FILE}" ]]; then
     log_msg "ERROR" "找不到配置文件 ${CONFIG_FILE}"
@@ -2014,6 +2008,15 @@ handle_multi_to_single() {
         fi
     fi
 }
+
+# ==================== 模式切换检测（供 setup.sh 调用） ====================
+# 【修复】必须在所有函数定义之后执行，避免 "command not found" 错误
+if [[ -n "${DNSPOD_MODE_SWITCH:-}" ]]; then
+    # 检测到模式切换请求，执行智能处理
+    log_msg "INFO" "检测到模式切换请求: ${DNSPOD_FROM_MODE} → ${DNSPOD_TO_MODE}"
+    handle_mode_switch "$DNSPOD_FROM_MODE" "$DNSPOD_TO_MODE" "$DNSPOD_STRATEGY"
+    exit $?
+fi
 
 # 执行主函数
 if [[ "${MODE_TYPE}" = "delete" ]]; then
