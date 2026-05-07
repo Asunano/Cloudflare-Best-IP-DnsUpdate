@@ -684,6 +684,7 @@ generate_cf_dns_config() {
     local cf_token="$2"
     local cf_zone_id="$3"
     local record_name="${4:-@}"  # 默认值为 @
+    local colo_nodes="${5:-HKG,NRT}"  # 【修复】新增参数，避免依赖外部作用域
     
     # 创建多域名配置目录
     local config_dir="${ROOT_DIR}/conf/cf-dns"
@@ -713,7 +714,7 @@ generate_cf_dns_config() {
         --arg record_name "$record_name" \
         --arg ip_file "${ip_file}" \
         --arg result_file "${result_file}" \
-        --arg colo_nodes "$recommended_colo" \
+        --arg colo_nodes "$colo_nodes" \
         '{
             "_comment": "Cloudflare DNS 更新器配置",
             "_version": "0.1",
@@ -1329,7 +1330,7 @@ deploy_cloudflare_dns() {
     echo -e "${GREEN}[OK] CF-IP 配置已生成${NC}"
     
     echo -e "${CYAN}正在生成 Cloudflare DNS 配置...${NC}"
-    generate_cf_dns_config "$domain" "$cf_token" "$zone_id" "$record_name"
+    generate_cf_dns_config "$domain" "$cf_token" "$zone_id" "$record_name" "$recommended_colo"
     echo -e "${GREEN}[OK] Cloudflare DNS 配置已生成: ${ROOT_DIR}/conf/cf-dns/${domain}.json${NC}"
     echo ""
     echo -e "${CYAN}配置信息：${NC}"
