@@ -177,12 +177,34 @@ if [[ "${CF_IP_CFG_LOADED:-}" != "true" ]]; then
         ] | .[]
     ' "$CONFIG_FILE")
 else
-    # 从环境变量恢复配置（scheduler 传递）
+    # 【修复】从环境变量恢复配置（scheduler 传递）
+    # 多线路模式只需要这 4 个变量，其他配置使用默认值
     declare -A CFG
     CFG["multi_line_enabled"]="${CFG_MULTI_LINE_ENABLED:-false}"
     CFG["colo_mobile"]="${CFG_COLO_MOBILE:-HKG,SIN,TYO,LON}"
     CFG["colo_unicom"]="${CFG_COLO_UNICOM:-SJC,LAX,SIN,TYO}"
     CFG["colo_telecom"]="${CFG_COLO_TELECOM:-SJC,LAX,TYO,SIN}"
+    # 其他配置使用默认值
+    CFG["cfst_dir"]=""
+    CFG["take_ip_num"]="5"
+    CFG["cfst_threads"]="200"
+    CFG["cfst_colo"]="HKG,NRT"
+    CFG["cfst_ping_times"]="4"
+    CFG["cfst_download_count"]="10"
+    CFG["cfst_download_time"]="10"
+    CFG["cfst_port"]="443"
+    CFG["cfst_url"]="https://cf-ns.com/cdn-cgi/trace"
+    CFG["cfst_httping"]="false"
+    CFG["cfst_latency_max"]="9999"
+    CFG["cfst_packet_loss_max"]="100"
+    CFG["cfst_speed_min"]="0"
+    CFG["cfst_show_count"]="20"
+    CFG["cfst_ip_file"]=""
+    CFG["cfst_disable_download"]="false"
+    CFG["cfst_all_ip"]="false"
+    CFG["output_html"]="true"
+    CFG["max_retry"]="3"
+    CFG["enable_log"]="true"
 fi
 
 # 导出配置变量（保持向后兼容）
@@ -213,9 +235,15 @@ if [[ -z "${CFST_DIR:-}" ]]; then
 fi
 CFST_BIN="${CFST_DIR}/cfst"
 
-# 输出和日志目录
-OUTPUT_DIR=$(jq -r '.paths.output_dir // "./assets/data/cf-ip"' "$CONFIG_FILE")
-LOG_DIR=$(jq -r '.paths.log_dir // "./logs/cf-ip"' "$CONFIG_FILE")
+# 【修复】输出和日志目录（如果 scheduler 已加载配置，使用默认值）
+if [[ "${CF_IP_CFG_LOADED:-}" != "true" ]]; then
+    OUTPUT_DIR=$(jq -r '.paths.output_dir // "./assets/data/cf-ip"' "$CONFIG_FILE")
+    LOG_DIR=$(jq -r '.paths.log_dir // "./logs/cf-ip"' "$CONFIG_FILE")
+else
+    # 多线路模式下使用默认路径
+    OUTPUT_DIR="./assets/data/cf-ip"
+    LOG_DIR="./logs/cf-ip"
+fi
 
 # 如果是相对路径，转换为绝对路径
 if [[ "${OUTPUT_DIR:0:1}" != "/" ]]; then
