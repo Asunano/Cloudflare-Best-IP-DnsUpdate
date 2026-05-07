@@ -347,8 +347,20 @@ for ip_file in "${IP_FILES_TO_CHECK[@]}"; do
     fi
     
     # 有效性检测
-    FIRST_LINE=$(head -n 1 "${ip_file}")
-    if [[ -z "${FIRST_LINE}" ]] || [[ ! "${FIRST_LINE}" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+    # 【修复】支持 .iplist 格式（带注释行）和纯 IP 格式
+    FIRST_LINE=""
+    while IFS= read -r _line; do
+        # 跳过空行和注释行
+        [[ -z "$_line" ]] && continue
+        [[ "$_line" =~ ^[[:space:]]*# ]] && continue
+        FIRST_LINE="$_line"
+        break
+    done < "${ip_file}"
+    
+    # 提取 IP 部分（支持 IP|延迟|速度|地区码 格式）
+    local first_ip
+    first_ip=$(echo "${FIRST_LINE}" | cut -d'|' -f1 | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
+    if [[ -z "${first_ip}" ]] || [[ ! "${first_ip}" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
         log_msg "ERROR" "IP 文件格式错误或包含无效数据 (${ip_file}): ${FIRST_LINE:-空}"
         log_msg "WARN" "这可能是测速程序的临时 Bug，请重新运行测速。"
         exit 1
