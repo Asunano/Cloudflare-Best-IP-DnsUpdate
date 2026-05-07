@@ -105,10 +105,12 @@ start_watchdog() {
         echo -e "\n${RED}[TIMEOUT] ${task_name} 超时 (${timeout}秒)，强制终止所有子进程${NC}"
         # 【修复】使用进程组杀死整个进程树，确保 cfst 等深层子进程也被终止
         if [[ -n "${TASK_PID:-}" ]]; then
-            # 方法1: 尝试杀死整个进程组（最彻底）
-            kill -- -"${TASK_PID}" 2>/dev/null || true
+            if [[ "${USE_PROCESS_GROUP:-false}" = true ]]; then
+                # 方法1: 尝试杀死整个进程组（最彻底，需要 setsid）
+                kill -- -"${TASK_PID}" 2>/dev/null || true
+            fi
             
-            # 方法2: 递归杀死所有子进程（备用方案）
+            # 方法2: 递归杀死所有子进程（通用方案）
             pkill -P "${TASK_PID}" 2>/dev/null || true
             
             # 方法3: 最后杀死主进程
@@ -119,8 +121,12 @@ start_watchdog() {
             
             # 如果还有残留进程，强制杀死
             if kill -0 "${TASK_PID}" 2>/dev/null; then
+                if [[ "${USE_PROCESS_GROUP:-false}" = true ]]; then
+                    kill -9 -- -"${TASK_PID}" 2>/dev/null || true
+                fi
                 kill -9 "${TASK_PID}" 2>/dev/null || true
-                kill -9 -- -"${TASK_PID}" 2>/dev/null || true
+                # 再次尝试杀死所有子进程
+                pkill -9 -P "${TASK_PID}" 2>/dev/null || true
             fi
         fi
         exit 1
@@ -165,18 +171,21 @@ run_task() {
     
     # 执行脚本并捕获退出码
     # 【修复】后台启动任务以获取 PID，确保看门狗能正确杀死所有子进程
-    # 【修复】使用 setsid 创建新的进程组，确保 kill -- -PID 能杀死整个进程树
+    # 【修复】优先使用 setsid 创建新的进程组，确保 kill -- -PID 能杀死整个进程树
     # 【修复】设置 CF_OPT_ENTRY=scheduler，允许子模块通过入口校验
     export CF_OPT_ENTRY=scheduler
     
-    # 尝试使用 setsid 创建新进程组（如果可用）
+    # 尝试使用 setsid 创建新进程组（推荐方式）
     if command -v setsid >/dev/null 2>&1; then
         setsid bash "${script_path}" &
         TASK_PID=$!
+        # 【修复】记录是否使用了进程组，用于看门狗清理策略
+        USE_PROCESS_GROUP=true
     else
-        # 备用方案：直接后台执行
+        # 备用方案：直接后台执行（无进程组隔离）
         bash "${script_path}" &
         TASK_PID=$!
+        USE_PROCESS_GROUP=false
     fi
     
     wait "${TASK_PID}"
