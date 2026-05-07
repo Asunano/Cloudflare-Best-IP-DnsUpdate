@@ -184,9 +184,18 @@ sync_cf_dns_ips() {
             continue
         fi
         
-        # 如果未配置 result_file，使用默认路径
+        # 【修复】如果未配置 result_file，根据域名自动推断
         if [[ -z "${result_file}" ]]; then
-            result_file="${RESULT_CSV}"
+            # 优先查找该域名的最新测速结果文件
+            result_file=$(find "${RESULT_DIR}" -name "result_${domain_name}_*.csv" -type f -printf '%T@ %p\n' 2>/dev/null | \
+                sort -rn | \
+                head -n 1 | \
+                awk '{print $2}')
+            
+            # 如果没找到，使用全局最新的测速结果文件
+            if [[ -z "${result_file}" ]]; then
+                result_file="${RESULT_CSV}"
+            fi
         fi
         
         # 检查测速结果文件是否存在
@@ -308,9 +317,18 @@ sync_dnspod_ips() {
             local result_file
             result_file=$(jq -r '.ip_source.result_file // empty' "$json_file")
             
-            # Fallback：如果未配置 result_file，使用默认路径
+            # Fallback：如果未配置 result_file，根据域名自动推断
             if [[ -z "${result_file}" ]]; then
-                result_file="${ROOT_DIR}/assets/data/cf-ip/result_${domain_name}.csv"
+                # 优先查找该域名的最新测速结果文件
+                result_file=$(find "${RESULT_DIR}" -name "result_${domain_name}_*.csv" -type f -printf '%T@ %p\n' 2>/dev/null | \
+                    sort -rn | \
+                    head -n 1 | \
+                    awk '{print $2}')
+                
+                # 如果没找到，使用默认路径
+                if [[ -z "${result_file}" ]]; then
+                    result_file="${ROOT_DIR}/assets/data/cf-ip/result_${domain_name}.csv"
+                fi
             fi
             
             # 检查文件是否存在
