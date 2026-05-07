@@ -1455,7 +1455,7 @@ choose_dnspod_mode() {
             ;;
         0)
             # 返回上一级（DNS 服务商选择）
-            choose_dns_provider
+            main
             ;;
         *)
             echo -e "${RED}[ERROR] 无效的选择${NC}"
