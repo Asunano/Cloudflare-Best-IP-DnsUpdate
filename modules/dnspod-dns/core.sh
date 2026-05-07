@@ -665,18 +665,20 @@ generate_signature() {
     local hashed_payload
     hashed_payload="$(sha256_hex "${payload}")"
     
+    # 【修复】使用 $'\n' 生成真正的换行符，而非字面字符串 \n
+    local newline=$'\n'
     local canonical_headers
-    canonical_headers="content-type:${content_type}\nhost:dnspod.tencentcloudapi.com\nx-tc-action:$(echo "${action}" | tr '[:upper:]' '[:lower:]')\n"
+    canonical_headers="content-type:${content_type}${newline}host:dnspod.tencentcloudapi.com${newline}x-tc-action:$(echo "${action}" | tr '[:upper:]' '[:lower:]')${newline}"
     local signed_headers="content-type;host;x-tc-action"
     
-    local canonical_request="${http_method}\n${canonical_uri}\n${canonical_querystring}\n${canonical_headers}\n${signed_headers}\n${hashed_payload}"
+    local canonical_request="${http_method}${newline}${canonical_uri}${newline}${canonical_querystring}${newline}${canonical_headers}${newline}${signed_headers}${newline}${hashed_payload}"
     
     local hashed_canonical_request
     hashed_canonical_request="$(sha256_hex "${canonical_request}")"
     
     local algorithm="TC3-HMAC-SHA256"
     local credential_scope="${date}/dnspod/tc3_request"
-    local string_to_sign="${algorithm}\n${timestamp}\n${credential_scope}\n${hashed_canonical_request}"
+    local string_to_sign="${algorithm}${newline}${timestamp}${newline}${credential_scope}${newline}${hashed_canonical_request}"
     
     local secret_key
     secret_key="$(get_signature_key "${SECRETKEY}" "${date}" "dnspod")"
