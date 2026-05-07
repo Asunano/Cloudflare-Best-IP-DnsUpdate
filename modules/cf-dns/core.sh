@@ -6,6 +6,9 @@
 # Description: 负责将优选 IP 同步至 Cloudflare DNS 记录，支持有效性校验与日志记录
 # Usage: bash modules/cf-dns/core.sh
 # ==============================================================================
+# 【安全修复】启用严格模式，防止错误传播
+set -euo pipefail
+
 # shellcheck disable=SC2034
 SCRIPT_VERSION="0.1"
 MODULE_NAME="cf-dns"  # 【修复】定义模块名称，用于日志输出
@@ -601,7 +604,8 @@ update_dns_record() {
     local cf_ip="$3"
     
     local url="https://api.cloudflare.com/client/v4/zones/${CF_ZONE_ID}/dns_records/${record_id}"
-    local data="{\"type\":\"A\",\"name\":\"${name}\",\"content\":\"${cf_ip}\"}"
+    # 【修复】显式指定 proxied=false，避免 Cloudflare API 重置为默认值
+    local data="{\"type\":\"A\",\"name\":\"${name}\",\"content\":\"${cf_ip}\",\"proxied\":false}"
     
     local response
     response=$(http_put "$url" "$data")
