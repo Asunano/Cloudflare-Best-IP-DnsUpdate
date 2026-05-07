@@ -520,7 +520,7 @@ parse_and_display_progress() {
             fi
         fi
         # 修复：默认提示也固定长度，防止字符残留
-        printf "\r%-80s" "${CYAN}  [进度] 正在测速中...${NC}   "
+        printf "\r%-80b" "${CYAN}  [进度] 正在测速中...${NC}   "
     else
         # 下载阶段：提取 "X / 10" 格式的进度
         # 【修复】使用 tac + grep -m 1 从后向前匹配，减少读写竞态窗口（使用 || true 防止无匹配时退出）
@@ -544,7 +544,7 @@ parse_and_display_progress() {
             fi
         fi
         # 修复：默认提示也固定长度，防止字符残留
-        printf "\r%-80s" "${CYAN}  [进度] 正在测试下载速度...${NC}   "
+        printf "\r%-80b" "${CYAN}  [进度] 正在测试下载速度...${NC}   "
     fi
     
     return 1
