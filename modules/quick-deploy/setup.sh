@@ -1568,6 +1568,14 @@ deploy_dnspod_single() {
     if [[ "$run_test" =~ ^[Yy]$ ]]; then
         cd "${ROOT_DIR}" || return 1
         
+        # 【修复】构建完整域名（用于测速结果文件名）
+        local full_domain
+        if [[ "$record_name" == "@" ]]; then
+            full_domain="$domain"
+        else
+            full_domain="${record_name}.${domain}"
+        fi
+        
         # 为当前域名生成独立的测速结果文件
         local result_file="${ROOT_DIR}/assets/data/cf-ip/result_${full_domain}.csv"
         CF_OPT_ENTRY=1 bash "${ROOT_DIR}/modules/cf-ip/core.sh" "${recommended_colo}" "${result_file}" "${full_domain}" || true
