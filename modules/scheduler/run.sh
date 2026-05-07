@@ -110,6 +110,8 @@ run_task() {
     
     # 执行脚本并捕获退出码
     # 【修复】后台启动任务以获取 PID，确保看门狗能正确杀死所有子进程
+    # 【修复】设置 CF_OPT_ENTRY=scheduler，允许子模块通过入口校验
+    export CF_OPT_ENTRY=scheduler
     bash "${script_path}" &
     TASK_PID=$!
     wait "${TASK_PID}"
@@ -211,6 +213,7 @@ else
             echo -e "${CYAN}  -> 正在为 ${domain_name} 执行测速 (节点: ${colo_nodes})...${NC}"
             # 【优化】通过环境变量传递配置，避免 core.sh 重复读取文件
             export CF_IP_CFG_LOADED="true"
+            export CF_OPT_ENTRY=scheduler
             # 【修复】串行执行，避免 cfst 竞争
             bash "${ROOT_DIR}/modules/cf-ip/core.sh" "${colo_nodes}" "${result_file}" "${domain_name}"
             
