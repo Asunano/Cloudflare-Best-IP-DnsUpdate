@@ -8,6 +8,7 @@
 # ==============================================================================
 # shellcheck disable=SC2034
 SCRIPT_VERSION="0.1"
+MODULE_NAME="cf-dns"  # 【修复】定义模块名称，用于日志输出
 
 # ==================== 终端显示配置 ====================
 RED='\033[0;31m'
@@ -131,7 +132,7 @@ record_dns_update_history() {
     
     # 【修复】使用 flock 保护并发写入，防止多进程同时写入导致数据损坏
     (
-        flock -n 200 || { log_warn "$MODULE_NAME" "无法获取历史记录写入锁"; return 1; }
+        flock -n 200 || { log_warn "无法获取历史记录写入锁"; return 1; }
         printf '{"time":"%s","action":"dns_update","domain":"%s","records_updated":%d,"records_created":%d,"records_deleted":%d}\n' \
             "$timestamp" "$domain" "$records_updated" "$records_created" "$records_deleted" >> "$history_file"
     ) 200>"${history_file}.lock"
@@ -299,7 +300,7 @@ build_full_domain() {
     
     # 【修复】domain 不能为空（@ 模式下尤其需要）
     if [[ -z "$domain" ]]; then
-        log_error "$MODULE_NAME" "域名(domain)配置为空，请检查配置文件"
+        log_error "域名(domain)配置为空，请检查配置文件"
         return 1
     fi
     
@@ -1057,7 +1058,7 @@ main() {
         log "  [OK] 已更新 ${updated_count} 条记录"
     else
         # 【修复】无需更新，所有 IP 已存在且相同
-        log_ok "$MODULE_NAME" "所有 IP 已存在且相同，无需更新"
+        log_success "所有 IP 已存在且相同，无需更新"
         skipped_count=${#ip_addresses[@]}
     fi
     
