@@ -507,9 +507,16 @@ record_speed_test_history() {
     local latency="$4"
     local speed="$5"
     
-    # 【修复】将 N/A 转换为 0，避免 printf %.2f 报错
-    [[ "${latency}" = "N/A" ]] && latency=0
-    [[ "${speed}" = "N/A" ]] && speed=0
+    # 【修复】将 N/A 或其他非数字值转换为 0，避免 printf %.2f 静默失败
+    if [[ "${latency}" = "N/A" ]] || [[ -z "${latency}" ]] || ! [[ "${latency}" =~ ^[0-9]+(\.[0-9]+)?$ ]]; then
+        log_warn "延迟值异常 (${latency})，记录为 0"
+        latency=0
+    fi
+    
+    if [[ "${speed}" = "N/A" ]] || [[ -z "${speed}" ]] || ! [[ "${speed}" =~ ^[0-9]+(\.[0-9]+)?$ ]]; then
+        log_warn "速度值异常 (${speed})，记录为 0"
+        speed=0
+    fi
     
     local history_file="${ROOT_DIR}/conf/history.jsonl"
     local timestamp
