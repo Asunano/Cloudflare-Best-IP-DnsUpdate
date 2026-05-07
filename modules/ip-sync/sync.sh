@@ -261,15 +261,113 @@ sync_cf_dns_ips() {
     done < <(find "${config_dir}" -name "*.json" -type f -print0 2>/dev/null)
 }
 
-# DNSPod DNS IP 同步函数（支持多域名和多线路）
+# 【新增】同步单个 DNSPod 配置的辅助函数
+_sync_single_dnspod_config() {
+    local json_file="$1"
+    local domain_name="$2"
+    
+    # 验证关键配置项
+    local dnspod_id dnspod_token
+    dnspod_id=$(jq -r '.api.id // empty' "$json_file")
+    dnspod_token=$(jq -r '.api.token // empty' "$json_file")
+    
+    if [[ -z "${dnspod_id}" ]] || [[ -z "${dnspod_token}" ]]; then
+        echo -e "  ${YELLOW}[WARN]${NC} ${domain_name}: API 配置不完整，跳过"
+        return 1
+    fi
+    
+    # 获取工作模式
+    local mode
+    mode=$(jq -r '.mode // "single"' "$json_file")
+    
+    if [[ "${mode}" = "single" ]]; then
+        # 单线路模式：直接同步通用 IP 列表
+        local max_ips target_file
+        max_ips=$(jq -r '.dns.max_ips_per_record // 5' "$json_file")
+        target_file=$(jq -r '.ip_source.file_path // empty' "$json_file")
+        
+        if [[ -z "${target_file}" ]]; then
+            echo -e "  ${YELLOW}[WARN]${NC} ${domain_name}: 未配置 ip_source.file_path，跳过"
+            return 1
+        fi
+        
+        mkdir -p "$(dirname "${target_file}")"
+        
+        # 【修复】从配置中读取测速结果文件路径，支持多域名模式
+        local result_file
+        result_file=$(jq -r '.ip_source.result_file // empty' "$json_file")
+        
+        # Fallback：如果未配置 result_file，根据域名自动推断
+        if [[ -z "${result_file}" ]]; then
+            # 优先查找该域名的最新测速结果文件
+            result_file=$(find "${RESULT_DIR}" -name "result_${domain_name}_*.csv" -type f -printf '%T@ %p\n' 2>/dev/null | \
+                sort -rn | \
+                head -n 1 | \
+                awk '{print $2}')
+            
+            # 如果没找到，使用默认路径
+            if [[ -z "${result_file}" ]]; then
+                result_file="${ROOT_DIR}/assets/data/cf-ip/result_${domain_name}.csv"
+            fi
+        fi
+        
+        # 检查文件是否存在
+        if [[ ! -f "${result_file}" ]]; then
+            echo -e "    ${YELLOW}[WARN]${NC} ${domain_name}: 测速结果文件不存在: ${result_file}"
+            return 1
+        fi
+        
+        # 【优化】从 CSV 中提取最优 IP（综合考虑下载速度和延迟）
+        awk -F',' 'NR>1 && $6>0 {print $0}' "${result_file}" | \
+            sort -t',' -k6,6 -rn -k5,5 -n | \
+            head -n "${max_ips}" | \
+            awk -F',' '{print $1}' > "${target_file}"
+        
+        local actual_count
+        actual_count=$(wc -l < "${target_file}" | tr -d ' ')
+        
+        echo -e "    ${GREEN}[OK]${NC} ${domain_name}: 已同步 ${actual_count} 个 IP 到 ${target_file}"
+        return 0
+    else
+        # 多线路模式：暂不支持
+        echo -e "  ${YELLOW}[WARN]${NC} ${domain_name}: 多线路模式暂不支持，跳过"
+        return 1
+    fi
+}
+
+# DNSPod DNS IP 同步函数（支持单文件和多域名架构）
 sync_dnspod_ips() {
     local config_dir="${ROOT_DIR}/conf/dnspod"
+    local single_file="${ROOT_DIR}/conf/dnspod.json"
     
-    if [[ ! -d "${config_dir}" ]]; then
+    # 【修复】支持两种架构：多域名目录和单文件
+    if [[ -d "${config_dir}" ]]; then
+        # 多域名架构：扫描 conf/dnspod/*.json
+        echo -e "${CYAN}[INFO] 检测到 DNSPod 多域名配置目录${NC}"
+    elif [[ -f "${single_file}" ]]; then
+        # 单文件架构：使用 conf/dnspod.json
+        echo -e "${CYAN}[INFO] 检测到 DNSPod 单文件配置${NC}"
+        json_file="${single_file}"
+        domain_name=$(basename "$json_file" .json)
+        
+        # 检查模块是否启用
+        local enabled
+        enabled=$(jq -r '.enabled // false' "$json_file")
+        if [[ "${enabled}" != "true" ]]; then
+            echo -e "  ${YELLOW}[WARN]${NC} DNSPod 模块未启用，跳过"
+            return
+        fi
+        
+        # 执行同步逻辑
+        _sync_single_dnspod_config "$json_file" "$domain_name"
+        return
+    else
+        # 既没有目录也没有文件
+        echo -e "${GRAY}[INFO] 未找到 DNSPod 配置文件，跳过${NC}"
         return
     fi
     
-    # 扫描所有 DNSPod 配置文件
+    # 多域名架构：扫描所有 DNSPod 配置文件
     local has_synced=false
     while IFS= read -r -d '' json_file; do
         local domain_name
@@ -282,182 +380,13 @@ sync_dnspod_ips() {
             continue
         fi
         
-        # 验证关键配置项
-        local dnspod_id dnspod_token
-        dnspod_id=$(jq -r '.api.id // empty' "$json_file")
-        dnspod_token=$(jq -r '.api.token // empty' "$json_file")
-        
-        if [[ -z "${dnspod_id}" ]] || [[ -z "${dnspod_token}" ]]; then
-            continue
-        fi
-        
         if [[ "${has_synced}" = false ]]; then
             echo -e "\n${GREEN}[INFO] 检测到 DNSPod DNS 模块已启用，正在执行同步...${NC}"
             has_synced=true
         fi
         
-        # 获取工作模式
-        local mode
-        mode=$(jq -r '.mode // "single"' "$json_file")
-        
-        if [[ "${mode}" = "single" ]]; then
-            # 单线路模式：直接同步通用 IP 列表
-            local max_ips target_file
-            max_ips=$(jq -r '.dns.max_ips_per_record // 5' "$json_file")
-            target_file=$(jq -r '.ip_source.file_path // empty' "$json_file")
-            
-            if [[ -z "${target_file}" ]]; then
-                echo -e "  ${YELLOW}[WARN]${NC} ${domain_name}: 未配置 ip_source.file_path，跳过"
-                continue
-            fi
-            
-            mkdir -p "$(dirname "${target_file}")"
-            
-            # 【修复】从配置中读取测速结果文件路径，支持多域名模式
-            local result_file
-            result_file=$(jq -r '.ip_source.result_file // empty' "$json_file")
-            
-            # Fallback：如果未配置 result_file，根据域名自动推断
-            if [[ -z "${result_file}" ]]; then
-                # 优先查找该域名的最新测速结果文件
-                result_file=$(find "${RESULT_DIR}" -name "result_${domain_name}_*.csv" -type f -printf '%T@ %p\n' 2>/dev/null | \
-                    sort -rn | \
-                    head -n 1 | \
-                    awk '{print $2}')
-                
-                # 如果没找到，使用默认路径
-                if [[ -z "${result_file}" ]]; then
-                    result_file="${ROOT_DIR}/assets/data/cf-ip/result_${domain_name}.csv"
-                fi
-            fi
-            
-            # 检查文件是否存在
-            if [[ ! -f "${result_file}" ]]; then
-                echo -e "    ${YELLOW}[WARN]${NC} ${domain_name}: 测速结果文件不存在: ${result_file}"
-                continue
-            fi
-            
-            # 【优化】从 CSV 中提取最优 IP（综合考虑下载速度和延迟）
-            awk -F',' 'NR>1 && $6>0 {print $0}' "${result_file}" | \
-                sort -t',' -k6,6 -rn -k5,5 -n | \
-                head -n "${max_ips}" | \
-                awk -F',' '{print $1}' > "${target_file}"
-            
-            local actual_count
-            actual_count="$(wc -l < "${target_file}")"
-            
-            # 【关键】如果没有找到有效 IP（所有 IP 下载速度都为 0），自动重新测速
-            if [[ "${actual_count}" -eq 0 ]]; then
-                echo -e "    ${YELLOW}[WARN]${NC} ${domain_name}: 所有 IP 下载速度均为 0，测速数据无效"
-                
-                # 从配置中读取测速节点（如果有）
-                local colo_nodes
-                colo_nodes=$(jq -r '.ip_source.colo_nodes // "HKG,NRT"' "$json_file")
-                
-                # 自动重新测速
-                if auto_retry_test "${result_file}" "${colo_nodes}" "${domain_name}"; then
-                    # 重新测速成功后，再次尝试同步
-                    echo -e "    ${CYAN}[INFO]${NC} ${domain_name}: 正在使用新的测速结果进行同步..."
-                    awk -F',' 'NR>1 && $6>0 {print $0}' "${result_file}" | \
-                        sort -t',' -k6,6 -rn -k5,5 -n | \
-                        head -n "${max_ips}" | \
-                        awk -F',' '{print $1}' > "${target_file}"
-                    
-                    actual_count="$(wc -l < "${target_file}")"
-                    
-                    # 如果重新测速后仍然失败，跳过
-                    if [[ "${actual_count}" -eq 0 ]]; then
-                        echo -e "    ${RED}[ERROR]${NC} ${domain_name}: 重新测速后数据仍无效，跳过本次同步"
-                        rm -f "${target_file}" 2>/dev/null
-                        continue
-                    fi
-                else
-                    # 自动重试失败，跳过
-                    echo -e "    ${RED}[ERROR]${NC} ${domain_name}: 自动重新测速失败，跳过本次同步"
-                    rm -f "${target_file}" 2>/dev/null
-                    continue
-                fi
-            fi
-            
-            echo -e "  ${GREEN}[OK]${NC} ${domain_name}(单线路): 已写入 ${actual_count} 个最优 IP 到: ${target_file} (限制: ${max_ips})"
-            
-        else
-            # 多线路模式：根据运营商分别同步
-            echo -e "  ${CYAN}[INFO]${NC} ${domain_name}: 处于多线路模式，正在执行分线路同步..."
-            
-            # 定义运营商与测速结果文件的映射
-            declare -A ISP_FILES
-            ISP_FILES["default"]="${ROOT_DIR}/assets/data/cf-ip/result_default.csv"
-            ISP_FILES["unicom"]="${ROOT_DIR}/assets/data/cf-ip/result_unicom.csv"
-            ISP_FILES["mobile"]="${ROOT_DIR}/assets/data/cf-ip/result_mobile.csv"
-            ISP_FILES["telecom"]="${ROOT_DIR}/assets/data/cf-ip/result_telecom.csv"
-            
-            local max_ips
-            max_ips=$(jq -r '.dns.max_ips_per_record // 5' "$json_file")
-            
-            for isp in "${!ISP_FILES[@]}"; do
-                local src_file="${ISP_FILES[$isp]}"
-                if [[ -f "${src_file}" ]]; then
-                    # 从配置中读取对应线路的目标文件路径
-                    local target_file
-                    target_file=$(jq -r ".ip_source.files.${isp} // empty" "$json_file")
-                    
-                    if [[ -z "${target_file}" ]]; then
-                        echo -e "    ${YELLOW}[WARN]${NC} ${isp} 线路: 未配置 ip_source.files.${isp}，跳过"
-                        continue
-                    fi
-                    
-                    mkdir -p "$(dirname "${target_file}")"
-                    
-                    # 【优化】从 CSV 中提取最优 IP（综合考虑下载速度和延迟）
-                    awk -F',' 'NR>1 && $6>0 {print $0}' "${src_file}" | \
-                        sort -t',' -k6,6 -rn -k5,5 -n | \
-                        head -n "${max_ips}" | \
-                        awk -F',' '{print $1}' > "${target_file}"
-                    
-                    local actual_count
-                    actual_count="$(wc -l < "${target_file}")"
-                    
-                    # 【关键】如果没有找到有效 IP（所有 IP 下载速度都为 0），自动重新测速
-                    if [[ "${actual_count}" -eq 0 ]]; then
-                        echo -e "      ${YELLOW}[WARN]${NC} ${isp} 线路: 所有 IP 下载速度均为 0，测速数据无效"
-                        
-                        # 从配置中读取该线路的测速节点
-                        local colo_nodes
-                        colo_nodes=$(jq -r ".multi_line.colo_${isp} // \"HKG,NRT\"" "$json_file")
-                        
-                        # 自动重新测速（针对特定线路）
-                        if auto_retry_test "${src_file}" "${colo_nodes}" "${domain_name}_${isp}"; then
-                            # 重新测速成功后，再次尝试同步
-                            echo -e "      ${CYAN}[INFO]${NC} ${isp} 线路: 正在使用新的测速结果进行同步..."
-                            awk -F',' 'NR>1 && $6>0 {print $0}' "${src_file}" | \
-                                sort -t',' -k6,6 -rn -k5,5 -n | \
-                                head -n "${max_ips}" | \
-                                awk -F',' '{print $1}' > "${target_file}"
-                            
-                            actual_count="$(wc -l < "${target_file}")"
-                            
-                            # 如果重新测速后仍然失败，跳过
-                            if [[ "${actual_count}" -eq 0 ]]; then
-                                echo -e "      ${RED}[ERROR]${NC} ${isp} 线路: 重新测速后数据仍无效，跳过本次同步"
-                                rm -f "${target_file}" 2>/dev/null
-                                continue
-                            fi
-                        else
-                            # 自动重试失败，跳过
-                            echo -e "      ${RED}[ERROR]${NC} ${isp} 线路: 自动重新测速失败，跳过本次同步"
-                            rm -f "${target_file}" 2>/dev/null
-                            continue
-                        fi
-                    fi
-                    
-                    echo -e "    ${GREEN}[OK]${NC} ${isp} 线路: 已写入 ${actual_count} 个最优 IP 到: ${target_file} (限制: ${max_ips})"
-                else
-                    echo -e "    ${YELLOW}[WARN]${NC} ${isp} 线路: 未找到测速结果: ${src_file}"
-                fi
-            done
-            unset ISP_FILES
-        fi
+        # 【重构】使用辅助函数处理单个配置
+        _sync_single_dnspod_config "$json_file" "$domain_name" || true
         
     done < <(find "${config_dir}" -name "*.json" -type f -print0 2>/dev/null)
 }
