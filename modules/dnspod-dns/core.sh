@@ -1704,7 +1704,13 @@ update_config_field() {
     local temp_file
     temp_file=$(mktemp)
     
-    if jq --arg val "$new_value" "${field_path} = \$val" "$CONFIG_FILE" > "$temp_file" 2>/dev/null; then
+    # 【修复】自动判断值类型：纯数字用 --argjson，其他用 --arg
+    local jq_arg="--arg"
+    if [[ "$new_value" =~ ^[0-9]+$ ]]; then
+        jq_arg="--argjson"
+    fi
+    
+    if jq $jq_arg val "$new_value" "${field_path} = \$val" "$CONFIG_FILE" > "$temp_file" 2>/dev/null; then
         mv "$temp_file" "$CONFIG_FILE"
         chmod 600 "$CONFIG_FILE"
         log_msg "INFO" "配置已更新: ${field_path} = ${new_value}"
