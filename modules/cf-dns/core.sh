@@ -81,23 +81,81 @@ mkdir -p "$LOG_DIR"
 LOG_FILE="${LOG_DIR}/cfdns_$(date +%Y%m%d_%H%M%S).log"
 
 # 【安全配置】日志轮转：防止日志无限增长
+# ==================== 文件大小获取函数 ====================
+# 兼容 Linux、macOS、BSD 系统，返回字节数
+get_file_size() {
+    local file="$1"
+    local size
+    
+    if [[ ! -f "${file}" ]]; then
+        echo "0"
+        return
+    fi
+    
+    # 【修复】优先尝试 macOS/BSD stat（无 --version 参数）
+    if stat -f %z "${file}" >/dev/null 2>&1; then
+        # macOS/BSD stat
+        size=$(stat -f %z "${file}" 2>/dev/null)
+    elif stat -c %s "${file}" >/dev/null 2>&1; then
+        # Linux stat
+        size=$(stat -c %s "${file}" 2>/dev/null)
+    else
+        # 降级方案：wc -c（去除空格）
+        size=$(wc -c < "${file}" 2>/dev/null | tr -d '[:space:]')
+    fi
+    
+    # 最终校验
+    if [[ -z "${size}" ]] || [[ ! "${size}" =~ ^[0-9]+$ ]]; then
+        echo "0"
+    else
+        echo "${size}"
+    fi
+}
+
+# ==================== 文件修改时间获取函数 ====================
+# 兼容 Linux、macOS、BSD 系统，返回 Unix 时间戳
+stat_file_mtime() {
+    local file="$1"
+    local mtime
+    
+    if [[ ! -f "${file}" ]]; then
+        echo "0"
+        return
+    fi
+    
+    # 【修复】优先尝试 macOS/BSD stat
+    if stat -f %m "${file}" >/dev/null 2>&1; then
+        # macOS/BSD stat: %m = 修改时间（Unix 时间戳）
+        mtime=$(stat -f %m "${file}" 2>/dev/null)
+    elif stat -c %Y "${file}" >/dev/null 2>&1; then
+        # Linux stat: %Y = 修改时间（Unix 时间戳）
+        mtime=$(stat -c %Y "${file}" 2>/dev/null)
+    else
+        # 降级方案：使用 date -r（macOS）或 stat 输出解析
+        if date -r "${file}" +%s >/dev/null 2>&1; then
+            mtime=$(date -r "${file}" +%s 2>/dev/null)
+        else
+            echo "0"
+            return
+        fi
+    fi
+    
+    # 最终校验
+    if [[ -z "${mtime}" ]] || [[ ! "${mtime}" =~ ^[0-9]+$ ]]; then
+        echo "0"
+    else
+        echo "${mtime}"
+    fi
+}
+
 rotate_log() {
     local log_file="$1"
     local max_size=${2:-$((10 * 1024 * 1024))}  # 默认 10MB
     
     if [[ -f "$log_file" ]]; then
         local file_size
-        # 【修复】跨平台获取文件大小（macOS 不支持 stat -c）
-        if stat -f %z "$log_file" >/dev/null 2>&1; then
-            # macOS/BSD
-            file_size=$(stat -f %z "$log_file")
-        elif stat -c %s "$log_file" >/dev/null 2>&1; then
-            # Linux
-            file_size=$(stat -c %s "$log_file")
-        else
-            # 备用方案：使用 wc -c
-            file_size=$(wc -c < "$log_file" | tr -d ' ')
-        fi
+        # 【修复】使用跨平台函数获取文件大小
+        file_size=$(get_file_size "$log_file")
         
         if [[ "$file_size" -gt "$max_size" ]]; then
             mv "$log_file" "${log_file}.old"
@@ -300,8 +358,9 @@ fi
 
 # 1. 时效性检测 (防止使用旧 IP)
 CURRENT_TIME=$(date +%s)
-FILE_MOD_TIME=$(stat -c %Y "$IP_FILE" 2>/dev/null || stat -f %m "$IP_FILE" 2>/dev/null)
-if [ -n "$FILE_MOD_TIME" ]; then
+# 【修复】使用跨平台函数获取文件修改时间
+FILE_MOD_TIME=$(stat_file_mtime "$IP_FILE")
+if [ -n "$FILE_MOD_TIME" ] && [ "$FILE_MOD_TIME" != "0" ]; then
     AGE_HOURS=$(( (CURRENT_TIME - FILE_MOD_TIME) / 3600 ))
     if [ $AGE_HOURS -ge 48 ]; then # 超过 48 小时视为过期
         log "${YELLOW}[WARN] IP 数据已过期 (${AGE_HOURS} 小时前更新)。${NC}"
