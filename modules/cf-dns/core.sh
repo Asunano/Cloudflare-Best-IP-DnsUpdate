@@ -360,7 +360,8 @@ _http_request() {
             echo "$body"
             return 0
         elif [ "$http_code" = "429" ]; then
-            # 速率限制，指数退避
+            # 【修复】速率限制，指数退避，并递增重试计数器
+            retry=$((retry + 1))
             local wait_time=$((2 ** retry * 3))
             if [ "${CF_DEBUG}" = "true" ]; then
                 log "  [WARN] API 速率限制，等待 ${wait_time}秒后重试..."
