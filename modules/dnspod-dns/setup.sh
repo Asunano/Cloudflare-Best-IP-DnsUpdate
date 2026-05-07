@@ -6,6 +6,9 @@
 # Description: 引导用户完成 DNSPod API 配置、运营商分流策略及定时任务设置
 # Usage: bash modules/dnspod-dns/setup.sh
 # ==============================================================================
+# 【安全修复】启用严格模式，防止错误传播
+set -euo pipefail
+
 # shellcheck disable=SC2034
 SCRIPT_VERSION="0.1"
 
