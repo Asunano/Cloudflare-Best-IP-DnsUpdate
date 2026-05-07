@@ -149,7 +149,8 @@ record_dnspod_update_history() {
     
     local history_file="${ROOT_DIR}/conf/history.jsonl"
     local timestamp
-    timestamp="$(date -u +"%Y-%m-%dT%H:%M:%S+08:00")"
+    # 【修复】使用系统本地时区，自动获取正确的时区偏移
+    timestamp="$(date +"%Y-%m-%dT%H:%M:%S%z")"
     
     # 确保目录存在
     mkdir -p "${ROOT_DIR}/conf"
