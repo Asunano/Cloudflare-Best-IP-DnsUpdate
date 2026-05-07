@@ -88,6 +88,8 @@ get_remote_version() {
     local remote_version
     local temp_version_file
     temp_version_file=$(mktemp)
+    # 【修复】设置严格的文件权限（仅所有者可读写），防止版本信息泄露
+    chmod 600 "${temp_version_file}" 2>/dev/null || true
     TEMP_FILES+=("${temp_version_file}")  # 【修复】注册临时文件
     
     # 【优先】尝试镜像源（国内加速）

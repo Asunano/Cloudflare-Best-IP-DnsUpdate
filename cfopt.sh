@@ -1067,10 +1067,12 @@ show_main_menu() {
         if [[ -n "${cf_dns_conf}" ]]; then
             cf_dns_status="$(get_module_status "${cf_dns_conf}" "")"
         else
-            cf_dns_status="$(get_module_status "${INSTALL_DIR}/conf/cf-dns.json" "${INSTALL_DIR}/assets/data/cf-dns/ip_list.txt")"
+            # 【修复】统一使用 .iplist 标准格式
+            cf_dns_status="$(get_module_status "${INSTALL_DIR}/conf/cf-dns.json" "${INSTALL_DIR}/assets/data/cf-dns/ip_list.iplist")"
         fi
     else
-        cf_dns_status="$(get_module_status "${INSTALL_DIR}/conf/cf-dns.json" "${INSTALL_DIR}/assets/data/cf-dns/ip_list.txt")"
+        # 【修复】统一使用 .iplist 标准格式
+        cf_dns_status="$(get_module_status "${INSTALL_DIR}/conf/cf-dns.json" "${INSTALL_DIR}/assets/data/cf-dns/ip_list.iplist")"
     fi
     
     # DNSPod：检查 conf/dnspod/ 目录下是否有启用的配置文件
@@ -1082,10 +1084,12 @@ show_main_menu() {
         if [[ -n "${dnspod_conf}" ]]; then
             dnspod_status="$(get_module_status "${dnspod_conf}" "")"
         else
-            dnspod_status="$(get_module_status "${INSTALL_DIR}/conf/dnspod.json" "${INSTALL_DIR}/assets/data/dnspod-dns/ip_list.txt")"
+            # 【修复】统一使用 .iplist 标准格式
+            dnspod_status="$(get_module_status "${INSTALL_DIR}/conf/dnspod.json" "${INSTALL_DIR}/assets/data/dnspod-dns/ip_list.iplist")"
         fi
     else
-        dnspod_status="$(get_module_status "${INSTALL_DIR}/conf/dnspod.json" "${INSTALL_DIR}/assets/data/dnspod-dns/ip_list.txt")"
+        # 【修复】统一使用 .iplist 标准格式
+        dnspod_status="$(get_module_status "${INSTALL_DIR}/conf/dnspod.json" "${INSTALL_DIR}/assets/data/dnspod-dns/ip_list.iplist")"
     fi
     local scheduler_status="${SCHEDULER_ENABLED:-false}"
     if [[ "${scheduler_status}" = "true" ]]; then
