@@ -229,6 +229,57 @@ get_display_version() {
     fi
 }
 
+# ==================== 【修复】下载重试函数（提取为顶级函数） ====================
+# 【修复】从 download_file() 中提取，避免嵌套函数在某些 bash 版本中的变量作用域问题
+# 参数: $1=url, $2=output_file
+# 返回: 0=成功, 1=失败
+download_with_retry() {
+    local url="$1"
+    local output_file="$2"
+    local max_retries=3
+    local retry_count=0
+    
+    while [[ ${retry_count} -lt ${max_retries} ]]; do
+        if curl -sLf --max-time 30 -o "${output_file}" "${url}" 2>/dev/null; then
+            # 验证下载的文件非空且有效
+            if [[ -s "${output_file}" ]]; then
+                # 先检查是否为有效的 Shell 脚本
+                local is_valid_script=false
+                local first_line
+                first_line="$(head -1 "${output_file}" 2>/dev/null | sed '1s/^\xEF\xBB\xBF//')"
+                if [[ "${first_line}" == "#!"* ]]; then
+                    is_valid_script=true
+                fi
+                
+                # 如果是有效的 Shell 脚本，直接接受
+                if [[ "${is_valid_script}" = true ]]; then
+                    return 0
+                else
+                    # 非脚本文件才进行 HTML 检查
+                    local file_size
+                    file_size=$(wc -c < "${output_file}")
+                    if [[ ${file_size} -lt 100 ]]; then
+                        # 文件太小，可能是错误响应
+                        : # 继续重试
+                    elif grep -qi "^<html\|^<!DOCTYPE" "${output_file}" 2>/dev/null; then
+                        # 明确的 HTML 文件
+                        : # 继续重试
+                    else
+                        return 0
+                    fi
+                fi
+            fi
+        fi
+        
+        retry_count=$((retry_count + 1))
+        if [[ ${retry_count} -lt ${max_retries} ]]; then
+            sleep 1
+        fi
+    done
+    
+    return 1
+}
+
 # 下载单个文件（支持镜像源优先和SHA256校验）
 # 【优化】统一退出码规范
 download_file() {
@@ -274,54 +325,6 @@ download_file() {
     
     # 【优先】尝试使用镜像源下载（国内加速）
     local mirror_url="${MIRROR_BASE_URL}/${remote_path}"
-    
-    # 【优化】统一重试逻辑函数，避免代码重复
-    download_with_retry() {
-        local url="$1"
-        local output_file="$2"
-        local max_retries=3
-        local retry_count=0
-        
-        while [[ ${retry_count} -lt ${max_retries} ]]; do
-            if curl -sLf --max-time 30 -o "${output_file}" "${url}" 2>/dev/null; then
-                # 验证下载的文件非空且有效
-                if [[ -s "${output_file}" ]]; then
-                    # 先检查是否为有效的 Shell 脚本
-                    local is_valid_script=false
-                    local first_line
-                    first_line="$(head -1 "${output_file}" 2>/dev/null | sed '1s/^\xEF\xBB\xBF//')"
-                    if [[ "${first_line}" == "#!"* ]]; then
-                        is_valid_script=true
-                    fi
-                    
-                    # 如果是有效的 Shell 脚本，直接接受
-                    if [[ "${is_valid_script}" = true ]]; then
-                        return 0
-                    else
-                        # 非脚本文件才进行 HTML 检查
-                        local file_size
-                        file_size=$(wc -c < "${output_file}")
-                        if [[ ${file_size} -lt 100 ]]; then
-                            # 文件太小，可能是错误响应
-                            : # 继续重试
-                        elif grep -qi "^<html\|^<!DOCTYPE" "${output_file}" 2>/dev/null; then
-                            # 明确的 HTML 文件
-                            : # 继续重试
-                        else
-                            return 0
-                        fi
-                    fi
-                fi
-            fi
-            
-            retry_count=$((retry_count + 1))
-            if [[ ${retry_count} -lt ${max_retries} ]]; then
-                sleep 1
-            fi
-        done
-        
-        return 1
-    }
     
     # 尝试镜像源
     if download_with_retry "${mirror_url}" "${temp_file}"; then
