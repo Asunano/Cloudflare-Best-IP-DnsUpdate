@@ -158,7 +158,7 @@ if [[ "${ENABLE_MULTI_LINE}" = "true" ]]; then
     # 定义各运营商的 Colo 列表 (优先使用 menu.sh 中配置的参数)
     declare -A ISP_COLOS
     # 【修复】default 使用通用 Colo 列表，避免与 mobile 重复测速
-    ISP_COLOS["default"]="${CFST_COLO:-HKG,NRT}"
+    ISP_COLOS["default"]="${CF_IP_CFG[cfst_colo]:-HKG,NRT}"
     ISP_COLOS["unicom"]="${COLO_UNICOM:-SJC,LAX,SIN,TYO}"
     ISP_COLOS["mobile"]="${COLO_MOBILE:-HKG,SIN,TYO,LON}"
     ISP_COLOS["telecom"]="${COLO_TELECOM:-SJC,LAX,TYO,SIN}"
