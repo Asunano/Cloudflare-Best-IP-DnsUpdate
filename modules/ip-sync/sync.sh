@@ -333,10 +333,17 @@ _sync_single_dnspod_config() {
         fi
         
         # 【优化】从 CSV 中提取最优 IP（综合考虑下载速度和延迟）
-        awk -F',' 'NR>1 && $6>0 {print $0}' "${result_file}" | \
-            sort -t',' -k6,6 -rn -k5,5 -n | \
-            head -n "${max_ips}" | \
-            awk -F',' '{print $1}' > "${target_file}"
+        # 【修复】生成 .iplist 标准格式（IP|延迟|速度|地区码）
+        {
+            echo "# Cloudflare 优选 IP 列表"
+            echo "# 生成时间: $(date '+%Y-%m-%d %H:%M:%S')"
+            echo "#"
+            echo "# IP地址|延迟(ms)|下载速度(MB/s)|地区码"
+            awk -F',' 'NR>1 && $6>0 {print $0}' "${result_file}" | \
+                sort -t',' -k6,6 -rn -k5,5 -n | \
+                head -n "${max_ips}" | \
+                awk -F',' '{gsub(/\r/,"",$5); gsub(/\r/,"",$6); gsub(/\r/,"",$7); print $1"|"$5"|"$6"|"$7}'
+        } > "${target_file}"
         
         local actual_count
         actual_count=$(wc -l < "${target_file}" | tr -d ' ')
