@@ -243,10 +243,17 @@ sync_cf_dns_ips() {
             if auto_retry_test "${result_file}" "${colo_nodes}" "${domain_name}"; then
                 # 重新测速成功后，再次尝试同步
                 echo -e "  ${CYAN}[INFO]${NC} ${domain_name}: 正在使用新的测速结果进行同步..."
-                awk -F',' 'NR>1 && $6>0 {print $0}' "${result_file}" | \
-                    sort -t',' -k6,6 -rn -k5,5 -n | \
-                    head -n "${max_ips}" | \
-                    awk -F',' '{print $1}' > "${target_file}"
+                # 【修复】生成 .iplist 标准格式（IP|延迟|速度|地区码）
+                {
+                    echo "# Cloudflare 优选 IP 列表"
+                    echo "# 生成时间: $(date '+%Y-%m-%d %H:%M:%S')"
+                    echo "#"
+                    echo "# IP地址|延迟(ms)|下载速度(MB/s)|地区码"
+                    awk -F',' 'NR>1 && $6>0 {print $0}' "${result_file}" | \
+                        sort -t',' -k6,6 -rn -k5,5 -n | \
+                        head -n "${max_ips}" | \
+                        awk -F',' '{gsub(/\r/,"",$5); gsub(/\r/,"",$6); gsub(/\r/,"",$7); print $1"|"$5"|"$6"|"$7}'
+                } > "${target_file}"
                 
                 actual_count="$(wc -l < "${target_file}")"
                 
