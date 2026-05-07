@@ -412,27 +412,28 @@ fi
 
 # ==================== 【重构】cfst 命令构建函数 ====================
 # 参数：$1=目标地区, $2=输出文件, $3=IP数据文件(可选), $4=命令数组引用(nameref)
+# ==================== 【重构】构建 cfst 命令函数 ====================
+# 【修复】不再使用 nameref (bash 4.3+)，改用全局变量 CFST_CMD_ARRAY 返回结果
+# 参数: $1=target_colo, $2=output_csv, $3=ip_data_file (可选)
+# 返回: 全局数组 CFST_CMD_ARRAY
 build_cfst_cmd() {
     local target_colo="$1"
     local output_csv="$2"
     local ip_data_file="${3:-}"
     
-    # Bash 4.3+ 支持 nameref，通过引用返回数组
-    local -n __cmd_ref="$4"
-    
-    # 构建基础命令
-    __cmd_ref=("${CFST_BIN}" "-n" "${CFST_THREADS}" "-t" "${CFST_PING_TIMES}")
-    [[ -n "${target_colo}" ]] && __cmd_ref+=("-cfcolo" "${target_colo}")
-    [[ -n "${ip_data_file}" ]] && __cmd_ref+=("-f" "${ip_data_file}")
-    __cmd_ref+=("-dn" "${CFST_DOWNLOAD_COUNT}" "-dt" "${CFST_DOWNLOAD_TIME}")
-    __cmd_ref+=("-tp" "${CFST_PORT}")
-    [[ -n "${CFST_URL}" ]] && __cmd_ref+=("-url" "${CFST_URL}")
-    [[ "${CFST_HTTPING}" = "true" ]] && __cmd_ref+=("-httping")
-    __cmd_ref+=("-tl" "${CFST_LATENCY_MAX}" "-tlr" "${CFST_PACKET_LOSS_MAX}" "-sl" "${CFST_SPEED_MIN}")
-    __cmd_ref+=("-p" "${CFST_SHOW_COUNT}")
-    [[ "${CFST_DISABLE_DOWNLOAD}" = "true" ]] && __cmd_ref+=("-dd")
-    [[ "${CFST_ALL_IP}" = "true" ]] && __cmd_ref+=("-allip")
-    __cmd_ref+=("-o" "${output_csv}")
+    # 【修复】使用全局变量返回数组，兼容 bash 3.2+
+    CFST_CMD_ARRAY=("${CFST_BIN}" "-n" "${CFST_THREADS}" "-t" "${CFST_PING_TIMES}")
+    [[ -n "${target_colo}" ]] && CFST_CMD_ARRAY+=("-cfcolo" "${target_colo}")
+    [[ -n "${ip_data_file}" ]] && CFST_CMD_ARRAY+=("-f" "${ip_data_file}")
+    CFST_CMD_ARRAY+=("-dn" "${CFST_DOWNLOAD_COUNT}" "-dt" "${CFST_DOWNLOAD_TIME}")
+    CFST_CMD_ARRAY+=("-tp" "${CFST_PORT}")
+    [[ -n "${CFST_URL}" ]] && CFST_CMD_ARRAY+=("-url" "${CFST_URL}")
+    [[ "${CFST_HTTPING}" = "true" ]] && CFST_CMD_ARRAY+=("-httping")
+    CFST_CMD_ARRAY+=("-tl" "${CFST_LATENCY_MAX}" "-tlr" "${CFST_PACKET_LOSS_MAX}" "-sl" "${CFST_SPEED_MIN}")
+    CFST_CMD_ARRAY+=("-p" "${CFST_SHOW_COUNT}")
+    [[ "${CFST_DISABLE_DOWNLOAD}" = "true" ]] && CFST_CMD_ARRAY+=("-dd")
+    [[ "${CFST_ALL_IP}" = "true" ]] && CFST_CMD_ARRAY+=("-allip")
+    CFST_CMD_ARRAY+=("-o" "${output_csv}")
 }
 
 # ==================== 执行测速 ====================
@@ -445,8 +446,7 @@ echo -e "   • 提取数量: ${TAKE_IP_NUM}"
 echo -e "   • 输出文件: ${OUTPUT_CSV}"
 
 # 【重构】使用函数构建 cfst 命令，消除代码重复
-declare -a CMD
-build_cfst_cmd "${TARGET_COLO}" "${OUTPUT_CSV}" "${IP_DATA_FILE}" CMD
+build_cfst_cmd "${TARGET_COLO}" "${OUTPUT_CSV}" "${IP_DATA_FILE}"
 
 # 执行并记录日志（带实时进度提示）
 # 【修复】关闭日志时仍需要临时日志文件用于进度监控，测速完成后删除
@@ -719,15 +719,14 @@ for ((retry=0; retry<=MAX_RETRY; retry++)); do
     
     # 重新执行测速（使用与首次测速相同的后台运行 + 实时进度监控方式）
     # 【重构】使用函数构建命令，消除代码重复
-    declare -a RETRY_CMD
-    build_cfst_cmd "${TARGET_COLO}" "${OUTPUT_CSV}" "${IP_DATA_FILE}" RETRY_CMD
+    build_cfst_cmd "${TARGET_COLO}" "${OUTPUT_CSV}" "${IP_DATA_FILE}"
     
     # 2. 【修复】使用 subshell 隔离目录切换
     (
         cd "$(dirname "${CFST_BIN}")" || exit 1
         
         # 3. 启动测速程序（后台运行）
-        "${RETRY_CMD[@]}" > "${LOG_FILE}" 2>&1 &
+        "${CFST_CMD_ARRAY[@]}" > "${LOG_FILE}" 2>&1 &
         CFST_PID=$!
         
         # 4. 实时显示进度（使用通用监控函数）
