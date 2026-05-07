@@ -741,6 +741,7 @@ system_health_check() {
         for cfg in "${missing_configs[@]}"; do
             echo -e "       ${YELLOW}- conf/${cfg}${NC}"
         done
+        has_issues=true
     fi
     
     # 4. 检查依赖工具
@@ -821,7 +822,80 @@ system_health_check() {
             
             # 修复缺失配置
             if [[ ${#missing_configs[@]} -gt 0 ]]; then
-                echo -e "${CYAN}[INFO] 请使用各模块的配置向导来生成配置文件${NC}"
+                echo ""
+                echo -e "${CYAN}[INFO] 正在创建默认配置文件...${NC}"
+                for cfg in "${missing_configs[@]}"; do
+                    echo -n "  创建 conf/${cfg}... "
+                    local template_file="${INSTALL_DIR}/conf/templates/${cfg}.example"
+                    local target_file="${INSTALL_DIR}/conf/${cfg}"
+                    
+                    if [[ -f "${template_file}" ]]; then
+                        # 从模板复制
+                        cp "${template_file}" "${target_file}"
+                        chmod 600 "${target_file}"
+                        echo -e "${GREEN}成功${NC} (从模板)"
+                        ((fixed_count++))
+                    else
+                        # 创建最小化配置
+                        case "${cfg}" in
+                            "cf-ip.json")
+                                cat > "${target_file}" <<'EOF'
+{
+    "speed_test": {
+        "take_ip_num": 5,
+        "output_html": true,
+        "max_retry": 3,
+        "enable_log": true
+    },
+    "cfst": {
+        "threads": 200,
+        "colo": "HKG,NRT",
+        "ping_times": 4,
+        "download_count": 10,
+        "download_time": 10,
+        "port": 443,
+        "url": "https://cf-ns.com/cdn-cgi/trace",
+        "httping": false,
+        "latency_max": 9999,
+        "packet_loss_max": 100,
+        "speed_min": 0,
+        "show_count": 20,
+        "ip_file": "",
+        "disable_download": false,
+        "all_ip": false
+    }
+}
+EOF
+                                ;;
+                            "cf-dns.json")
+                                cat > "${target_file}" <<'EOF'
+{
+    "domains": []
+}
+EOF
+                                ;;
+                            "dnspod.json")
+                                cat > "${target_file}" <<'EOF'
+{
+    "domains": []
+}
+EOF
+                                ;;
+                            "global.json")
+                                cat > "${target_file}" <<'EOF'
+{
+    "auto_update": true,
+    "update_channel": "stable",
+    "mirror_url": ""
+}
+EOF
+                                ;;
+                        esac
+                        chmod 600 "${target_file}"
+                        echo -e "${GREEN}成功${NC} (最小化配置)"
+                        ((fixed_count++))
+                    fi
+                done
             fi
             
             # 修复依赖
