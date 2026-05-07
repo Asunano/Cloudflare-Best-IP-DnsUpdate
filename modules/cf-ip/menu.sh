@@ -22,6 +22,28 @@ BOLD='\033[1m'
 GRAY='\033[0;90m'
 NC='\033[0m' # No Color
 
+# ==================== 跨平台文件查找辅助函数 ====================
+# 【修复】跨平台查找最新文件（替代 find -printf，兼容 macOS/BSD）
+# 参数: $1=目录路径, $2=文件名模式 (如 "cfst_*.log")
+# 返回: 最新文件的完整路径
+find_latest_file() {
+    local search_dir="$1"
+    local pattern="$2"
+    
+    # 方法1: 使用 stat -f '%m' (macOS/BSD)
+    if stat -f '%m' /dev/null >/dev/null 2>&1; then
+        find "${search_dir}" -name "${pattern}" -type f -exec stat -f '%m %N' {} \; 2>/dev/null | \
+            sort -rn | head -n 1 | awk '{print $2}'
+    # 方法2: 使用 stat -c '%Y' (Linux)
+    elif stat -c '%Y' /dev/null >/dev/null 2>&1; then
+        find "${search_dir}" -name "${pattern}" -type f -exec stat -c '%Y %n' {} \; 2>/dev/null | \
+            sort -rn | head -n 1 | awk '{print $2}'
+    # 方法3: 使用 ls -t (备用方案)
+    else
+        ls -t "${search_dir}"/${pattern} 2>/dev/null | head -n 1
+    fi
+}
+
 # ==================== 信号捕获与资源清理 ====================
 # shellcheck disable=SC2329
 cleanup() {
@@ -1154,8 +1176,8 @@ view_logs() {
     
     LOG_DIR="${ROOT_DIR}/logs/cf-ip"
     mkdir -p "${LOG_DIR}"
-    # 【修复】查找最新的 cfst 日志文件（支持时间戳命名）
-    LOG_FILE=$(find "${LOG_DIR}" -name "cfst_*.log" -type f -printf '%T@ %p\n' 2>/dev/null | sort -rn | head -n 1 | awk '{print $2}')
+    # 【修复】跨平台查找最新的 cfst 日志文件（支持时间戳命名）
+    LOG_FILE=$(find_latest_file "${LOG_DIR}" "cfst_*.log")
     CRON_LOG="${LOG_DIR}/cron.log"
     
     echo -e "${CYAN}+------------------------------------------------------------+"

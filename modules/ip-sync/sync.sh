@@ -22,6 +22,28 @@ GRAY='\033[0;90m'
 BOLD='\033[1m'
 NC='\033[0m'
 
+# ==================== 跨平台文件查找辅助函数 ====================
+# 【修复】跨平台查找最新文件（替代 find -printf，兼容 macOS/BSD）
+# 参数: $1=目录路径, $2=文件名模式 (如 "result_*.csv")
+# 返回: 最新文件的完整路径
+find_latest_file() {
+    local search_dir="$1"
+    local pattern="$2"
+    
+    # 方法1: 使用 stat -f '%m' (macOS/BSD)
+    if stat -f '%m' /dev/null >/dev/null 2>&1; then
+        find "${search_dir}" -name "${pattern}" -type f -exec stat -f '%m %N' {} \; 2>/dev/null | \
+            sort -rn | head -n 1 | awk '{print $2}'
+    # 方法2: 使用 stat -c '%Y' (Linux)
+    elif stat -c '%Y' /dev/null >/dev/null 2>&1; then
+        find "${search_dir}" -name "${pattern}" -type f -exec stat -c '%Y %n' {} \; 2>/dev/null | \
+            sort -rn | head -n 1 | awk '{print $2}'
+    # 方法3: 使用 ls -t (备用方案)
+    else
+        ls -t "${search_dir}"/${pattern} 2>/dev/null | head -n 1
+    fi
+}
+
 # 【修复】动态查找最新的测速结果文件
 # cf-ip/core.sh 生成的文件名格式: result_${LINE_TAG}_${timestamp}.csv
 # 例如: result_default_20260507_193000.csv
@@ -30,9 +52,8 @@ RESULT_DIR="${ROOT_DIR}/assets/data/cf-ip"
 # 【修复】确保结果目录存在
 mkdir -p "${RESULT_DIR}"
 
-# 查找最新的测速结果文件（按修改时间排序）
-RESULT_CSV=$(find "${RESULT_DIR}" -name "result_*.csv" -type f -printf '%T@ %p\n' 2>/dev/null | \
-    sort -rn | head -n 1 | awk '{print $2}')
+# 【修复】跨平台查找最新的测速结果文件（按修改时间排序）
+RESULT_CSV=$(find_latest_file "${RESULT_DIR}" "result_*.csv")
 
 if [[ -z "${RESULT_CSV}" ]]; then
     RESULT_CSV="${RESULT_DIR}/result.csv"
@@ -176,8 +197,7 @@ sync_cf_dns_ips() {
         
         # 【修复】每次循环重新查找最新结果文件，避免使用过期数据
         local latest_result
-        latest_result=$(find "${RESULT_DIR}" -name "result_*.csv" -type f -printf '%T@ %p\n' 2>/dev/null | \
-            sort -rn | head -n 1 | awk '{print $2}')
+        latest_result=$(find_latest_file "${RESULT_DIR}" "result_*.csv")
         
         if [[ -n "${latest_result}" ]]; then
             RESULT_CSV="${latest_result}"
@@ -203,18 +223,12 @@ sync_cf_dns_ips() {
         if [[ -z "${result_file}" ]]; then
             # 优先查找该域名的最新测速结果文件（cf-ip 生成格式：result_${LINE_TAG}_${timestamp}.csv）
             # 例如：result_default_20260507_221733.csv
-            result_file=$(find "${RESULT_DIR}" -name "result_${domain_name}_*.csv" -type f -printf '%T@ %p\n' 2>/dev/null | \
-                sort -rn | \
-                head -n 1 | \
-                awk '{print $2}')
+            result_file=$(find_latest_file "${RESULT_DIR}" "result_${domain_name}_*.csv")
             
             # 如果没找到域名专用文件，fallback 到全局最新的测速结果文件
             if [[ -z "${result_file}" ]]; then
                 # 【修复】动态查找最新结果文件，确保始终使用最新数据
-                result_file=$(find "${RESULT_DIR}" -name "result_*.csv" -type f -printf '%T@ %p\n' 2>/dev/null | \
-                    sort -rn | \
-                    head -n 1 | \
-                    awk '{print $2}')
+                result_file=$(find_latest_file "${RESULT_DIR}" "result_*.csv")
             fi
         else
             # 【修复】如果配置了 result_file，将相对路径转为绝对路径
@@ -346,18 +360,12 @@ _sync_single_dnspod_config() {
         if [[ -z "${result_file}" ]]; then
             # 优先查找该域名的最新测速结果文件（cf-ip 生成格式：result_${LINE_TAG}_${timestamp}.csv）
             # 例如：result_default_20260507_221733.csv
-            result_file=$(find "${RESULT_DIR}" -name "result_${domain_name}_*.csv" -type f -printf '%T@ %p\n' 2>/dev/null | \
-                sort -rn | \
-                head -n 1 | \
-                awk '{print $2}')
+            result_file=$(find_latest_file "${RESULT_DIR}" "result_${domain_name}_*.csv")
             
             # 如果没找到域名专用文件，fallback 到全局最新的测速结果文件
             if [[ -z "${result_file}" ]]; then
                 # 【修复】动态查找最新结果文件，确保始终使用最新数据
-                result_file=$(find "${RESULT_DIR}" -name "result_*.csv" -type f -printf '%T@ %p\n' 2>/dev/null | \
-                    sort -rn | \
-                    head -n 1 | \
-                    awk '{print $2}')
+                result_file=$(find_latest_file "${RESULT_DIR}" "result_*.csv")
             fi
         fi
         

@@ -26,6 +26,28 @@ CYAN='\033[0;36m'
 BOLD='\033[1m'
 NC='\033[0m' # No Color
 
+# ==================== 跨平台文件查找辅助函数 ====================
+# 【修复】跨平台查找最新文件（替代 find -printf，兼容 macOS/BSD）
+# 参数: $1=目录路径, $2=文件名模式 (如 "cfdns_*.log")
+# 返回: 最新文件的完整路径
+find_latest_file() {
+    local search_dir="$1"
+    local pattern="$2"
+    
+    # 方法1: 使用 stat -f '%m' (macOS/BSD)
+    if stat -f '%m' /dev/null >/dev/null 2>&1; then
+        find "${search_dir}" -name "${pattern}" -type f -exec stat -f '%m %N' {} \; 2>/dev/null | \
+            sort -rn | head -n 1 | awk '{print $2}'
+    # 方法2: 使用 stat -c '%Y' (Linux)
+    elif stat -c '%Y' /dev/null >/dev/null 2>&1; then
+        find "${search_dir}" -name "${pattern}" -type f -exec stat -c '%Y %n' {} \; 2>/dev/null | \
+            sort -rn | head -n 1 | awk '{print $2}'
+    # 方法3: 使用 ls -t (备用方案)
+    else
+        ls -t "${search_dir}"/${pattern} 2>/dev/null | head -n 1
+    fi
+}
+
 # ==================== 菜单框线样式 ====================
 MENU_BORDER="+------------------------------------------------------------+"
 MENU_BORDER_MID="+------------------------------------------------------------+"
@@ -1427,7 +1449,7 @@ log_management() {
         1)
             clear
             local latest_log
-            latest_log=$(find "$log_dir" -name "cfdns_*.log" -type f -printf '%T@ %p\n' 2>/dev/null | sort -rn | head -n 1 | cut -d' ' -f2-)
+            latest_log=$(find_latest_file "$log_dir" "cfdns_*.log")
             if [ -n "$latest_log" ]; then
                 echo -e "${BLUE}最新日志: $(basename "$latest_log")${NC}"
                 echo "----------------------------------------"

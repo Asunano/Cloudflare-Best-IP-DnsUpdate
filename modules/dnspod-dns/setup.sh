@@ -44,6 +44,62 @@ CYAN='\033[0;36m'
 BOLD='\033[1m'
 NC='\033[0m'
 
+# ==================== 跨平台文件查找辅助函数 ====================
+# 【修复】跨平台查找最新文件（替代 find -printf，兼容 macOS/BSD）
+# 参数: $1=目录路径, $2=文件名模式 (如 "*.log")
+# 返回: 最新文件的完整路径
+find_latest_file() {
+    local search_dir="$1"
+    local pattern="$2"
+    
+    # 方法1: 使用 stat -f '%m' (macOS/BSD)
+    if stat -f '%m' /dev/null >/dev/null 2>&1; then
+        find "${search_dir}" -name "${pattern}" -type f -exec stat -f '%m %N' {} \; 2>/dev/null | \
+            sort -rn | head -n 1 | awk '{print $2}'
+    # 方法2: 使用 stat -c '%Y' (Linux)
+    elif stat -c '%Y' /dev/null >/dev/null 2>&1; then
+        find "${search_dir}" -name "${pattern}" -type f -exec stat -c '%Y %n' {} \; 2>/dev/null | \
+            sort -rn | head -n 1 | awk '{print $2}'
+    # 方法3: 使用 ls -t (备用方案)
+    else
+        ls -t "${search_dir}"/${pattern} 2>/dev/null | head -n 1
+    fi
+}
+
+# 【修复】跨平台列出日志文件信息（替代 find -printf，兼容 macOS/BSD）
+# 参数: $1=目录路径, $2=文件名模式 (如 "*.log")
+# 输出: 文件名 (大小) 日期 时间
+list_log_files() {
+    local search_dir="$1"
+    local pattern="$2"
+    local max_count="${3:-10}"
+    
+    if stat -c '%Y' /dev/null >/dev/null 2>&1; then
+        # Linux
+        find "$search_dir" -name "$pattern" -type f -exec sh -c '
+            for file do
+                size=$(stat -c "%s" "$file")
+                date=$(stat -c "%y" "$file" | cut -d" " -f1)
+                time=$(stat -c "%y" "$file" | cut -d" " -f2 | cut -d: -f1-2)
+                echo "$(basename "$file") ($size) $date $time"
+            done
+        ' _ {} + | sort -t'(' -k2 -rn | head -n "$max_count"
+    elif stat -f '%m' /dev/null >/dev/null 2>&1; then
+        # macOS/BSD
+        find "$search_dir" -name "$pattern" -type f -exec sh -c '
+            for file do
+                size=$(stat -f "%z" "$file")
+                date=$(stat -f "%Sm" -t "%Y-%m-%d" "$file")
+                time=$(stat -f "%Sm" -t "%H:%M" "$file")
+                echo "$(basename "$file") ($size) $date $time"
+            done
+        ' _ {} + | sort -t'(' -k2 -rn | head -n "$max_count"
+    else
+        # 备用方案：使用 ls -l
+        ls -lt "$search_dir"/$pattern 2>/dev/null | head -n "$max_count" | awk '{print $9, "("$5")", $6, $7}'
+    fi
+}
+
 # 定义菜单边框样式，确保 UI 对齐
 MENU_BORDER="+------------------------------------------------------------+"
 MENU_BORDER_MID="+------------------------------------------------------------+"
@@ -2073,7 +2129,7 @@ manage_logs() {
                 echo ""
                 echo -e "${CYAN}━━ 所有日志文件 ━━"
                 echo ""
-                find "$log_dir" -name "*.log" -type f -printf '%f (%s) %TY-%Tm-%Td %TH:%TM\n' 2>/dev/null | head -n 10
+                list_log_files "$log_dir" "*.log" 10
             fi
             ;;
         3)
