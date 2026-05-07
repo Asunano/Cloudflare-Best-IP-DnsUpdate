@@ -593,11 +593,27 @@ http_delete() {
 }
 
 # ==================== 【智能判断】是否需要更新 DNS 记录 ====================
-# 参数：$1=现有 IP 数组名, $2=目标 IP 数组名
+# 【修复】不再使用 nameref，直接接收数组元素作为参数，避免变量名冲突
+# 用法: needs_update "${existing_ips[@]}" -- "${target_ips[@]}"
 # 返回：0=需要更新，1=无需更新
 needs_update() {
-    local -n _existing="$1"  # 现有 IP 数组（nameref）
-    local -n _target="$2"    # 目标 IP 数组（nameref）
+    # 解析参数：使用 "--" 分隔两个数组
+    local -a _existing=()
+    local -a _target=()
+    local parsing_target=false
+    
+    for arg in "$@"; do
+        if [[ "$arg" == "--" ]]; then
+            parsing_target=true
+            continue
+        fi
+        
+        if [[ "$parsing_target" == false ]]; then
+            _existing+=("$arg")
+        else
+            _target+=("$arg")
+        fi
+    done
     
     # 数量不同，肯定需要更新
     if [[ ${#_existing[@]} -ne ${#_target[@]} ]]; then
@@ -1131,7 +1147,7 @@ main() {
     local -a update_record_ids=()
         
     # 【重构】清晰的分支结构，避免脆弱的嵌套依赖
-    if needs_update current_values ip_addresses; then
+    if needs_update "${current_values[@]}" -- "${ip_addresses[@]}"; then
         log "  ${CYAN}[INFO]${NC} 检测到 IP 变化，开始更新..."
             
         # 情况 1：有现有记录且有待同步的 IP → 执行智能匹配更新
