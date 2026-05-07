@@ -36,13 +36,45 @@ echo -e "${CYAN}+------------------------------------------------------------+${
 
 # ==================== 【安全配置】日志轮转 ====================
 # 防止日志文件无限增长（每10MB轮转一次，保留1个备份）
+
+# 【修复】跨平台获取文件大小函数（兼容 Linux/macOS/BSD）
+get_file_size() {
+    local file="$1"
+    local size
+    
+    if [[ ! -f "${file}" ]]; then
+        echo "0"
+        return
+    fi
+    
+    # 【修复】优先尝试 macOS/BSD stat（无 --version 参数）
+    if stat -f %z "${file}" >/dev/null 2>&1; then
+        # macOS/BSD stat
+        size=$(stat -f %z "${file}" 2>/dev/null)
+    elif stat -c %s "${file}" >/dev/null 2>&1; then
+        # Linux stat
+        size=$(stat -c %s "${file}" 2>/dev/null)
+    else
+        # 备用方案：使用 wc -c
+        size=$(wc -c < "${file}" | tr -d ' ')
+    fi
+    
+    # 最终校验
+    if [[ -z "${size}" ]] || [[ ! "${size}" =~ ^[0-9]+$ ]]; then
+        echo "0"
+    else
+        echo "${size}"
+    fi
+}
+
 rotate_log() {
     local log_file="$1"
     local max_size=${2:-$((10 * 1024 * 1024))}  # 默认 10MB
     
     if [[ -f "$log_file" ]]; then
         local file_size
-        file_size=$(stat -c %s "$log_file" 2>/dev/null || echo 0)
+        # 【修复】使用跨平台函数获取文件大小
+        file_size=$(get_file_size "$log_file")
         
         if [[ "$file_size" -gt "$max_size" ]]; then
             mv "$log_file" "${log_file}.old"
