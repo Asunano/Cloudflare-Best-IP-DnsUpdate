@@ -178,33 +178,39 @@ if [[ "${CF_IP_CFG_LOADED:-}" != "true" ]]; then
     ' "$CONFIG_FILE")
 else
     # 【修复】从环境变量恢复配置（scheduler 传递）
-    # 多线路模式只需要这 4 个变量，其他配置使用默认值
+    # 多线路模式只需要这 4 个变量，其他配置仍然从配置文件读取
     declare -A CFG
     CFG["multi_line_enabled"]="${CFG_MULTI_LINE_ENABLED:-false}"
     CFG["colo_mobile"]="${CFG_COLO_MOBILE:-HKG,SIN,TYO,LON}"
     CFG["colo_unicom"]="${CFG_COLO_UNICOM:-SJC,LAX,SIN,TYO}"
     CFG["colo_telecom"]="${CFG_COLO_TELECOM:-SJC,LAX,TYO,SIN}"
-    # 其他配置使用默认值
-    CFG["cfst_dir"]=""
-    CFG["take_ip_num"]="5"
-    CFG["cfst_threads"]="200"
-    CFG["cfst_colo"]="HKG,NRT"
-    CFG["cfst_ping_times"]="4"
-    CFG["cfst_download_count"]="10"
-    CFG["cfst_download_time"]="10"
-    CFG["cfst_port"]="443"
-    CFG["cfst_url"]="https://mirror.drxian.qzz.io/index.html"
-    CFG["cfst_httping"]="false"
-    CFG["cfst_latency_max"]="9999"
-    CFG["cfst_packet_loss_max"]="100"
-    CFG["cfst_speed_min"]="0"
-    CFG["cfst_show_count"]="20"
-    CFG["cfst_ip_file"]=""
-    CFG["cfst_disable_download"]="false"
-    CFG["cfst_all_ip"]="false"
-    CFG["output_html"]="true"
-    CFG["max_retry"]="3"
-    CFG["enable_log"]="true"
+    
+    # 【修复】其他配置项仍然从配置文件读取，避免覆盖用户自定义配置
+    while IFS='=' read -r key value; do
+        [[ -n "$key" ]] && CFG["$key"]="$value"
+    done < <(jq -r '
+        [
+            "cfst_dir=" + (.cfst.directory // ""),
+            "take_ip_num=" + (.speed_test.take_ip_num // 5 | tostring),
+            "cfst_threads=" + (.cfst.threads // 200 | tostring),
+            "cfst_ping_times=" + (.cfst.ping_times // 4 | tostring),
+            "cfst_download_count=" + (.cfst.download_count // 10 | tostring),
+            "cfst_download_time=" + (.cfst.download_time // 10 | tostring),
+            "cfst_port=" + (.cfst.port // 443 | tostring),
+            "cfst_url=" + (.cfst.url // "https://mirror.drxian.qzz.io/index.html"),
+            "cfst_httping=" + (.cfst.httping // false | tostring),
+            "cfst_latency_max=" + (.cfst.latency_max // 9999 | tostring),
+            "cfst_packet_loss_max=" + (.cfst.packet_loss_max // 100 | tostring),
+            "cfst_speed_min=" + (.cfst.speed_min // 0 | tostring),
+            "cfst_show_count=" + (.cfst.show_count // 20 | tostring),
+            "cfst_ip_file=" + (.cfst.ip_file // ""),
+            "cfst_disable_download=" + (.cfst.disable_download // false | tostring),
+            "cfst_all_ip=" + (.cfst.all_ip // false | tostring),
+            "output_html=" + (.speed_test.output_html // true | tostring),
+            "max_retry=" + (.speed_test.max_retry // 3 | tostring),
+            "enable_log=" + (.speed_test.enable_log // true | tostring)
+        ] | .[]
+    ' "$CONFIG_FILE")
 fi
 
 # 导出配置变量（保持向后兼容）
