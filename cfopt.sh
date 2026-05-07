@@ -60,7 +60,8 @@ log_error() {
 }
 
 # 记录警告信息
-log_warning() {
+# 【统一日志函数命名】使用 log_warn 而非 log_warning
+log_warn() {
     log "WARN" "$@"
 }
 
@@ -76,7 +77,7 @@ log_info() {
 
 # 触发回滚
 trigger_rollback() {
-    log_warning "检测到严重错误，尝试回滚到上一版本..."
+    log_warn "检测到严重错误，尝试回滚到上一版本..."
     if rollback_on_failure; then
         log_success "回滚成功，系统已恢复"
     else
@@ -187,7 +188,7 @@ safe_remove_dir() {
             return 1
         fi
     else
-        log_warning "${description}: 目录不存在，跳过 (${dir_path})"
+        log_warn "${description}: 目录不存在，跳过 (${dir_path})"
         return 0
     fi
 }
@@ -338,7 +339,7 @@ fix_system_cmd() {
     fi
     
     # 如果符号链接失败，尝试复制文件
-    log_warning "符号链接创建失败，尝试复制文件..."
+    log_warn "符号链接创建失败，尝试复制文件..."
     if cp "${script_path}" "${SYSTEM_CMD_PATH}" 2>/dev/null && chmod +x "${SYSTEM_CMD_PATH}"; then
         log_success "全局命令已安装（复制模式）: ${SYSTEM_CMD_PATH}"
         return 0
@@ -921,7 +922,7 @@ system_health_check() {
             if [[ ${fixed_count} -gt 0 ]]; then
                 log_success "已完成 ${fixed_count} 项修复，请重新运行检测确认"
             else
-                log_warning "没有执行任何修复操作"
+                log_warn "没有执行任何修复操作"
             fi
             echo ""
             read -r -p "按回车键返回主菜单..."
@@ -981,14 +982,14 @@ show_main_menu() {
                     chmod +x "${cfst_file}"
                     log_success "cfst 测速程序已安装: ${cfst_file}"
                 else
-                    log_warning "cfst 解压后未找到可执行文件"
+                    log_warn "cfst 解压后未找到可执行文件"
                 fi
             else
-                log_warning "cfst 解压失败"
+                log_warn "cfst 解压失败"
             fi
             rm -f "${cfst_temp}"
         else
-            log_warning "cfst 下载失败，请检查网络连接或手动安装"
+            log_warn "cfst 下载失败，请检查网络连接或手动安装"
         fi
         
         echo ""
@@ -1340,7 +1341,7 @@ uninstall_cfopt() {
             # 【安全修复】清除 Bash 哈希表缓存，防止 "No such file or directory" 错误
             hash -r 2>/dev/null || true
         else
-            log_warning "删除全局命令失败，可能需要手动清理: sudo rm -f /usr/local/bin/cfopt"
+            log_warn "删除全局命令失败，可能需要手动清理: sudo rm -f /usr/local/bin/cfopt"
         fi
     else
         log_info "全局命令不存在，跳过"
@@ -1695,7 +1696,7 @@ init_cfopt() {
         if [[ "${download_ok}" = true ]]; then
             chmod +x "${INSTALL_DIR}/${module_path}" 2>/dev/null || true
         else
-            log_warning "${module_name} 下载失败或校验失败"
+            log_warn "${module_name} 下载失败或校验失败"
             download_success=false
         fi
     done
@@ -1703,7 +1704,7 @@ init_cfopt() {
     if [[ "${download_success}" = true ]]; then
         log_success "所有核心组件下载完成"
     else
-        log_warning "部分组件下载失败，稍后可通过菜单手动更新"
+        log_warn "部分组件下载失败，稍后可通过菜单手动更新"
     fi
     
     # 4.2 下载 cfst 测速程序（CF-IP 核心依赖）
@@ -1721,14 +1722,14 @@ init_cfopt() {
                 chmod +x "${cfst_file}"
                 log_success "cfst 测速程序已安装: ${cfst_file}"
             else
-                log_warning "cfst 解压后未找到可执行文件"
+                log_warn "cfst 解压后未找到可执行文件"
             fi
         else
-            log_warning "cfst 解压失败"
+            log_warn "cfst 解压失败"
         fi
         rm -f "${cfst_temp}"
     else
-        log_warning "cfst 下载失败，请手动运行 CF-IP 测速以自动安装"
+        log_warn "cfst 下载失败，请手动运行 CF-IP 测速以自动安装"
     fi
 
     # 初始化状态配置文件 (如果不存在)
