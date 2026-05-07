@@ -241,6 +241,11 @@ REQUEST_TIMEOUT="${CFG[timeout]}"
 MAX_RETRIES="${CFG[max_retries]}"
 LOG_DIR="${CFG[log_dir]}"
 
+# 【修复】如果 CF_DOMAIN 为空，fallback 到 DOMAIN_NAME（支持通过 CF_DNS_DOMAIN 环境变量指定域名）
+if [[ -z "${CF_DOMAIN}" ]] && [[ -n "${DOMAIN_NAME:-}" ]]; then
+    CF_DOMAIN="${DOMAIN_NAME}"
+fi
+
 # 检查启用状态
 if [ "${ENABLED:-false}" != "true" ]; then
     echo -e "${YELLOW}[INFO] CF-DNS 模块当前处于禁用状态 (ENABLED=false)。${NC}"
