@@ -218,6 +218,11 @@ sync_cf_dns_ips() {
             if [[ -z "${result_file}" ]]; then
                 result_file="${RESULT_CSV}"
             fi
+        else
+            # 【修复】如果配置了 result_file，将相对路径转为绝对路径
+            if [[ "${result_file}" != /* ]]; then
+                result_file="${ROOT_DIR}/${result_file#./}"
+            fi
         fi
         
         # 检查测速结果文件是否存在
