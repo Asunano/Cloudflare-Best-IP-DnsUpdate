@@ -108,6 +108,9 @@ run_task() {
         return 1
     fi
     
+    # 【新增】启动超时保护看门狗
+    start_watchdog "${SCHEDULER_TIMEOUT}" "${task_name}"
+    
     # 执行脚本并捕获退出码
     # 【修复】后台启动任务以获取 PID，确保看门狗能正确杀死所有子进程
     # 【修复】设置 CF_OPT_ENTRY=scheduler，允许子模块通过入口校验
@@ -117,6 +120,9 @@ run_task() {
     wait "${TASK_PID}"
     local exit_code=$?
     TASK_PID=""  # 清空 TASK_PID
+    
+    # 【新增】停止看门狗（任务完成或失败后都需要停止）
+    stop_watchdog
     
     if [[ "${exit_code}" -ne 0 ]]; then
         echo -e "${RED}[FAIL] ${task_name} 执行失败 (Exit Code: ${exit_code})，终止后续任务。${NC}"
