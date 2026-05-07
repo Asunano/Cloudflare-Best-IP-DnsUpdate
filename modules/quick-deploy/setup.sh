@@ -1803,8 +1803,8 @@ deploy_dnspod_multi() {
     echo -e "   • 选择 '6. 检查组件更新' 保持最新版本"
     echo ""
     echo -e " ${CYAN}配置文件位置：${NC}"
-    echo -e "   • DNS 配置: ${GREEN}${ROOT_DIR}/conf/dnspod/${full_domain}.json${NC}"
-    echo -e "   • IP 列表文件: ${GREEN}${ROOT_DIR}/assets/data/dnspod-dns/${full_domain}.txt${NC}"
+    echo -e "   • DNS 配置: ${GREEN}${ROOT_DIR}/conf/dnspod/${domain}.json${NC}"
+    echo -e "   • IP 列表文件: ${GREEN}${ROOT_DIR}/assets/data/dnspod-dns/ip_list_default.iplist${NC}"
     echo ""
     
     read -r -p "按回车键返回主菜单..."
