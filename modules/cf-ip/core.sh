@@ -505,7 +505,8 @@ record_speed_test_history() {
     
     local history_file="${ROOT_DIR}/conf/history.jsonl"
     local timestamp
-    timestamp="$(date -u +"%Y-%m-%dT%H:%M:%S+08:00")"
+    # 【修复】使用本地时间并标注正确的时区，或 UTC 时间标注 +00:00
+    timestamp="$(date +"%Y-%m-%dT%H:%M:%S%z")"
     
     # 确保目录存在
     mkdir -p "${ROOT_DIR}/conf"

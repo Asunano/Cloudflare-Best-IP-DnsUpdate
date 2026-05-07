@@ -68,8 +68,8 @@ start_watchdog() {
     (
         sleep "$timeout"
         echo -e "\n${RED}[TIMEOUT] ${task_name} 超时 (${timeout}秒)，强制终止所有子进程${NC}"
-        # 【修复】只杀死当前子 shell 的子进程，不影响父进程组
-        kill -- -${BASHPID} 2>/dev/null || true
+        # 【修复】使用 pkill 精确杀死父进程的子进程，避免 PGID 不一致问题
+        pkill -P $$ 2>/dev/null || true
         exit 1
     ) &
     WATCHDOG_PID=$!
@@ -147,7 +147,8 @@ if [[ "${ENABLE_MULTI_LINE}" = "true" ]]; then
     
     # 定义各运营商的 Colo 列表 (优先使用 menu.sh 中配置的参数)
     declare -A ISP_COLOS
-    ISP_COLOS["default"]="${COLO_MOBILE:-HKG,SIN,TYO,LON}"
+    # 【修复】default 使用通用 Colo 列表，避免与 mobile 重复测速
+    ISP_COLOS["default"]="${CFST_COLO:-HKG,NRT}"
     ISP_COLOS["unicom"]="${COLO_UNICOM:-SJC,LAX,SIN,TYO}"
     ISP_COLOS["mobile"]="${COLO_MOBILE:-HKG,SIN,TYO,LON}"
     ISP_COLOS["telecom"]="${COLO_TELECOM:-SJC,LAX,TYO,SIN}"

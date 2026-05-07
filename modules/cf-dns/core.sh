@@ -377,14 +377,31 @@ if [ -n "$FILE_MOD_TIME" ] && [ "$FILE_MOD_TIME" != "0" ]; then
 fi
 
 # 2. 有效性检测 (防止全 0 或空数据 Bug)
-FIRST_LINE=$(head -n 1 "$IP_FILE")
-if [ -z "$FIRST_LINE" ] || [[ ! "$FIRST_LINE" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-    log "${RED}[ERROR] IP 文件格式错误或包含无效数据 (首行: ${FIRST_LINE:-空})。${NC}"
+# 【修复】支持 .iplist 格式（带注释行）和纯 IP 格式
+FIRST_IP=""
+while IFS= read -r line; do
+    # 跳过空行和注释行
+    [[ -z "$line" ]] && continue
+    [[ "$line" =~ ^[[:space:]]*# ]] && continue
+    
+    # 提取第一个字段（可能是 IP 或 IP|延迟|速度|地区码）
+    local ip_part
+    ip_part=$(echo "$line" | cut -d'|' -f1 | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
+    
+    # 检查是否为有效的 IP 地址
+    if [[ "$ip_part" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+        FIRST_IP="$ip_part"
+        break
+    fi
+done < "$IP_FILE"
+
+if [ -z "$FIRST_IP" ]; then
+    log "${RED}[ERROR] IP 文件格式错误或包含无效数据。${NC}"
     log "${YELLOW}[INFO] 这可能是测速程序的临时 Bug，请重新运行测速。${NC}"
     exit 1
 fi
 
-log "${GREEN}[OK] IP 数据检查通过 (首个 IP: ${FIRST_LINE})${NC}"
+log "${GREEN}[OK] IP 数据检查通过 (首个 IP: ${FIRST_IP})${NC}"
 
 # ==================== 工具函数 ====================
 
