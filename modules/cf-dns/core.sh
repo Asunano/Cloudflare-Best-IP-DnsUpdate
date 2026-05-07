@@ -1025,6 +1025,7 @@ main() {
             fi
         done
     fi
+    fi  # 关闭 needs_update 的 if
     
     # 执行更新
     if [ ${#ips_to_update[@]} -gt 0 ]; then
