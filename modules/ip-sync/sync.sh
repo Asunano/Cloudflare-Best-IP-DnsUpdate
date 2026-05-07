@@ -201,15 +201,20 @@ sync_cf_dns_ips() {
         
         # 【修复】如果未配置 result_file，根据域名自动推断
         if [[ -z "${result_file}" ]]; then
-            # 优先查找该域名的最新测速结果文件
+            # 优先查找该域名的最新测速结果文件（cf-ip 生成格式：result_${LINE_TAG}_${timestamp}.csv）
+            # 例如：result_default_20260507_221733.csv
             result_file=$(find "${RESULT_DIR}" -name "result_${domain_name}_*.csv" -type f -printf '%T@ %p\n' 2>/dev/null | \
                 sort -rn | \
                 head -n 1 | \
                 awk '{print $2}')
             
-            # 如果没找到，使用全局最新的测速结果文件
+            # 如果没找到域名专用文件，fallback 到全局最新的测速结果文件
             if [[ -z "${result_file}" ]]; then
-                result_file="${RESULT_CSV}"
+                # 【修复】动态查找最新结果文件，确保始终使用最新数据
+                result_file=$(find "${RESULT_DIR}" -name "result_*.csv" -type f -printf '%T@ %p\n' 2>/dev/null | \
+                    sort -rn | \
+                    head -n 1 | \
+                    awk '{print $2}')
             fi
         else
             # 【修复】如果配置了 result_file，将相对路径转为绝对路径
@@ -218,9 +223,10 @@ sync_cf_dns_ips() {
             fi
         fi
         
-        # 检查测速结果文件是否存在
-        if [[ ! -f "${result_file}" ]]; then
-            echo -e "  ${YELLOW}[WARN]${NC} ${domain_name}: 测速结果文件不存在 (${result_file})，跳过"
+        # 【修复】如果最终还是没有找到文件，给出明确提示而非静默跳过
+        if [[ -z "${result_file}" ]] || [[ ! -f "${result_file}" ]]; then
+            echo -e "  ${YELLOW}[WARN]${NC} ${domain_name}: 未找到测速结果文件，跳过"
+            echo -e "  ${YELLOW}[提示]${NC} 请先运行 CF-IP 测速：cfopt → 2. CF IP 优选管理 → 3. 立即执行测速"
             continue
         fi
         
@@ -338,21 +344,27 @@ _sync_single_dnspod_config() {
         
         # Fallback：如果未配置 result_file，根据域名自动推断
         if [[ -z "${result_file}" ]]; then
-            # 优先查找该域名的最新测速结果文件
+            # 优先查找该域名的最新测速结果文件（cf-ip 生成格式：result_${LINE_TAG}_${timestamp}.csv）
+            # 例如：result_default_20260507_221733.csv
             result_file=$(find "${RESULT_DIR}" -name "result_${domain_name}_*.csv" -type f -printf '%T@ %p\n' 2>/dev/null | \
                 sort -rn | \
                 head -n 1 | \
                 awk '{print $2}')
             
-            # 如果没找到，使用默认路径
+            # 如果没找到域名专用文件，fallback 到全局最新的测速结果文件
             if [[ -z "${result_file}" ]]; then
-                result_file="${ROOT_DIR}/assets/data/cf-ip/result_${domain_name}.csv"
+                # 【修复】动态查找最新结果文件，确保始终使用最新数据
+                result_file=$(find "${RESULT_DIR}" -name "result_*.csv" -type f -printf '%T@ %p\n' 2>/dev/null | \
+                    sort -rn | \
+                    head -n 1 | \
+                    awk '{print $2}')
             fi
         fi
         
-        # 检查文件是否存在
-        if [[ ! -f "${result_file}" ]]; then
-            echo -e "    ${YELLOW}[WARN]${NC} ${domain_name}: 测速结果文件不存在: ${result_file}"
+        # 【修复】如果最终还是没有找到文件，给出明确提示而非静默跳过
+        if [[ -z "${result_file}" ]] || [[ ! -f "${result_file}" ]]; then
+            echo -e "    ${YELLOW}[WARN]${NC} ${domain_name}: 未找到测速结果文件，跳过"
+            echo -e "    ${YELLOW}[提示]${NC} 请先运行 CF-IP 测速：cfopt → 2. CF IP 优选管理 → 3. 立即执行测速"
             return 1
         fi
         
