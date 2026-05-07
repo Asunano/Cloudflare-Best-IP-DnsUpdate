@@ -132,8 +132,11 @@ start_watchdog() {
 # 停止看门狗定时器
 stop_watchdog() {
     if [[ -n "${WATCHDOG_PID:-}" ]]; then
-        kill "$WATCHDOG_PID" 2>/dev/null || true
-        wait "$WATCHDOG_PID" 2>/dev/null || true
+        # 【修复】先检查进程是否存在，避免 wait 已退出的进程
+        if kill -0 "$WATCHDOG_PID" 2>/dev/null; then
+            kill "$WATCHDOG_PID" 2>/dev/null || true
+            wait "$WATCHDOG_PID" 2>/dev/null || true
+        fi
         unset WATCHDOG_PID
     fi
 }
