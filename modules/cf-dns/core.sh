@@ -599,9 +599,10 @@ get_cf_ip_from_file() {
     # 2. 逗号分隔的 IP
     # 3. 空格分隔的 IP
     # 4. 混合分隔符
+    # 5. .iplist 格式（IP|延迟|速度|地区码）
     local content
-    # 【性能优化】使用单次 awk 替代 4 个管道 + 4 次 fork
-    content=$(awk '!/^#/ && !/^$/ { gsub(/#.*/, ""); gsub(/,/, " "); printf "%s ", $0 }' "$IP_FILE" | sed 's/ $//')
+    # 【修复】支持 .iplist 的 | 分隔，提取第一列 IP
+    content=$(awk '!/^#/ && !/^$/ { gsub(/#.*/, ""); split($0, a, "|"); gsub(/,/, " ", a[1]); printf "%s ", a[1] }' "$IP_FILE" | sed 's/ $//')
     
     if [ -z "$content" ]; then
         log "${RED}错误${NC}: IP 文件为空: ${IP_FILE}"
