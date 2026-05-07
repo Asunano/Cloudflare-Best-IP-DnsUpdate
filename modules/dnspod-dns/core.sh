@@ -406,12 +406,15 @@ if [[ "${MODE}" = "multi" ]]; then
             log_msg "WARN" "检测到统一模式配置不完整，正在自动补全..."
             ISP_LINES=("默认" "联通" "移动" "电信")
             
+            # 【修复】使用变量构建 isp_lines 字符串，避免硬编码
+            local isp_lines_str="${ISP_LINES[*]}"
+            
             # 更新配置文件（使用 jq）
             temp_file=$(mktemp)
-            if jq '.dns.isp_lines = "默认 联通 移动 电信"' "$CONFIG_FILE" > "$temp_file" 2>/dev/null; then
+            if jq --arg lines "$isp_lines_str" '.dns.isp_lines = $lines' "$CONFIG_FILE" > "$temp_file" 2>/dev/null; then
                 mv "$temp_file" "$CONFIG_FILE"
                 chmod 600 "$CONFIG_FILE"
-                log_msg "INFO" "已更新配置文件: isp_lines = \"默认 联通 移动 电信\""
+                log_msg "INFO" "已更新配置文件: isp_lines = \"${isp_lines_str}\""
             else
                 rm -f "$temp_file"
                 log_msg "ERROR" "更新配置文件失败"
