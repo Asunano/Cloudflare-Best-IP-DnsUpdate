@@ -32,7 +32,7 @@ cleanup() {
         echo "[ERROR] 脚本异常退出 (Code: ${exit_code})" >&2
     fi
 }
-trap cleanup INT TERM HUP
+trap cleanup EXIT INT TERM HUP
 
 # ==================== 路径初始化 ====================
 SOURCE="${BASH_SOURCE[0]}"
@@ -503,17 +503,37 @@ configure_advanced() {
     echo -e "${YELLOW}【CFST 测速参数】${NC}"
     read -r -p "延迟测速线程数（默认: 200）: " CFST_THREADS
     CFST_THREADS=${CFST_THREADS:-200}
+    if ! [[ "${CFST_THREADS}" =~ ^[0-9]+$ ]]; then
+        echo -e "${YELLOW}[WARN] 线程数输入无效，使用默认值 200${NC}"
+        CFST_THREADS=200
+    fi
     
     read -r -p "延迟测速次数（默认: 8）: " CFST_PING_TIMES
     CFST_PING_TIMES=${CFST_PING_TIMES:-8}
+    if ! [[ "${CFST_PING_TIMES}" =~ ^[0-9]+$ ]]; then
+        echo -e "${YELLOW}[WARN] 测速次数输入无效，使用默认值 8${NC}"
+        CFST_PING_TIMES=8
+    fi
     
     read -r -p "下载测速数量（默认: 10）: " CFST_DOWNLOAD_COUNT
     CFST_DOWNLOAD_COUNT=${CFST_DOWNLOAD_COUNT:-10}
+    if ! [[ "${CFST_DOWNLOAD_COUNT}" =~ ^[0-9]+$ ]]; then
+        echo -e "${YELLOW}[WARN] 下载数量输入无效，使用默认值 10${NC}"
+        CFST_DOWNLOAD_COUNT=10
+    fi
     
     read -r -p "下载测速时间/秒（默认: 10）: " CFST_DOWNLOAD_TIME
     CFST_DOWNLOAD_TIME=${CFST_DOWNLOAD_TIME:-10}
+    if ! [[ "${CFST_DOWNLOAD_TIME}" =~ ^[0-9]+$ ]]; then
+        echo -e "${YELLOW}[WARN] 下载时间输入无效，使用默认值 10${NC}"
+        CFST_DOWNLOAD_TIME=10
+    fi
     
     read -r -p "测速端口（留空=默认443）: " CFST_PORT
+    if [[ -n "${CFST_PORT}" ]] && ! [[ "${CFST_PORT}" =~ ^[0-9]+$ ]]; then
+        echo -e "${YELLOW}[WARN] 端口输入无效，使用默认值 443${NC}"
+        CFST_PORT=""
+    fi
     
     read -r -p "测速地址URL（留空=使用默认）: " CFST_URL
     
@@ -600,6 +620,7 @@ generate_config_simple() {
             "speed_test": {
                 "take_ip_num": $take_ip_num,
                 "max_retry": 3,
+                "output_html": true,
                 "enable_log": $enable_log
             },
             "multi_line": {
