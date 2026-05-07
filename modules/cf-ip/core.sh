@@ -532,6 +532,7 @@ echo -e "${GRAY}  第一阶段: 延迟测速 (TCP Ping)${NC}"
 display_progress() {
     local current="$1"
     local total="$2"
+    local bar_width="${3:-40}"  # 【修复】添加进度条宽度参数，默认 40
     
     # 强制限制当前值 ≤ 总值，防止进度溢出
     if [[ ${current} -gt ${total} ]]; then
@@ -540,8 +541,8 @@ display_progress() {
     
     # 计算进度百分比
     local progress=$((current * 100 / total))
-    local filled=$((progress * progress_bar_width / 100))
-    local empty=$((progress_bar_width - filled))
+    local filled=$((progress * bar_width / 100))
+    local empty=$((bar_width - filled))
     
     # 优化：使用 printf + tr 生成进度条，比 for 循环快得多
     # 【修复】使用 ASCII 字符替代 Unicode，避免终端编码问题
@@ -564,6 +565,7 @@ display_progress() {
 parse_and_display_progress() {
     local log_file="$1"
     local current_stage="$2"
+    local bar_width="${3:-40}"  # 【修复】接收进度条宽度参数
     
     if [[ "${current_stage}" = "ping" ]]; then
         # 延迟阶段：提取 "可用: XXXX / YYYY" 格式
@@ -583,7 +585,7 @@ parse_and_display_progress() {
             if [[ -n "${available_count}" ]] && [[ -n "${total_count}" ]] && \
                [[ "${available_count}" =~ ^[0-9]+$ ]] && [[ "${total_count}" =~ ^[0-9]+$ ]] && \
                [[ "${total_count}" -gt 0 ]]; then
-                display_progress "${available_count}" "${total_count}"
+                display_progress "${available_count}" "${total_count}" "${bar_width}"
                 return 0
             fi
         fi
@@ -607,7 +609,7 @@ parse_and_display_progress() {
             if [[ -n "${download_current}" ]] && [[ -n "${download_total}" ]] && \
                [[ "${download_current}" =~ ^[0-9]+$ ]] && [[ "${download_total}" =~ ^[0-9]+$ ]] && \
                [[ "${download_total}" -gt 0 ]]; then
-                display_progress "${download_current}" "${download_total}"
+                display_progress "${download_current}" "${download_total}" "${bar_width}"
                 return 0
             fi
         fi
