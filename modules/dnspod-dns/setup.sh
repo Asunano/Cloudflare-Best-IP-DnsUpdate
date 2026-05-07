@@ -2042,8 +2042,8 @@ modify_ttl() {
 
 # 日志管理
 manage_logs() {
-    local log_dir
-    log_dir="$(dirname "$0")/log"
+    # 【修复】统一使用与 core.sh 一致的日志目录路径
+    local log_dir="${ROOT_DIR}/logs/dnspod-dns"
     
     # 创建日志目录
     if [ ! -d "$log_dir" ]; then
