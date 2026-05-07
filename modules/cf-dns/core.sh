@@ -199,6 +199,14 @@ if [ ! -f "$CONFIG_FILE" ]; then
 fi
 
 # ==================== 【性能优化】一次性读取配置文件 ====================
+
+# 【修复】先检查 jq 是否可用，再加载配置（避免 jq 不存在时配置加载失败）
+if ! command -v jq &> /dev/null; then
+    echo -e "${RED}错误${NC}: jq 未安装 (必需工具)"
+    echo "请安装 jq: apt install jq 或 yum install jq"
+    exit 1
+fi
+
 # 从 JSON 读取配置（【优化】只调用 1 次 jq，避免 10 次 fork + 文件 I/O）
 declare -A CFG
 while IFS='=' read -r key value; do
@@ -239,13 +247,6 @@ fi
 
 echo -e "${GREEN}成功${NC}: 配置文件已加载 ${CONFIG_FILE}"
 echo ""
-
-# 检查 jq 是否可用
-if ! command -v jq &> /dev/null; then
-    echo -e "${RED}错误${NC}: jq 未安装 (必需工具)"
-    echo "请安装 jq: apt install jq 或 yum install jq"
-    exit 1
-fi
 
 # 检查必要配置
 if [ -z "$CF_API_TOKEN" ] || [ -z "$CF_ZONE_ID" ] || [ -z "$CF_DNS_NAME" ]; then
