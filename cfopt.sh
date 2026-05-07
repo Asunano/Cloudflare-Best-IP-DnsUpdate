@@ -479,7 +479,8 @@ check_network_health() {
     echo -e "${CYAN}[INFO] 正在执行网络健康检查...${NC}"
     
     for url in "${test_urls[@]}"; do
-        if curl -s --connect-timeout 5 --max-time 10 "${url}" > /dev/null 2>&1; then
+        # 【修复】添加 -f 参数，使 curl 在 HTTP 错误（403/404等）时返回非零退出码
+        if curl -sf --connect-timeout 5 --max-time 10 "${url}" > /dev/null 2>&1; then
             echo -e "${GREEN}[OK] 网络连接正常: ${url}${NC}"
             return 0
         fi

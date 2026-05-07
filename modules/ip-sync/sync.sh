@@ -196,14 +196,7 @@ sync_cf_dns_ips() {
             has_synced=true
         fi
         
-        # 【修复】每次循环重新查找最新结果文件，避免使用过期数据
-        local latest_result
-        latest_result=$(find_latest_file "${RESULT_DIR}" "result_*.csv")
-        
-        if [[ -n "${latest_result}" ]]; then
-            RESULT_CSV="${latest_result}"
-        fi
-        
+        # 【修复】移除冗余的 RESULT_CSV 覆盖逻辑，直接使用 result_file 变量
         # 从配置中读取限制数量、目标文件路径和测速结果文件路径
         local max_ips target_file result_file
         max_ips=$(jq -r '.dns.max_ips_per_record // 2' "$json_file")
