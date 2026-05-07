@@ -240,7 +240,9 @@ sync_cf_dns_ips() {
         } > "${target_file}"
         
         local actual_count
-        actual_count="$(wc -l < "${target_file}")"
+        # 【修复】只统计非注释行，排除 4 行注释头
+        actual_count="$(grep -v '^#' "${target_file}" | grep -v '^\s*$' | wc -l)"
+        actual_count="${actual_count// /}"
         
         # 【关键】如果没有找到有效 IP（所有 IP 下载速度都为 0），说明测速有问题
         # 在无人值守模式下，自动重新测速
@@ -267,7 +269,10 @@ sync_cf_dns_ips() {
                         awk -F',' '{gsub(/\r/,"",$5); gsub(/\r/,"",$6); gsub(/\r/,"",$7); print $1"|"$5"|"$6"|"$7}'
                 } > "${target_file}"
                 
-                actual_count="$(wc -l < "${target_file}")"
+                local actual_count
+                # 【修复】只统计非注释行，排除 4 行注释头
+                actual_count="$(grep -v '^#' "${target_file}" | grep -v '^\s*$' | wc -l)"
+                actual_count="${actual_count// /}"
                 
                 # 如果重新测速后仍然失败，跳过
                 if [[ "${actual_count}" -eq 0 ]]; then
@@ -358,7 +363,9 @@ _sync_single_dnspod_config() {
         } > "${target_file}"
         
         local actual_count
-        actual_count=$(wc -l < "${target_file}" | tr -d ' ')
+        # 【修复】只统计非注释行，排除 4 行注释头
+        actual_count=$(grep -v '^#' "${target_file}" | grep -v '^\s*$' | wc -l)
+        actual_count="${actual_count// /}"
         
         echo -e "    ${GREEN}[OK]${NC} ${domain_name}: 已同步 ${actual_count} 个 IP 到 ${target_file}"
         return 0
