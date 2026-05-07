@@ -40,10 +40,12 @@ fi
 
 # 从配置文件读取 MAX_RETRY，与 cf-ip/core.sh 保持一致
 if [[ -f "${CONFIG_FILE}" ]]; then
-    export MAX_RETRY=$(jq -r '.speed_test.max_retry // 3' "${CONFIG_FILE}")
+    MAX_RETRY=$(jq -r '.speed_test.max_retry // 3' "${CONFIG_FILE}")
+    export MAX_RETRY
 else
     # 如果配置文件不存在，使用默认值
-    export MAX_RETRY=3
+    MAX_RETRY=3
+    export MAX_RETRY
 fi
 
 echo -e "${GREEN}[INFO] 最大重试次数: ${MAX_RETRY}${NC}"
@@ -431,8 +433,8 @@ csv_to_iplist() {
     echo "#" >> "$iplist_file"
     echo "# IP地址|延迟(ms)|下载速度(MB/s)|地区码" >> "$iplist_file"
     
-    # 跳过 CSV 标题行，提取需要的字段
-    tail -n +2 "$csv_file" | while IFS=',' read -r ip sent recv loss delay speed region; do
+    # 跳过 CSV 标题行，提取需要的字段（只读取使用的列）
+    tail -n +2 "$csv_file" | while IFS=',' read -r ip _ _ _ delay speed region; do
         # 清理 Windows 换行符
         region=$(echo "$region" | tr -d '\r' | xargs)
         
