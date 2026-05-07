@@ -3116,14 +3116,12 @@ clear
 echo ""
 echo -e "${CYAN}正在生成配置文件...${NC}"
 
-# 确保配置目录存在
-local config_dir
+# 【修复】移除函数外的 local 关键字，改为普通变量
 config_dir=$(dirname "$CONFIG_FILE")
 mkdir -p "$config_dir"
 chmod 755 "$config_dir"
 
 # 使用临时文件 + jq 生成 JSON 配置（原子写入）
-local temp_file
 temp_file=$(mktemp "${config_dir}/.tmp.XXXXXX")
 
 # 构建基础配置对象
@@ -3206,8 +3204,7 @@ if [ "$MODE" = "multi" ]; then
     echo -e "${CYAN}正在创建 IP 文件模板...${NC}"
     echo ""
     
-    # 从配置文件读取实际的 IP 文件路径
-    local ip_dir
+    # 【修复】移除函数外的 local 关键字
     ip_dir=$(jq -r '.ip_source.files // empty' "$CONFIG_FILE" 2>/dev/null)
     
     if [[ -z "$ip_dir" ]] || [[ "$ip_dir" == "null" ]]; then
@@ -3252,12 +3249,11 @@ if [ "$MODE" = "multi" ]; then
             continue
         fi
         
-        local filepath="${ip_dir}/${filename}"
+        filepath="${ip_dir}/${filename}"
         
         # 只在文件不存在时创建
         if [[ ! -f "$filepath" ]]; then
-            # 使用临时文件 + mv 实现原子写入
-            local temp_file
+            # 【修复】移除函数外的 local 关键字
             temp_file=$(mktemp "${ip_dir}/.tmp.XXXXXX")
             
             cat > "$temp_file" << EOF
