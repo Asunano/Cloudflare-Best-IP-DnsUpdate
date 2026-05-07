@@ -1130,7 +1130,12 @@ main_multi() {
         fi
         
         # 【安全修复】计算需要处理的记录数（取最大值以确保所有 IP 都被处理）
-        local process_count=$(([ ${#ip_addresses[@]} -gt ${record_count} ] ? ${#ip_addresses[@]} : ${record_count}))
+        local process_count
+        if [[ ${#ip_addresses[@]} -gt ${record_count} ]]; then
+            process_count=${#ip_addresses[@]}
+        else
+            process_count=${record_count}
+        fi
         
         for ((i=0; i<process_count; i++)); do
             # 【安全修复】循环使用 IP 地址（当 IP 数量少于记录数时）
