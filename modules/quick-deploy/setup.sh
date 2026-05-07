@@ -635,7 +635,8 @@ generate_dnspod_config() {
             }' > "$temp_file"
     else
         # 按域名独立存储 IP 列表，避免多域名冲突
-        local ip_file="${ROOT_DIR}/assets/data/dnspod-dns/${full_domain}.txt"
+        # 【修复】统一使用 .iplist 格式（标准格式：IP|延迟|速度|地区码），与 dnspod-dns/core.sh 保持一致
+        local ip_file="${ROOT_DIR}/assets/data/dnspod-dns/${full_domain}.iplist"
             
         jq -n \
             --arg domain "$domain" \
@@ -705,7 +706,8 @@ generate_cf_dns_config() {
     temp_file=$(mktemp)
     
     # 按域名独立存储 IP 列表和测速结果，避免多域名冲突
-    local ip_file="${ROOT_DIR}/assets/data/cf-dns/${full_domain}.txt"
+    # 【修复】统一使用 .iplist 格式（标准格式：IP|延迟|速度|地区码），与 cf-dns/core.sh 保持一致
+    local ip_file="${ROOT_DIR}/assets/data/cf-dns/${full_domain}.iplist"
     local result_file="${ROOT_DIR}/assets/data/cf-ip/result_${full_domain}.csv"
     
     jq -n \
