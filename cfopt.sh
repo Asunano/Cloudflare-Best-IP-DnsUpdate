@@ -63,8 +63,12 @@ log() {
     local timestamp
     timestamp="$(date '+%Y-%m-%d %H:%M:%S')"
     
+    # 【修复】延迟求值 INSTALL_DIR，确保使用最新的值
+    local log_dir="${INSTALL_DIR:-.}/logs"
+    mkdir -p "$log_dir" 2>/dev/null || true
+    
     # 格式化输出（对齐级别）
-    printf "[%s] [%-5s] [cfopt] %s\n" "$timestamp" "$level" "$*" | tee -a "${INSTALL_DIR:-.}/logs/error.log" 2>/dev/null || true
+    printf "[%s] [%-5s] [cfopt] %s\n" "$timestamp" "$level" "$*" | tee -a "${log_dir}/error.log" 2>/dev/null || true
 }
 
 # 记录错误日志
