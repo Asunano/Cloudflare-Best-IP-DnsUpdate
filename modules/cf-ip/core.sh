@@ -721,12 +721,24 @@ for ((retry=0; retry<=MAX_RETRY; retry++)); do
     # 【重构】使用函数构建命令，消除代码重复
     build_cfst_cmd "${TARGET_COLO}" "${OUTPUT_CSV}" "${IP_DATA_FILE}"
     
+    # 【修复】设置测速超时时间（默认 300 秒 = 5 分钟）
+    local cfst_timeout=300
+    if [[ -n "${CFST_TIMEOUT:-}" ]] && [[ "${CFST_TIMEOUT}" =~ ^[0-9]+$ ]]; then
+        cfst_timeout="${CFST_TIMEOUT}"
+    fi
+    
     # 2. 【修复】使用 subshell 隔离目录切换
     (
         cd "$(dirname "${CFST_BIN}")" || exit 1
         
-        # 3. 启动测速程序（后台运行）
-        "${CFST_CMD_ARRAY[@]}" > "${LOG_FILE}" 2>&1 &
+        # 3. 【修复】启动测速程序（后台运行），添加超时保护
+        if command -v timeout >/dev/null 2>&1; then
+            # 使用 timeout 命令限制执行时间
+            timeout "${cfst_timeout}" "${CFST_CMD_ARRAY[@]}" > "${LOG_FILE}" 2>&1 &
+        else
+            # fallback：不使用超时（兼容旧系统）
+            "${CFST_CMD_ARRAY[@]}" > "${LOG_FILE}" 2>&1 &
+        fi
         CFST_PID=$!
         
         # 4. 实时显示进度（使用通用监控函数）
