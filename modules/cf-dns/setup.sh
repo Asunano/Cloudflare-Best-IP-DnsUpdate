@@ -6,6 +6,9 @@
 # Description: 引导用户完成 API 令牌、Zone ID 及域名记录的交互式配置
 # Usage: bash modules/cf-dns/setup.sh
 # ==============================================================================
+# 【安全修复】启用严格模式，防止错误传播
+set -euo pipefail
+
 # shellcheck disable=SC2034
 SCRIPT_VERSION="0.1"
 
