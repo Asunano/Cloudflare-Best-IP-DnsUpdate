@@ -359,7 +359,6 @@ for ip_file in "${IP_FILES_TO_CHECK[@]}"; do
     done < "${ip_file}"
     
     # 提取 IP 部分（支持 IP|延迟|速度|地区码 格式）
-    local first_ip
     first_ip=$(echo "${FIRST_LINE}" | cut -d'|' -f1 | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
     if [[ -z "${first_ip}" ]] || [[ ! "${first_ip}" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
         log_msg "ERROR" "IP 文件格式错误或包含无效数据 (${ip_file}): ${FIRST_LINE:-空}"
