@@ -473,20 +473,8 @@ get_cf_ip_from_file() {
         return 1
     fi
     
-    # 检查文件修改时间，如果文件没有变化则返回空（由主函数处理）
-    local current_mtime
-    current_mtime=$(stat -c %Y "$IP_FILE" 2>/dev/null || stat -f %m "$IP_FILE" 2>/dev/null)
-    local cache_file="${IP_FILE}.mtime"
-    
-    if [ -f "$cache_file" ]; then
-        local cached_mtime
-        cached_mtime=$(cat "$cache_file")
-        if [ "$current_mtime" = "$cached_mtime" ]; then
-            # 文件未变化，但我们需要读取内容让主函数处理
-            # 这里不返回空，而是继续执行，由主函数判断是否需要更新
-            :
-        fi
-    fi
+    # 【修复】移除死代码缓存逻辑（原逻辑无论文件是否变化都继续执行，毫无意义）
+    # 如果需要实现真正的缓存，应该返回缓存内容并 return，但当前设计不需要缓存
     
     # 读取文件内容,支持多种格式:
     # 1. 每行一个 IP
@@ -984,21 +972,39 @@ main() {
             
         # 情况 1：有现有记录且有待同步的 IP → 执行智能匹配更新
         if [ "$record_count" -gt 0 ] && [ ${#ip_addresses[@]} -gt 0 ]; then
-            # 找出可以直接保留的记录（IP 和位置都相同）
+            # 【修复】使用集合差异算法，避免位置依赖导致的遗漏
+            # 找出可以直接保留的记录（IP 相同）
             local -a matched_indices=()
+            local -a used_target_indices=()  # 跟踪已使用的目标 IP 索引
                 
-            for ((i=0; i<record_count && i<${#ip_addresses[@]}; i++)); do
+            for ((i=0; i<record_count; i++)); do
                 local existing_ip="${current_values[$i]}"
-                local target_ip="${ip_addresses[$i]}"
                 local clean_existing
                 clean_existing=$(echo "$existing_ip" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
-                local clean_target
-                clean_target=$(echo "$target_ip" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
                     
-                if [ "$clean_existing" = "$clean_target" ]; then
-                    matched_indices+=("$i")
-                    skipped_count=$((skipped_count + 1))
-                fi
+                # 在目标列表中查找匹配的 IP
+                for ((j=0; j<${#ip_addresses[@]}; j++)); do
+                    # 跳过已使用的目标 IP
+                    local is_used=false
+                    for ui in "${used_target_indices[@]}"; do
+                        if [ "$ui" -eq "$j" ]; then
+                            is_used=true
+                            break
+                        fi
+                    done
+                    [ "$is_used" = true ] && continue
+                        
+                    local target_ip="${ip_addresses[$j]}"
+                    local clean_target
+                    clean_target=$(echo "$target_ip" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
+                        
+                    if [ "$clean_existing" = "$clean_target" ]; then
+                        matched_indices+=("$i")
+                        used_target_indices+=("$j")
+                        skipped_count=$((skipped_count + 1))
+                        break
+                    fi
+                done
             done
                 
             # 对于未匹配的记录，尝试找到可以更新的
@@ -1013,27 +1019,24 @@ main() {
                 done
                 [ "$is_matched" = true ] && continue
                     
-                # 检查这个位置的 IP 是否在目标列表中
-                local existing_ip="${current_values[$i]}"
-                local clean_existing
-                clean_existing=$(echo "$existing_ip" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
-                    
-                local found_in_target=false
-                for target_ip in "${ip_addresses[@]}"; do
-                    local clean_target
-                    clean_target=$(echo "$target_ip" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
-                    if [ "$clean_existing" = "$clean_target" ]; then
-                        found_in_target=true
-                        break
-                    fi
-                done
-                    
-                # 如果这个 IP 不在目标列表中，它应该已经被删除了
-                # 如果还在，说明需要更新为目标 IP
-                if [ "$found_in_target" = false ] && [ $i -lt ${#ip_addresses[@]} ]; then
-                    ips_to_update+=("${ip_addresses[$i]}")
+                # 找到一个未被使用的目标 IP 来更新这条记录
+                for ((j=0; j<${#ip_addresses[@]}; j++)); do
+                    # 跳过已使用的目标 IP
+                    local is_used=false
+                    for ui in "${used_target_indices[@]}"; do
+                        if [ "$ui" -eq "$j" ]; then
+                            is_used=true
+                            break
+                        fi
+                    done
+                    [ "$is_used" = true ] && continue
+                        
+                    # 将这个目标 IP 分配给当前记录
+                    ips_to_update+=("${ip_addresses[$j]}")
                     update_record_ids+=("${record_ids[$i]}")
-                fi
+                    used_target_indices+=("$j")
+                    break
+                done
             done
         fi
             
