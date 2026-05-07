@@ -8,6 +8,9 @@
 set -euo pipefail
 IFS=$'\n\t'
 
+# 【修复】在脚本开头保存原始参数，防止后续被修改或消耗
+ORIGINAL_ARGS=("$@")
+
 # --- 终端颜色定义 (必须最先定义，防止 set -u 报错) ---
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
@@ -284,7 +287,8 @@ if [[ "${CURRENT_SCRIPT_PATH}" != "${TARGET_SCRIPT_PATH}" ]]; then
                 
                 # 【标准做法】使用 exec 替换当前进程
                 # exec 会用新进程完全替换当前进程，包括文件描述符
-                exec bash "${TARGET_SCRIPT_PATH}" "$@"
+                # 【修复】使用保存的原始参数，防止参数丢失
+                exec bash "${TARGET_SCRIPT_PATH}" "${ORIGINAL_ARGS[@]}"
             else
                 log_error "目标文件语法检查失败:"
                 cat /tmp/cfopt_syntax_check.log >&2
@@ -319,7 +323,8 @@ if [[ "${CURRENT_SCRIPT_PATH}" != "${TARGET_SCRIPT_PATH}" ]]; then
                 
                 # 【标准做法】使用 exec 替换当前进程
                 # exec 会用新进程完全替换当前进程，包括文件描述符
-                exec bash "${TARGET_SCRIPT_PATH}" "$@"
+                # 【修复】使用保存的原始参数，防止参数丢失
+                exec bash "${TARGET_SCRIPT_PATH}" "${ORIGINAL_ARGS[@]}"
             else
                 log_error "目标文件语法检查失败:"
                 cat /tmp/cfopt_syntax_check.log >&2
