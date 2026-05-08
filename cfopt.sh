@@ -99,7 +99,8 @@ trigger_rollback() {
 }
 
 # 安全执行命令（带错误检查）
-# 先保存退出码，避免 local 声明重置 $?
+# 【关键修复】使用 "|| true" 防止 set -e 在命令失败时终止脚本
+# 这样 exit_code=$? 才能正确捕获退出码
 safe_execute() {
     # 【关键修复】确保日志函数已定义，防止首次安装时 common.sh 未加载
     if ! declare -f log_error >/dev/null 2>&1; then
@@ -110,9 +111,10 @@ safe_execute() {
     shift
     local exit_code
     
-    # 执行命令并立即保存退出码
-    "$@"
-    exit_code=$?
+    # 【关键修复】执行命令并捕获退出码
+    # 使用 "|| true" 确保即使命令失败，也不会触发 set -e
+    # 然后立即保存退出码，避免后续命令重置 $?
+    "$@" && exit_code=0 || exit_code=$?
     
     if [[ ${exit_code} -ne 0 ]]; then
         log_error "${description} (退出码: ${exit_code})"
