@@ -154,6 +154,7 @@ safe_move() {
 }
 
 # 安全的文件复制（带验证）
+# 【安全修复】增强目录复制的验证逻辑，处理 target 已存在的情况
 safe_copy() {
     local source="$1"
     local target="$2"
@@ -175,12 +176,37 @@ safe_copy() {
     
     # 执行复制
     if cp -r "${source}" "${target}" 2>/dev/null; then
-        # 验证目标是否存在
-        if [[ -e "${target}" ]]; then
-            return 0
+        # 【修复】根据源类型进行不同的验证
+        if [[ -d "${source}" ]]; then
+            # 源是目录：需要验证正确的目标路径
+            if [[ -d "${target}" ]]; then
+                # target 是目录：cp -r dir1 dir2 会将 dir1 复制为 dir2/dir1
+                # 验证 dir2/dir1 是否存在
+                local source_basename
+                source_basename="$(basename "${source}")"
+                if [[ -d "${target}/${source_basename}" ]]; then
+                    return 0
+                else
+                    log_error "${description}: 目录复制验证失败 (预期: ${target}/${source_basename})"
+                    return 1
+                fi
+            else
+                # target 不存在或不是目录：cp -r dir1 dir2 会创建 dir2
+                if [[ -d "${target}" ]]; then
+                    return 0
+                else
+                    log_error "${description}: 目录复制验证失败 (预期: ${target})"
+                    return 1
+                fi
+            fi
         else
-            log_error "${description}: 目标验证失败"
-            return 1
+            # 源是文件：直接验证 target 是否存在
+            if [[ -e "${target}" ]]; then
+                return 0
+            else
+                log_error "${description}: 文件复制验证失败"
+                return 1
+            fi
         fi
     else
         log_error "${description}: 复制失败"
