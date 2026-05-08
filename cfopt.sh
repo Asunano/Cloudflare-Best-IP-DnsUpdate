@@ -273,39 +273,39 @@ if [[ "${CURRENT_SCRIPT_PATH}" != "${TARGET_SCRIPT_PATH}" ]]; then
     
     # 如果目标文件已存在，直接复制而非移动（避免破坏正在运行的脚本）
     if [[ -f "${TARGET_SCRIPT_PATH}" ]]; then
-        log_info "目标位置已存在脚本，正在更新..."
+        echo -e "${CYAN}[INFO] 目标位置已存在脚本，正在更新...${NC}"
         if safe_copy "${CURRENT_SCRIPT_PATH}" "${TARGET_SCRIPT_PATH}" "脚本更新"; then
             chmod +x "${TARGET_SCRIPT_PATH}"
-            log_success "更新成功，正在从新位置启动..."
+            echo -e "${GREEN}[OK] 更新成功，正在从新位置启动...${NC}"
             
-            # 【安全修复】验证目标文件是否可执行
+            # 验证目标文件是否可执行
             if [[ ! -x "${TARGET_SCRIPT_PATH}" ]]; then
-                log_error "目标文件不可执行，尝试修复权限..."
+                echo -e "${RED}[ERROR] 目标文件不可执行，尝试修复权限...${NC}"
                 chmod 755 "${TARGET_SCRIPT_PATH}"
             fi
             
-            # 【调试】输出文件信息，帮助诊断问题
-            log_info "目标文件: ${TARGET_SCRIPT_PATH}"
-            log_info "文件大小: $(wc -c < "${TARGET_SCRIPT_PATH}") 字节"
-            log_info "文件权限: $(stat -c '%a' "${TARGET_SCRIPT_PATH}" 2>/dev/null || stat -f '%Lp' "${TARGET_SCRIPT_PATH}" 2>/dev/null)"
-            log_info "文件头: $(head -1 "${TARGET_SCRIPT_PATH}")"
+            # 输出文件信息，帮助诊断问题
+            echo -e "${CYAN}[INFO] 目标文件: ${TARGET_SCRIPT_PATH}${NC}"
+            echo -e "${CYAN}[INFO] 文件大小: $(wc -c < "${TARGET_SCRIPT_PATH}") 字节${NC}"
+            echo -e "${CYAN}[INFO] 文件权限: $(stat -c '%a' "${TARGET_SCRIPT_PATH}" 2>/dev/null || stat -f '%Lp' "${TARGET_SCRIPT_PATH}" 2>/dev/null)${NC}"
+            echo -e "${CYAN}[INFO] 文件头: $(head -1 "${TARGET_SCRIPT_PATH}")${NC}"
             
-            # 【安全修复】先测试目标文件是否可以正常执行
+            # 先测试目标文件是否可以正常执行
             if bash -n "${TARGET_SCRIPT_PATH}" 2>/tmp/cfopt_syntax_check.log; then
-                log_info "语法检查通过，正在启动..."
+                echo -e "${CYAN}[INFO] 语法检查通过，正在启动...${NC}"
                 
-                # 【标准做法】使用 exec 替换当前进程
+                # 使用 exec 替换当前进程
                 # exec 会用新进程完全替换当前进程，包括文件描述符
-                # 【修复】使用保存的原始参数，防止参数丢失
+                # 使用保存的原始参数，防止参数丢失
                 exec bash "${TARGET_SCRIPT_PATH}" "${ORIGINAL_ARGS[@]}"
             else
-                log_error "目标文件语法检查失败:"
+                echo -e "${RED}[ERROR] 目标文件语法检查失败:${NC}"
                 cat /tmp/cfopt_syntax_check.log >&2
-                log_error "请手动运行: ${TARGET_SCRIPT_PATH}"
+                echo -e "${RED}[ERROR] 请手动运行: ${TARGET_SCRIPT_PATH}${NC}"
                 exit 1
             fi
         else
-            log_error "脚本更新失败，请检查权限。"
+            echo -e "${RED}[ERROR] 脚本更新失败，请检查权限。${NC}"
             exit 1
         fi
     else
