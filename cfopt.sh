@@ -447,16 +447,17 @@ install_system_cmd() {
     # 【安全修复】重定向到 /dev/tty，确保从终端读取输入
     # 解决 wget -O- | bash 管道安装时 stdin 被占用的问题
     local input_device="/dev/tty"
+    local install_cmd=""  # 【修复】声明为局部变量，避免污染全局命名空间
     if [[ -e "${input_device}" ]]; then
-        read -r -p "是否现在安装？(y/n，默认y): " INSTALL_CMD < "${input_device}"
+        read -r -p "是否现在安装？(y/n，默认y): " install_cmd < "${input_device}"
     else
         # 非交互式环境（无 tty），默认安装
-        INSTALL_CMD="y"
+        install_cmd="y"
         echo -e "${CYAN}[INFO] 非交互式环境，自动安装全局命令${NC}"
     fi
-    INSTALL_CMD="${INSTALL_CMD:-y}"
+    install_cmd="${install_cmd:-y}"
 
-    if [[ "${INSTALL_CMD}" =~ ^[Yy]$ ]]; then
+    if [[ "${install_cmd}" =~ ^[Yy]$ ]]; then
         local script_path
         script_path="$(readlink -f "$0")"
         
