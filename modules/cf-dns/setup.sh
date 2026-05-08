@@ -22,26 +22,8 @@ if [[ ! -t 0 ]] && [[ -z "${CF_OPT_ENTRY:-}" ]]; then
 fi
 
 # ==================== 跨平台文件查找辅助函数 ====================
-# 【修复】跨平台查找最新文件（替代 find -printf，兼容 macOS/BSD）
-# 参数: $1=目录路径, $2=文件名模式 (如 "cfdns_*.log")
-# 返回: 最新文件的完整路径
-find_latest_file() {
-    local search_dir="$1"
-    local pattern="$2"
-    
-    # 方法1: 使用 stat -f '%m' (macOS/BSD)
-    if stat -f '%m' /dev/null >/dev/null 2>&1; then
-        find "${search_dir}" -name "${pattern}" -type f -exec stat -f '%m %N' {} \; 2>/dev/null | \
-            sort -rn | head -n 1 | awk '{print $2}'
-    # 方法2: 使用 stat -c '%Y' (Linux)
-    elif stat -c '%Y' /dev/null >/dev/null 2>&1; then
-        find "${search_dir}" -name "${pattern}" -type f -exec stat -c '%Y %n' {} \; 2>/dev/null | \
-            sort -rn | head -n 1 | awk '{print $2}'
-    # 方法3: 使用 ls -t (备用方案)
-    else
-        ls -t "${search_dir}"/${pattern} 2>/dev/null | head -n 1
-    fi
-}
+# 【已移除】find_latest_file() 已在 lib/common.sh 中统一定义，此处删除重复实现
+# common.sh 版本使用 -maxdepth 1 避免递归搜索，更安全
 
 # ==================== 菜单框线样式 ====================
 MENU_BORDER="+------------------------------------------------------------+"

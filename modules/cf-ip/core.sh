@@ -110,9 +110,7 @@ if [[ -n "${CF_OPT_ENTRY:-}" ]] && [[ "${CF_OPT_ENTRY}" != "1" ]] && [[ "${CF_OP
     exit 1
 fi
 
-# ==================== 路径初始化 ====================
-SCRIPT_DIR="$( cd -P "$( dirname "${BASH_SOURCE[0]}" )" >/dev/null 2>&1 && pwd )"
-ROOT_DIR="$(cd "$SCRIPT_DIR/../.." && pwd)"
+# 【已移除】SCRIPT_DIR/ROOT_DIR 已在文件开头定义，此处删除重复定义
 
 # 清屏，准备显示测速信息
 clear 2>/dev/null || true
@@ -283,16 +281,8 @@ fi
 LOCK_FILE="${OUTPUT_DIR}/.cf-ip_core_${LINE_TAG}.lock"
 
 # ==================== 跨平台反向读取文件函数 ====================
-# 兼容 Linux（tac）和 macOS（tail -r）
-reverse_read() {
-    local file="$1"
-    if command -v tac &>/dev/null; then
-        tac "$file"
-    else
-        # macOS 使用 tail -r
-        tail -r "$file" 2>/dev/null || cat "$file"
-    fi
-}
+# 【已移除】reverse_read() 已在 lib/common.sh 中统一定义，此处删除重复实现
+# common.sh 提供跨平台兼容：Linux (tac) / macOS (tail -r)
 
 acquire_lock() {
     # 【修复】检查残留的锁文件是否过期（超过 30 分钟视为残留）

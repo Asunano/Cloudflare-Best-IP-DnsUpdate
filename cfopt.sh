@@ -24,7 +24,7 @@ NC='\033[0m'
 
 # ====================== 【统一错误处理系统】 ======================
 
-# 【修复】先定义最小化的日志函数（不依赖 INSTALL_DIR）
+# 【修复】先定义最小化的日志轮转函数（不依赖 INSTALL_DIR）
 # 在 INSTALL_DIR 确定后，会被公共库的完整版本替代
 _CFOPT_LOG_DIR="."
 
@@ -50,22 +50,10 @@ _rotate_log_fallback() {
     fi
 }
 
-# 统一日志格式: [2026-05-06 09:30:00] [INFO ] [cfopt] message
-# 【修复】在公共库加载前使用的临时版本
-log() {
-    local level="$1"
-    shift
-    local timestamp
-    timestamp="$(date '+%Y-%m-%d %H:%M:%S')"
-    local log_dir="${_CFOPT_LOG_DIR}/logs"
-    mkdir -p "$log_dir" 2>/dev/null || true
-    printf "[%s] [%-5s] [cfopt] %s\n" "$timestamp" "$level" "$*" | tee -a "${log_dir}/error.log" 2>/dev/null || true
-}
-
-log_error() { log "ERROR" "$@"; }
-log_warn() { log "WARN" "$@"; }
-log_success() { log "OK" "$@"; }
-log_info() { log "INFO" "$@"; }
+# 【移除】临时日志函数已删除，改用 echo 直接输出
+# 原因：lib/common.sh 中的 log() 函数签名更智能（自动判断级别）
+#       临时版本强制将第一个参数作为级别，可能导致行为不一致
+#       在 common.sh 加载前的日志需求极少，直接使用 echo 即可
 
 # 触发回滚
 # 【新增】回滚函数（用于 trigger_rollback）
