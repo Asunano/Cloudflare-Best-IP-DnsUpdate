@@ -215,12 +215,25 @@ safe_copy() {
                 fi
             fi
         else
-            # 源是文件：直接验证 target 是否存在
-            if [[ -e "${target}" ]]; then
-                return 0
+            # 源是文件
+            if [[ -d "${target}" ]]; then
+                # target 是目录：验证文件是否复制到了目录内
+                local file_basename
+                file_basename="$(basename "${source}")"
+                if [[ -e "${target}/${file_basename}" ]]; then
+                    return 0
+                else
+                    log_error "${description}: 文件复制验证失败 (预期: ${target}/${file_basename})"
+                    return 1
+                fi
             else
-                log_error "${description}: 文件复制验证失败"
-                return 1
+                # target 是文件路径：直接验证
+                if [[ -e "${target}" ]]; then
+                    return 0
+                else
+                    log_error "${description}: 文件复制验证失败"
+                    return 1
+                fi
             fi
         fi
     else
