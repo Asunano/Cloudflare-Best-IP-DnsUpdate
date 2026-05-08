@@ -1820,10 +1820,16 @@ init_cfopt() {
             fi
         fi
         
+        # 【安全修复】确保 download_ok 始终有值，防止 set -u 报错
+        download_ok="${download_ok:-false}"
+        
         if [[ "${download_ok}" = true ]]; then
             chmod +x "${INSTALL_DIR}/${module_path}" 2>/dev/null || true
         else
             log_warn "${module_name} 下载失败或校验失败"
+            # 【调试】显示失败的 URL 和预期哈希
+            echo -e "${YELLOW}[DEBUG] 失败URL: ${REMOTE_URL_MIRROR}/${module_path}${NC}"
+            echo -e "${YELLOW}[DEBUG] 预期哈希: ${expected_hash:-无}${NC}"
             download_success=false
         fi
     done
