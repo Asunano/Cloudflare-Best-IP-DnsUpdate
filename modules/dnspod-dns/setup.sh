@@ -106,11 +106,6 @@ acquire_lock() {
     # 锁会在脚本退出时自动释放（fd 9 关闭）
 }
 
-# 释放执行锁
-release_lock() {
-    rm -f "$LOCK_FILE"
-}
-
 # ==================== 辅助函数：JSON 配置读取 ====================
 # 从 JSON 配置文件读取值
 # 用法: json_get ".dns.domain" "默认值"
@@ -210,20 +205,29 @@ show_menu() {
     local strategy_info=""
     
     if [[ -f "$CONFIG_FILE" ]]; then
-        # 从 JSON 读取配置
-        local MODE
-        MODE=$(json_get ".dns.mode" "single")
-        local DOMAIN
-        DOMAIN=$(json_get ".dns.domain" "")
+        # 【性能优化】单次 jq 调用批量读取所有配置字段，减少进程 fork
+        local config_data
+        config_data=$(jq -r '[
+            .dns.mode // "single",
+            .dns.domain // "",
+            .dns.subdomain_strategy // "separate",
+            .dns.isp_lines // "默认",
+            .dns.sub_domain_unified // "dns",
+            .dns.sub_domains.default // "default",
+            .dns.sub_domains.unicom // "unicom",
+            .dns.sub_domains.mobile // "mobile",
+            .dns.sub_domains.telecom // "telecom",
+            .dns.sub_domain // "dns"
+        ] | @tsv' "$CONFIG_FILE" 2>/dev/null || echo -e "single\t\tseparate\t默认\tdns\tdefault\tunicom\tmobile\ttelecom\tdns")
+        
+        # 解析 TSV 数据
+        IFS=$'\t' read -r MODE DOMAIN STRATEGY ISP_LINES UNIFIED_SUBDOMAIN \
+            SUB_DEFAULT SUB_UNICOM SUB_MOBILE SUB_TELECOM SUB_DOMAIN <<< "$config_data"
         
         # shellcheck disable=SC2153
         if [[ "$MODE" == "multi" ]]; then
-            # 提取子域名分流策略
-            local strategy
-            strategy=$(json_get ".dns.subdomain_strategy" "separate")
-            
             # 根据策略设置显示提示
-            if [[ "$strategy" == "unified" ]]; then
+            if [[ "$STRATEGY" == "unified" ]]; then
                 strategy_info=" ${YELLOW}策略: 统一模式"
             else
                 strategy_info=" ${YELLOW}策略: 分离模式"
@@ -231,35 +235,29 @@ show_menu() {
             
             status_text="多线路模式 | 配置文件：已存在"
             
-            # 获取运营商线路列表
-            local isp_lines
-            isp_lines=$(json_get ".dns.isp_lines" "默认")
-            
-            if [[ "$strategy" == "unified" ]]; then
+            if [[ "$STRATEGY" == "unified" ]]; then
                 # 统一模式：显示统一子域名
-                local unified_subdomain
-                unified_subdomain=$(json_get ".dns.sub_domain_unified" "dns")
-                lines_info="  ${CYAN}线路: ${unified_subdomain}.${DOMAIN}"
+                lines_info="  ${CYAN}线路: ${UNIFIED_SUBDOMAIN}.${DOMAIN}"
             else
                 # 分离模式：显示各线路子域名
                 lines_info="  ${CYAN}线路:"
-                IFS=' ' read -ra line_array <<< "$isp_lines"
+                IFS=' ' read -ra line_array <<< "$ISP_LINES"
                 for line in "${line_array[@]}"; do
                     line=$(echo "$line" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
                     if [[ -n "$line" ]]; then
                         local subdomain
                         case "$line" in
                             "默认")
-                                subdomain=$(json_get ".dns.sub_domains.default" "default")
+                                subdomain="$SUB_DEFAULT"
                                 ;;
                             "联通")
-                                subdomain=$(json_get ".dns.sub_domains.unicom" "unicom")
+                                subdomain="$SUB_UNICOM"
                                 ;;
                             "移动")
-                                subdomain=$(json_get ".dns.sub_domains.mobile" "mobile")
+                                subdomain="$SUB_MOBILE"
                                 ;;
                             "电信")
-                                subdomain=$(json_get ".dns.sub_domains.telecom" "telecom")
+                                subdomain="$SUB_TELECOM"
                                 ;;
                             *)
                                 subdomain=$(echo "$line" | tr '[:upper:]' '[:lower:]')
@@ -271,9 +269,7 @@ show_menu() {
             fi
         else
             status_text="单线路模式 | 配置文件：已存在"
-            local sub_domain
-            sub_domain=$(json_get ".dns.sub_domain" "dns")
-            lines_info="  ${CYAN}线路: ${sub_domain}.${DOMAIN}"
+            lines_info="  ${CYAN}线路: ${SUB_DOMAIN}.${DOMAIN}"
         fi
     else
         status_text="未配置 | 配置文件：不存在"
@@ -309,10 +305,10 @@ show_menu() {
 show_modify_menu() {
     clear
     
-    # 读取当前运行模式（单线路/多线路）
+    # 【性能优化】单次 jq 调用读取运行模式
     local current_mode="single"
     if [[ -f "$CONFIG_FILE" ]]; then
-        current_mode=$(json_get ".dns.mode" "single")
+        current_mode=$(jq -r '.dns.mode // "single"' "$CONFIG_FILE" 2>/dev/null || echo "single")
     fi
     
     echo -e "${CYAN}${MENU_BORDER}"
@@ -359,19 +355,30 @@ check_config_valid() {
         return 1
     fi
     
-    # 检查关键配置项是否存在且不为空
-    local domain secretid secretkey
-    domain=$(json_get ".dns.domain" "")
-    secretid=$(json_get ".api.id" "")
-    secretkey=$(json_get ".api.token" "")
+    # 【性能优化】单次 jq 调用批量读取所有配置字段，减少进程 fork
+    local config_data
+    if [[ -f "$CONFIG_FILE" ]]; then
+        config_data=$(jq -r '[
+            .dns.mode // "single",
+            .dns.domain // "",
+            .api.id // "",
+            .api.token // "",
+            .dns.isp_lines // "",
+            .dns.subdomain_strategy // "separate",
+            .dns.sub_domain_unified // "",
+            .dns.sub_domains.default // "",
+            .dns.sub_domain // ""
+        ] | @tsv' "$CONFIG_FILE" 2>/dev/null || echo -e "single\t\t\t\t\tseparate\t\t\t")
+    else
+        config_data="$(echo -e "single\t\t\t\t\tseparate\t\t\t")"
+    fi
+    
+    # 解析 TSV 数据
+    IFS=$'\t' read -r mode domain secretid secretkey isp_lines strategy unified_sub default_sub sub_domain <<< "$config_data"
     
     if [[ -z "$domain" ]] || [[ -z "$secretid" ]] || [[ -z "$secretkey" ]]; then
         return 1
     fi
-    
-    # 检查 MODE 配置
-    local mode
-    mode=$(json_get ".dns.mode" "single")
     
     # 验证 MODE 值是否合法
     if [[ "$mode" != "single" ]] && [[ "$mode" != "multi" ]]; then
@@ -379,12 +386,9 @@ check_config_valid() {
         return 1
     fi
     
-    # 根据模式检查必要配置
+    # 根据模式检查必要配置（使用已读取的变量）
     if [[ "$mode" == "multi" ]]; then
         # 多线路模式检查
-        local isp_lines strategy
-        isp_lines=$(json_get ".dns.isp_lines" "")
-        strategy=$(json_get ".dns.subdomain_strategy" "separate")
         
         # 检查运营商线路是否配置
         if [[ -z "$isp_lines" ]]; then
@@ -401,16 +405,12 @@ check_config_valid() {
         
         # 如果是统一模式,检查统一子域名
         if [[ "$strategy" == "unified" ]]; then
-            local unified_sub
-            unified_sub=$(json_get ".dns.sub_domain_unified" "")
             if [[ -z "$unified_sub" ]]; then
                 echo -e "${YELLOW}[WARN] 检测到统一模式但未配置统一子域名" >&2
                 return 2
             fi
         else
             # 分离模式,至少检查默认线路子域名
-            local default_sub
-            default_sub=$(json_get ".dns.sub_domains.default" "")
             if [[ -z "$default_sub" ]]; then
                 echo -e "${YELLOW}[WARN] 检测到分离模式但未配置默认线路子域名" >&2
                 return 2
@@ -419,8 +419,6 @@ check_config_valid() {
         
     elif [[ "$mode" == "single" ]]; then
         # 单线路模式检查
-        local sub_domain
-        sub_domain=$(json_get ".dns.sub_domain" "")
         if [[ -z "$sub_domain" ]]; then
             echo -e "${YELLOW}[WARN] 检测到单线路模式但未配置子域名(SUB_DOMAIN)" >&2
             return 2
@@ -432,15 +430,24 @@ check_config_valid() {
 
 # 运行时配置检测 (更严格的检查)
 check_runtime_config() {
-    local mode
-    mode=$(json_get ".dns.mode" "single")
-    
     echo -e "${CYAN}━━ 运行时配置检测 ━━"
     echo ""
     
-    # 检查域名格式
-    local domain
-    domain=$(json_get ".dns.domain" "")
+    # 【性能优化】单次 jq 调用批量读取所有配置字段
+    local config_data
+    if [[ -f "$CONFIG_FILE" ]]; then
+        config_data=$(jq -r '[
+            .dns.mode // "single",
+            .dns.domain // "",
+            .api.id // "",
+            .api.token // ""
+        ] | @tsv' "$CONFIG_FILE" 2>/dev/null || echo -e "single\t\t\t")
+    else
+        config_data="$(echo -e "single\t\t\t")"
+    fi
+    
+    # 解析 TSV 数据
+    IFS=$'\t' read -r mode domain secretid secretkey <<< "$config_data"
     if [[ ! "$domain" =~ ^[a-zA-Z0-9]([a-zA-Z0-9\-]*[a-zA-Z0-9])?\.[a-zA-Z]{2,}$ ]]; then
         echo -e "${RED}[ERROR] 域名格式不合法: ${domain}"
         echo "   示例: drxian.cn, example.com"
@@ -449,10 +456,7 @@ check_runtime_config() {
         echo -e "${GREEN}[OK] 域名格式正确: ${domain}"
     fi
     
-    # 检查 API 密钥长度
-    local secretid secretkey
-    secretid=$(json_get ".api.id" "")
-    secretkey=$(json_get ".api.token" "")
+    # 检查 API 密钥长度（使用已读取的变量）
     
     if [[ ${#secretid} -lt 10 ]]; then
         echo -e "${RED}[ERROR] SECRETID 长度异常: ${#secretid} 字符"
@@ -2938,6 +2942,19 @@ fi
 fi
 
 echo ""
+
+# 【用户体验优化】清屏前显示已配置的摘要信息
+echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+echo -e "${GREEN}[INFO] 已完成的配置:${NC}"
+echo -e "  域名: ${DOMAIN}"
+echo -e "  工作模式: ${MODE}"
+if [ "$MODE" = "multi" ]; then
+    echo -e "  运营商线路: ${ISP_LINES[*]}"
+fi
+echo -e "  API SecretId: ${SECRETID:0:8}...${SECRETID: -4}"
+echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+echo ""
+read -r -p "按回车键继续配置 IP 文件..."
 
 # 清屏后进入下一步
 clear

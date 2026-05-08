@@ -290,39 +290,53 @@ if [[ "${CURRENT_SCRIPT_PATH}" != "${TARGET_SCRIPT_PATH}" ]]; then
             exit 1
         fi
     else
-        # 移动脚本并保留执行权限
-        if safe_move "${CURRENT_SCRIPT_PATH}" "${TARGET_SCRIPT_PATH}" "脚本迁移"; then
-            chmod +x "${TARGET_SCRIPT_PATH}"
-            log_success "迁移成功，正在从新位置启动..."
+        # 【安全修复】目标文件不存在时，使用 cp 而非 mv，保留原文件以防 exec 失败
+        log_info "首次安装，正在复制脚本到标准目录..."
+        
+        # 【修复】先复制到 .new 临时文件，验证后再替换（类似 updater 的做法）
+        TEMP_FILE="${TARGET_SCRIPT_PATH}.new"
+        
+        if safe_copy "${CURRENT_SCRIPT_PATH}" "${TEMP_FILE}" "脚本复制"; then
+            chmod +x "${TEMP_FILE}"
             
-            # 【安全修复】验证目标文件是否可执行
-            if [[ ! -x "${TARGET_SCRIPT_PATH}" ]]; then
-                log_error "目标文件不可执行，尝试修复权限..."
-                chmod 755 "${TARGET_SCRIPT_PATH}"
+            # 【安全修复】验证临时文件语法和可执行性
+            if [[ ! -x "${TEMP_FILE}" ]]; then
+                log_error "临时文件不可执行，尝试修复权限..."
+                chmod 755 "${TEMP_FILE}"
             fi
             
-            # 【调试】输出文件信息，帮助诊断问题
-            log_info "目标文件: ${TARGET_SCRIPT_PATH}"
-            log_info "文件大小: $(wc -c < "${TARGET_SCRIPT_PATH}") 字节"
-            log_info "文件权限: $(stat -c '%a' "${TARGET_SCRIPT_PATH}" 2>/dev/null || stat -f '%Lp' "${TARGET_SCRIPT_PATH}" 2>/dev/null)"
-            log_info "文件头: $(head -1 "${TARGET_SCRIPT_PATH}")"
-            
-            # 【安全修复】先测试目标文件是否可以正常执行
-            if bash -n "${TARGET_SCRIPT_PATH}" 2>/tmp/cfopt_syntax_check.log; then
-                log_info "语法检查通过，正在启动..."
+            # 语法检查
+            if bash -n "${TEMP_FILE}" 2>/tmp/cfopt_syntax_check.log; then
+                log_info "语法检查通过，正在完成安装..."
                 
-                # 【标准做法】使用 exec 替换当前进程
-                # exec 会用新进程完全替换当前进程，包括文件描述符
-                # 【修复】使用保存的原始参数，防止参数丢失
-                exec bash "${TARGET_SCRIPT_PATH}" "${ORIGINAL_ARGS[@]}"
+                # 【原子操作】将临时文件移动到目标位置
+                if mv -f "${TEMP_FILE}" "${TARGET_SCRIPT_PATH}" 2>/dev/null; then
+                    log_success "安装成功，正在从新位置启动..."
+                    
+                    # 【调试】输出文件信息
+                    log_info "目标文件: ${TARGET_SCRIPT_PATH}"
+                    log_info "文件大小: $(wc -c < "${TARGET_SCRIPT_PATH}") 字节"
+                    log_info "文件权限: $(stat -c '%a' "${TARGET_SCRIPT_PATH}" 2>/dev/null || stat -f '%Lp' "${TARGET_SCRIPT_PATH}" 2>/dev/null)"
+                    log_info "文件头: $(head -1 "${TARGET_SCRIPT_PATH}")"
+                    
+                    # 【标准做法】使用 exec 替换当前进程
+                    exec bash "${TARGET_SCRIPT_PATH}" "${ORIGINAL_ARGS[@]}"
+                else
+                    log_error "无法将临时文件移动到目标位置"
+                    log_error "请手动运行: ${TARGET_SCRIPT_PATH}"
+                    rm -f "${TEMP_FILE}" 2>/dev/null
+                    exit 1
+                fi
             else
-                log_error "目标文件语法检查失败:"
+                log_error "临时文件语法检查失败:"
                 cat /tmp/cfopt_syntax_check.log >&2
-                log_error "请手动运行: ${TARGET_SCRIPT_PATH}"
+                log_error "原脚本未受影响，仍位于: ${CURRENT_SCRIPT_PATH}"
+                rm -f "${TEMP_FILE}" 2>/dev/null
                 exit 1
             fi
         else
-            log_error "迁移失败，请检查权限。"
+            log_error "脚本复制失败，请检查权限。"
+            rm -f "${TEMP_FILE}" 2>/dev/null
             exit 1
         fi
     fi
@@ -425,10 +439,23 @@ install_system_cmd() {
         local script_path
         script_path="$(readlink -f "$0")"
         
+        # 【安全修复】验证脚本路径合法性，防止路径注入
+        if [[ -z "${script_path}" ]] || [[ ! -f "${script_path}" ]]; then
+            log_error "无法解析脚本路径: $0"
+            return 1
+        fi
+        
+        # 【安全修复】确保路径不包含危险字符（虽然 readlink -f 已规范化）
+        if [[ "${script_path}" =~ [\;\|\&\$\`] ]]; then
+            log_error "脚本路径包含非法字符，拒绝安装"
+            return 1
+        fi
+        
         # 非 Root 用户尝试提权处理
         if [[ "${EUID}" -ne 0 ]]; then
             if command -v sudo >/dev/null 2>&1; then
                 # 【安全修复】直接执行命令，避免 bash -c 字符串拼接
+                # safe_execute 使用 "$@" 传递参数，保持参数边界，防止注入
                 if safe_execute "安装全局命令" sudo ln -sf "${script_path}" "${SYSTEM_CMD_PATH}" && \
                    safe_execute "设置执行权限" sudo chmod +x "${SYSTEM_CMD_PATH}"; then
                     if check_system_cmd; then
@@ -1047,9 +1074,9 @@ show_main_menu() {
     # CF DNS：检查 conf/cf-dns/ 目录下是否有启用的配置文件
     local cf_dns_status
     if [[ -d "${INSTALL_DIR}/conf/cf-dns" ]]; then
-        # 查找第一个启用的配置文件
+        # 【安全修复】查找第一个启用的配置文件，使用精确布尔匹配
         local cf_dns_conf
-        cf_dns_conf=$(find "${INSTALL_DIR}/conf/cf-dns" -name "*.json" -type f -exec sh -c 'jq -r ".enabled // false" "$1" 2>/dev/null | grep -q "true" && echo "$1"' _ {} \; | head -1)
+        cf_dns_conf=$(find "${INSTALL_DIR}/conf/cf-dns" -name "*.json" -type f -exec sh -c 'jq -e ".enabled == true" "$1" >/dev/null 2>&1 && echo "$1"' _ {} \; | head -1)
         if [[ -n "${cf_dns_conf}" ]]; then
             cf_dns_status="$(get_module_status "${cf_dns_conf}" "")"
         else
@@ -1064,9 +1091,9 @@ show_main_menu() {
     # DNSPod：检查 conf/dnspod/ 目录下是否有启用的配置文件
     local dnspod_status
     if [[ -d "${INSTALL_DIR}/conf/dnspod" ]]; then
-        # 查找第一个启用的配置文件
+        # 【安全修复】查找第一个启用的配置文件，使用精确布尔匹配
         local dnspod_conf
-        dnspod_conf=$(find "${INSTALL_DIR}/conf/dnspod" -name "*.json" -type f -exec sh -c 'jq -r ".enabled // false" "$1" 2>/dev/null | grep -q "true" && echo "$1"' _ {} \; | head -1)
+        dnspod_conf=$(find "${INSTALL_DIR}/conf/dnspod" -name "*.json" -type f -exec sh -c 'jq -e ".enabled == true" "$1" >/dev/null 2>&1 && echo "$1"' _ {} \; | head -1)
         if [[ -n "${dnspod_conf}" ]]; then
             dnspod_status="$(get_module_status "${dnspod_conf}" "")"
         else
@@ -1481,6 +1508,26 @@ INSTALL_DIR="$1"
 LOG_FILE="/tmp/cfopt_cleanup.log"
 CFOPT_UNINSTALL_LOCK="/tmp/.cfopt_uninstalling"
 
+# 【安全修复】验证 INSTALL_DIR 非空且为合法路径
+if [[ -z "${INSTALL_DIR}" ]]; then
+    echo "[$(date)] [ERROR] INSTALL_DIR 为空，拒绝执行" >> "${LOG_FILE}"
+    exit 1
+fi
+
+# 【安全修复】路径规范化，防止注入攻击
+# 1. 去除末尾斜杠
+INSTALL_DIR="${INSTALL_DIR%/}"
+# 2. 验证路径格式（只允许字母、数字、下划线、连字符、点、斜杠）
+if [[ ! "${INSTALL_DIR}" =~ ^/[a-zA-Z0-9_./-]+$ ]]; then
+    echo "[$(date)] [ERROR] INSTALL_DIR 包含非法字符: ${INSTALL_DIR}" >> "${LOG_FILE}"
+    exit 1
+fi
+# 3. 安全检查：禁止危险路径
+if [[ "${INSTALL_DIR}" = "/" ]] || [[ "${INSTALL_DIR}" = "/root" ]] || [[ "${INSTALL_DIR}" = "/home" ]] || [[ "${INSTALL_DIR}" = "/usr" ]]; then
+    echo "[$(date)] [ERROR] 拒绝删除系统目录: ${INSTALL_DIR}" >> "${LOG_FILE}"
+    exit 1
+fi
+
 echo "[$(date)] 开始清理: ${INSTALL_DIR}" >> "${LOG_FILE}"
 
 # 【新增】清理卸载锁文件
@@ -1492,8 +1539,9 @@ fi
 if [[ -d "${INSTALL_DIR}" ]]; then
     # 第一遍：尝试终止所有相关进程（排除当前清理脚本）
     echo "[$(date)] 第1步: 终止相关进程" >> "${LOG_FILE}"
-    # 【修复】使用精确路径匹配，避免误杀其他 cfopt 实例或定时任务
-    pkill -9 -f "${INSTALL_DIR}/cfopt\.sh" 2>/dev/null || true
+    # 【安全修复】转义 INSTALL_DIR 中的正则特殊字符，避免误匹配
+    escaped_dir=$(echo "${INSTALL_DIR}" | sed 's/[.[\*^$()+?{|]/\\&/g')
+    pkill -9 -f "${escaped_dir}/cfopt\.sh" 2>/dev/null || true
     sleep 1
     
     # 第二遍：删除所有文件（包括隐藏文件）

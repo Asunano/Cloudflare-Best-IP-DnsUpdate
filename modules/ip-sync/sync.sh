@@ -240,7 +240,6 @@ sync_cf_dns_ips() {
                 awk -F',' '{gsub(/\r/,"",$5); gsub(/\r/,"",$6); gsub(/\r/,"",$7); print $1"|"$5"|"$6"|"$7}'
         } > "${target_file}"
         
-        local actual_count
         # 【修复】只统计非注释行，排除 4 行注释头
         actual_count="$(grep -v '^#' "${target_file}" | grep -v '^\s*$' | wc -l)"
         actual_count="${actual_count// /}"
@@ -270,8 +269,7 @@ sync_cf_dns_ips() {
                         awk -F',' '{gsub(/\r/,"",$5); gsub(/\r/,"",$6); gsub(/\r/,"",$7); print $1"|"$5"|"$6"|"$7}'
                 } > "${target_file}"
                 
-                local actual_count
-                # 【修复】只统计非注释行，排除 4 行注释头
+                # 【修复】移除重复的 local 声明，直接使用外层变量
                 actual_count="$(grep -v '^#' "${target_file}" | grep -v '^\s*$' | wc -l)"
                 actual_count="${actual_count// /}"
                 
@@ -389,7 +387,8 @@ sync_dnspod_ips() {
     elif [[ -f "${single_file}" ]]; then
         # 单文件架构：使用 conf/dnspod.json
         echo -e "${CYAN}[INFO] 检测到 DNSPod 单文件配置${NC}"
-        json_file="${single_file}"
+        local json_file="${single_file}"
+        local domain_name
         domain_name=$(basename "$json_file" .json)
         
         # 检查模块是否启用

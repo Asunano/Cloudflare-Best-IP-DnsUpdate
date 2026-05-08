@@ -5,6 +5,9 @@
 # Description: 负责检查和更新 cfopt 所有组件，包括主程序自身
 # Usage: bash modules/updater/update.sh [check|update]
 # ==============================================================================
+# 【安全增强】启用严格模式：命令失败立即退出、未定义变量报错、管道失败整体失败
+set -euo pipefail
+
 SCRIPT_VERSION="0.1"
 
 # ==================== 路径初始化 ====================
@@ -339,8 +342,17 @@ download_file() {
         echo -e "  ${YELLOW}[WARN]${NC} 镜像源失败，尝试官方源..."
         local full_url="${RAW_BASE_URL}/${remote_path}"
         rm -f "${temp_file}"
-        # 【修复】移除旧条目，避免 TEMP_FILES 重复注册
-        TEMP_FILES=("${TEMP_FILES[@]/$temp_file}")
+        
+        # 【安全修复】从 TEMP_FILES 数组中移除旧的临时文件路径
+        # 使用索引遍历而非模式替换，避免通配符注入风险
+        local -a new_temp_files=()
+        for existing_file in "${TEMP_FILES[@]}"; do
+            if [[ "${existing_file}" != "${temp_file}" ]]; then
+                new_temp_files+=("${existing_file}")
+            fi
+        done
+        TEMP_FILES=("${new_temp_files[@]}")
+        
         temp_file=$(mktemp)
         TEMP_FILES+=("${temp_file}")  # 重新注册
         
