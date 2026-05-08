@@ -57,13 +57,14 @@ _rotate_log_fallback() {
 
 # 触发回滚
 # 【新增】回滚函数（用于 trigger_rollback）
+# 【安全修复】此函数可能在 common.sh 加载前被调用，使用 echo 替代 log_* 函数
 rollback_on_failure() {
-    log_warn "执行回滚操作..."
+    echo -e "${YELLOW}[WARN] 执行回滚操作...${NC}"
     
     # 检查是否有备份
     local backup_dir="${INSTALL_DIR}/backup"
     if [[ ! -d "${backup_dir}" ]]; then
-        log_error "未找到备份目录: ${backup_dir}"
+        echo -e "${RED}[ERROR] 未找到备份目录: ${backup_dir}${NC}"
         return 1
     fi
     
@@ -72,28 +73,28 @@ rollback_on_failure() {
     latest_backup=$(find "${backup_dir}" -maxdepth 1 -type d -name "backup_*" 2>/dev/null | sort -r | head -1 || true)
     
     if [[ -z "${latest_backup}" ]] || [[ ! -d "${latest_backup}" ]]; then
-        log_error "未找到有效的备份文件"
+        echo -e "${RED}[ERROR] 未找到有效的备份文件${NC}"
         return 1
     fi
     
-    log_info "正在从备份恢复: ${latest_backup}"
+    echo -e "${CYAN}[INFO] 正在从备份恢复: ${latest_backup}${NC}"
     
     # 恢复备份
     if cp -r "${latest_backup}/"* "${INSTALL_DIR}/" 2>/dev/null; then
-        log_success "回滚成功"
+        echo -e "${GREEN}[OK] 回滚成功${NC}"
         return 0
     else
-        log_error "回滚失败"
+        echo -e "${RED}[ERROR] 回滚失败${NC}"
         return 1
     fi
 }
 
 trigger_rollback() {
-    log_warn "检测到严重错误，尝试回滚到上一版本..."
+    echo -e "${YELLOW}[WARN] 检测到严重错误，尝试回滚到上一版本...${NC}"
     if rollback_on_failure; then
-        log_success "回滚成功，系统已恢复"
+        echo -e "${GREEN}[OK] 回滚成功，系统已恢复${NC}"
     else
-        log_error "回滚失败，请手动修复或重新安装"
+        echo -e "${RED}[ERROR] 回滚失败，请手动修复或重新安装${NC}"
     fi
 }
 
