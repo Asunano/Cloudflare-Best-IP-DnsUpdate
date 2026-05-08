@@ -1870,6 +1870,10 @@ check_and_update_components() {
         echo ""
         # 使用 exec 替换当前进程，这是安全的，因为是在父进程中执行
         exec bash "${INSTALL_DIR}/cfopt.sh"
+        # 【关键修复】exec 失败才会执行到这里
+        log_error "主程序重启失败，请手动运行: bash ${INSTALL_DIR}/cfopt.sh"
+        read -r -p "按回车键继续..."
+        return
     fi
     
     # 【安全修复】删除 show_main_menu 的递归调用
