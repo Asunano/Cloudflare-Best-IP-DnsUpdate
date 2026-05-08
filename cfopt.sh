@@ -2057,7 +2057,8 @@ init_cfopt() {
             "cfopt.sh") module_key="CFOPT" ;;
             *)
                 # 其他文件：移除 modules/ 前缀，移除 .sh 后缀，将 / 和 - 替换为 _，转为大写
-                module_key=$(echo "${module_path}" | sed 's|^modules/||' | sed 's|\.sh$||' | sed 's|/|_|g' | sed 's|-|_|g' | tr '[:lower:]' '[:upper:]')
+                # 【修复】添加 || true 防止管道失败触发 set -e
+                module_key=$(echo "${module_path}" | sed 's|^modules/||' | sed 's|\.sh$||' | sed 's|/|_|g' | sed 's|-|_|g' | tr '[:lower:]' '[:upper:]') || true
                 ;;
         esac
         
