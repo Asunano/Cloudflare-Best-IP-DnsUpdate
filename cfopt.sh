@@ -1839,12 +1839,16 @@ init_cfopt() {
     else
         log_warn "部分组件下载失败，稍后可通过菜单手动更新"
     fi
+        
+    # 【安全修复】无论下载是否成功，都继续执行后续步骤
+    # 避免因单个模块下载失败导致整个安装流程中断
     
     # 4.2 下载 cfst 测速程序（CF-IP 核心依赖）
     echo -e "${CYAN}[INFO] 正在下载 cfst 测速程序...${NC}"
     local cfst_url="https://github.com/XIU2/CloudflareSpeedTest/releases/latest/download/CloudflareST_linux_amd64.tar.gz"
     local cfst_temp="/tmp/cfst_download.tar.gz"
     
+    # 【安全修复】cfst 下载失败不应阻止安装流程继续
     if curl -sfL --connect-timeout 10 --max-time 60 -o "${cfst_temp}" "${cfst_url}" 2>/dev/null; then
         # 解压并移动到目标位置
         if tar -xzf "${cfst_temp}" -C "${INSTALL_DIR}/assets/cfst/" 2>/dev/null; then
@@ -1867,6 +1871,10 @@ init_cfopt() {
 
     # 初始化状态配置文件 (如果不存在)
     STATUS_CONF="${INSTALL_DIR}/conf/status.conf"
+    
+    # 【安全修复】确保 conf 目录存在
+    mkdir -p "${INSTALL_DIR}/conf" 2>/dev/null || true
+    
     if [[ ! -f "${STATUS_CONF}" ]]; then
         cat > "${STATUS_CONF}" << 'EOF'
 # cfopt 模块状态配置文件
