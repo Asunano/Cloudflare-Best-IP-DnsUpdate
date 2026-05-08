@@ -296,8 +296,9 @@ if [[ "${CURRENT_SCRIPT_PATH}" != "${TARGET_SCRIPT_PATH}" ]]; then
                 
                 # 使用 exec 替换当前进程
                 # exec 会用新进程完全替换当前进程，包括文件描述符
-                # 使用保存的原始参数，防止参数丢失
-                exec bash "${TARGET_SCRIPT_PATH}" "${ORIGINAL_ARGS[@]}"
+                # 【关键修复】使用 ${array[@]+"${array[@]}"} 语法防止 set -u 下空数组报错
+                # 兼容 bash 4.2（CentOS 7 默认版本）
+                exec bash "${TARGET_SCRIPT_PATH}" ${ORIGINAL_ARGS[@]+"${ORIGINAL_ARGS[@]}"}
             else
                 echo -e "${RED}[ERROR] 目标文件语法检查失败:${NC}"
                 cat /tmp/cfopt_syntax_check.log >&2
@@ -339,7 +340,9 @@ if [[ "${CURRENT_SCRIPT_PATH}" != "${TARGET_SCRIPT_PATH}" ]]; then
                     echo -e "${CYAN}[INFO] 文件头: $(head -1 "${TARGET_SCRIPT_PATH}")${NC}"
                     
                     # 使用 exec 替换当前进程
-                    exec bash "${TARGET_SCRIPT_PATH}" "${ORIGINAL_ARGS[@]}"
+                    # 【关键修复】使用 ${array[@]+"${array[@]}"} 语法防止 set -u 下空数组报错
+                    # 兼容 bash 4.2（CentOS 7 默认版本）
+                    exec bash "${TARGET_SCRIPT_PATH}" ${ORIGINAL_ARGS[@]+"${ORIGINAL_ARGS[@]}"}
                 else
                     echo -e "${RED}[ERROR] 无法将临时文件移动到目标位置${NC}"
                     echo -e "${RED}[ERROR] 请手动运行: ${TARGET_SCRIPT_PATH}${NC}"
