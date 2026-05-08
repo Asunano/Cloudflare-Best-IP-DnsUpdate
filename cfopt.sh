@@ -309,52 +309,52 @@ if [[ "${CURRENT_SCRIPT_PATH}" != "${TARGET_SCRIPT_PATH}" ]]; then
             exit 1
         fi
     else
-        # 【安全修复】目标文件不存在时，使用 cp 而非 mv，保留原文件以防 exec 失败
-        log_info "首次安装，正在复制脚本到标准目录..."
+        # 目标文件不存在时，使用 cp 而非 mv，保留原文件以防 exec 失败
+        echo -e "${CYAN}[INFO] 首次安装，正在复制脚本到标准目录...${NC}"
         
-        # 【修复】先复制到 .new 临时文件，验证后再替换（类似 updater 的做法）
+        # 先复制到 .new 临时文件，验证后再替换（类似 updater 的做法）
         TEMP_FILE="${TARGET_SCRIPT_PATH}.new"
         
         if safe_copy "${CURRENT_SCRIPT_PATH}" "${TEMP_FILE}" "脚本复制"; then
             chmod +x "${TEMP_FILE}"
             
-            # 【安全修复】验证临时文件语法和可执行性
+            # 验证临时文件语法和可执行性
             if [[ ! -x "${TEMP_FILE}" ]]; then
-                log_error "临时文件不可执行，尝试修复权限..."
+                echo -e "${RED}[ERROR] 临时文件不可执行，尝试修复权限...${NC}"
                 chmod 755 "${TEMP_FILE}"
             fi
             
             # 语法检查
             if bash -n "${TEMP_FILE}" 2>/tmp/cfopt_syntax_check.log; then
-                log_info "语法检查通过，正在完成安装..."
+                echo -e "${CYAN}[INFO] 语法检查通过，正在完成安装...${NC}"
                 
-                # 【原子操作】将临时文件移动到目标位置
+                # 原子操作：将临时文件移动到目标位置
                 if mv -f "${TEMP_FILE}" "${TARGET_SCRIPT_PATH}" 2>/dev/null; then
-                    log_success "安装成功，正在从新位置启动..."
+                    echo -e "${GREEN}[OK] 安装成功，正在从新位置启动...${NC}"
                     
-                    # 【调试】输出文件信息
-                    log_info "目标文件: ${TARGET_SCRIPT_PATH}"
-                    log_info "文件大小: $(wc -c < "${TARGET_SCRIPT_PATH}") 字节"
-                    log_info "文件权限: $(stat -c '%a' "${TARGET_SCRIPT_PATH}" 2>/dev/null || stat -f '%Lp' "${TARGET_SCRIPT_PATH}" 2>/dev/null)"
-                    log_info "文件头: $(head -1 "${TARGET_SCRIPT_PATH}")"
+                    # 输出文件信息
+                    echo -e "${CYAN}[INFO] 目标文件: ${TARGET_SCRIPT_PATH}${NC}"
+                    echo -e "${CYAN}[INFO] 文件大小: $(wc -c < "${TARGET_SCRIPT_PATH}") 字节${NC}"
+                    echo -e "${CYAN}[INFO] 文件权限: $(stat -c '%a' "${TARGET_SCRIPT_PATH}" 2>/dev/null || stat -f '%Lp' "${TARGET_SCRIPT_PATH}" 2>/dev/null)${NC}"
+                    echo -e "${CYAN}[INFO] 文件头: $(head -1 "${TARGET_SCRIPT_PATH}")${NC}"
                     
-                    # 【标准做法】使用 exec 替换当前进程
+                    # 使用 exec 替换当前进程
                     exec bash "${TARGET_SCRIPT_PATH}" "${ORIGINAL_ARGS[@]}"
                 else
-                    log_error "无法将临时文件移动到目标位置"
-                    log_error "请手动运行: ${TARGET_SCRIPT_PATH}"
+                    echo -e "${RED}[ERROR] 无法将临时文件移动到目标位置${NC}"
+                    echo -e "${RED}[ERROR] 请手动运行: ${TARGET_SCRIPT_PATH}${NC}"
                     rm -f "${TEMP_FILE}" 2>/dev/null
                     exit 1
                 fi
             else
-                log_error "临时文件语法检查失败:"
+                echo -e "${RED}[ERROR] 临时文件语法检查失败:${NC}"
                 cat /tmp/cfopt_syntax_check.log >&2
-                log_error "原脚本未受影响，仍位于: ${CURRENT_SCRIPT_PATH}"
+                echo -e "${RED}[ERROR] 原脚本未受影响，仍位于: ${CURRENT_SCRIPT_PATH}${NC}"
                 rm -f "${TEMP_FILE}" 2>/dev/null
                 exit 1
             fi
         else
-            log_error "脚本复制失败，请检查权限。"
+            echo -e "${RED}[ERROR] 脚本复制失败，请检查权限。${NC}"
             rm -f "${TEMP_FILE}" 2>/dev/null
             exit 1
         fi
