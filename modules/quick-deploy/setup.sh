@@ -12,15 +12,15 @@ IFS=$'\n\t'
 
 SCRIPT_VERSION="0.1"
 
-# ==================== 颜色定义 ====================
-RED='\033[0;31m'
-GREEN='\033[0;32m'
-YELLOW='\033[1;33m'
-CYAN='\033[0;36m'
-MAGENTA='\033[0;35m'
-BOLD='\033[1m'
-GRAY='\033[0;90m'
-NC='\033[0m'
+# ==================== 路径初始化 ====================
+SCRIPT_DIR="$( cd -P "$( dirname "${BASH_SOURCE[0]}" )" >/dev/null 2>&1 && pwd )"
+ROOT_DIR="$(cd "$SCRIPT_DIR/../.." && pwd)"
+
+# ==================== 加载公共函数库 ====================
+if [[ -f "${ROOT_DIR}/lib/common.sh" ]]; then
+    # shellcheck source=../../lib/common.sh
+    source "${ROOT_DIR}/lib/common.sh"
+fi
 
 # ==================== 路径初始化 ====================
 SOURCE="${BASH_SOURCE[0]}"

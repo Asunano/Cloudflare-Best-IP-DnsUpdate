@@ -1,48 +1,28 @@
 #!/bin/bash
 # ==============================================================================
 # cfopt - IP 数据同步与 DNS 批量更新组件 (IP Sync & Batch Updater)
-# Version: 0.2
+# Version: 0.1
 # Description: 负责将测速结果分发至各 DNS 模块的数据目录，并执行批量 DNS 更新
 # Usage: bash modules/ip-sync/sync.sh
 # ==============================================================================
 set -euo pipefail
-SCRIPT_VERSION="0.2"
+SCRIPT_VERSION="0.1"
 
 # ==================== 路径初始化 ====================
-# 动态获取脚本所在目录及项目根目录，确保路径引用的健壮性
 SCRIPT_DIR="$( cd -P "$( dirname "${BASH_SOURCE[0]}" )" >/dev/null 2>&1 && pwd )"
 ROOT_DIR="$(cd "$SCRIPT_DIR/../.." && pwd)"
 
-# ==================== 终端显示配置 ====================
-RED='\033[0;31m'
-GREEN='\033[0;32m'
-YELLOW='\033[1;33m'
-CYAN='\033[0;36m'
-GRAY='\033[0;90m'
-BOLD='\033[1m'
-NC='\033[0m'
+# 【修复】加载公共函数库
+# shellcheck source=../../lib/common.sh
+source "${ROOT_DIR}/lib/common.sh"
+
+_LOG_MODULE="ip-sync"
+# 【修复】设置日志文件路径
+mkdir -p "${ROOT_DIR}/logs"
+_LOG_FILE="${ROOT_DIR}/logs/sync.log"
 
 # ==================== 跨平台文件查找辅助函数 ====================
-# 【修复】跨平台查找最新文件（替代 find -printf，兼容 macOS/BSD）
-# 参数: $1=目录路径, $2=文件名模式 (如 "result_*.csv")
-# 返回: 最新文件的完整路径
-find_latest_file() {
-    local search_dir="$1"
-    local pattern="$2"
-    
-    # 方法1: 使用 stat -f '%m' (macOS/BSD)
-    if stat -f '%m' /dev/null >/dev/null 2>&1; then
-        find "${search_dir}" -name "${pattern}" -type f -exec stat -f '%m %N' {} \; 2>/dev/null | \
-            sort -rn | head -n 1 | awk '{print $2}'
-    # 方法2: 使用 stat -c '%Y' (Linux)
-    elif stat -c '%Y' /dev/null >/dev/null 2>&1; then
-        find "${search_dir}" -name "${pattern}" -type f -exec stat -c '%Y %n' {} \; 2>/dev/null | \
-            sort -rn | head -n 1 | awk '{print $2}'
-    # 方法3: 使用 ls -t (备用方案)
-    else
-        ls -t "${search_dir}"/${pattern} 2>/dev/null | head -n 1
-    fi
-}
+# find_latest_file: 使用 lib/common.sh 中的公共实现
 
 # 【修复】动态查找最新的测速结果文件
 # cf-ip/core.sh 生成的文件名格式: result_${LINE_TAG}_${timestamp}.csv

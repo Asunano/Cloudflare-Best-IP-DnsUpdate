@@ -6,20 +6,22 @@
 # Description: 负责将优选 IP 同步至 DNSPod 记录，支持单线路及多运营商分流策略
 # Usage: bash modules/dnspod-dns/core.sh
 # ==============================================================================
+# 【修复】启用严格模式，防止错误传播（原缺失此行导致所有错误被静默吞掉）
+set -euo pipefail
+
 # shellcheck disable=SC2034
 SCRIPT_VERSION="0.1"
 
-# ==================== 终端显示配置 ====================
-RED='\033[0;31m'
-GREEN='\033[0;32m'
-YELLOW='\033[1;33m'
-BLUE='\033[0;34m'
-CYAN='\033[0;36m'
-NC='\033[0m' # No Color
-
-# ==================== 路径初始化与进程锁管理 ====================
+# ==================== 路径初始化 ====================
 SCRIPT_DIR="$( cd -P "$( dirname "${BASH_SOURCE[0]}" )" >/dev/null 2>&1 && pwd )"
 ROOT_DIR="$(cd "$SCRIPT_DIR/../.." && pwd)"
+
+# 【修复】加载公共函数库
+# shellcheck source=../../lib/common.sh
+source "${ROOT_DIR}/lib/common.sh"
+
+# 设置日志模块名
+_LOG_MODULE="dnspod"
 
 # ==================== 配置加载逻辑（支持多域名） ====================
 # 优先级：
@@ -63,53 +65,12 @@ acquire_lock() {
 
 acquire_lock
 
-# 【跨平台】获取文件大小（兼容 Linux/macOS/BSD）
-get_file_size() {
-    local file="$1"
-    local size
-    
-    if [[ ! -f "${file}" ]]; then
-        echo "0"
-        return
-    fi
-    
-    # 【修复】优先尝试 macOS/BSD stat（无 --version 参数）
-    if stat -f %z "${file}" >/dev/null 2>&1; then
-        # macOS/BSD stat
-        size=$(stat -f %z "${file}" 2>/dev/null)
-    elif stat -c %s "${file}" >/dev/null 2>&1; then
-        # Linux stat
-        size=$(stat -c %s "${file}" 2>/dev/null)
-    else
-        # 降级方案：wc -c（去除空格）
-        size=$(wc -c < "${file}" 2>/dev/null | tr -d '[:space:]')
-    fi
-    
-    echo "${size:-0}"
-}
-
 LOG_DIR="${ROOT_DIR}/logs/dnspod-dns"
 mkdir -p "${LOG_DIR}"
 LOG_FILE="${LOG_DIR}/dnspod_$(date +%Y%m%d_%H%M%S).log"
+_LOG_FILE="${LOG_FILE}"
 
-# 【安全配置】日志轮转：防止日志无限增长
-rotate_log() {
-    local log_file="$1"
-    local max_size=${2:-$((10 * 1024 * 1024))}  # 默认 10MB
-    
-    if [[ -f "$log_file" ]]; then
-        local file_size
-        # 【跨平台】使用 get_file_size 替代 stat -c %s
-        file_size=$(get_file_size "$log_file")
-        
-        if [[ "$file_size" -gt "$max_size" ]]; then
-            mv "$log_file" "${log_file}.old"
-            rm -f "${log_file}.old.old"
-            touch "$log_file"
-        fi
-    fi
-}
-
+# 【修复】日志轮转：使用 lib/common.sh 中的公共 rotate_log
 # 轮转旧的 dnspod 日志文件
 for old_log in "${LOG_DIR}"/dnspod_*.log.old; do
     [[ -f "$old_log" ]] && rotate_log "$old_log" 5242880  # 5MB
@@ -118,27 +79,15 @@ done
 # DNSPod IP 数据默认路径
 DEFAULT_IP_DIR="${ROOT_DIR}/assets/data/dnspod-dns"
 
-# 【标准化】统一使用 .txt 格式（与 cf-dns 保持一致）
+# 【标准化】统一使用 .iplist 格式
 get_default_ip_file() {
     local line_name="$1"
-    echo "${DEFAULT_IP_DIR}/${line_name}.txt"
+    echo "${DEFAULT_IP_DIR}/${line_name}.iplist"
 }
 
 # ====================== 【统一结构化日志系统】 ======================
-# 格式: [2026-05-06 09:30:00] [INFO ] [dnspod] message
-log_msg() {
-    local level="$1"
-    shift
-    local timestamp
-    timestamp="$(date +"%Y-%m-%d %H:%M:%S")"
-    printf "[%s] [%-5s] [dnspod] %s\n" "$timestamp" "$level" "$*" | tee -a "${LOG_FILE}"
-}
-
-# 便捷函数
-log_info() { log_msg "INFO" "$@"; }
-log_warn() { log_msg "WARN" "$@"; }
-log_error() { log_msg "ERROR" "$@"; }
-log_success() { log_msg "OK" "$@"; }
+# 【修复】日志函数已移至 lib/common.sh，通过 _LOG_FILE 变量指定日志文件
+# log_info, log_warn, log_error, log_success 均由公共库提供
 
 # ====================== 【执行历史记录】 ======================
 # 记录 DNSPod 更新结果到 history.jsonl
@@ -159,7 +108,7 @@ record_dnspod_update_history() {
     # 【修复】使用 flock 保护并发写入，防止多进程同时写入导致数据损坏
     # 【安全修复】子 shell 内用 exit 代替 return，外层用 || true 防止 set -e 中断
     (
-        flock -n 200 || { log_msg "WARN" "无法获取历史记录写入锁"; exit 1; }
+        flock -n 200 || { log_warn "无法获取历史记录写入锁"; exit 1; }
         printf '{"time":"%s","action":"dnspod_update","domain":"%s","records_updated":%d,"records_created":%d,"records_skipped":%d}\n' \
             "$timestamp" "$domain" "$records_updated" "$records_created" "$records_skipped" >> "$history_file"
     ) 200>"${history_file}.lock" || true
@@ -168,7 +117,7 @@ record_dnspod_update_history() {
 # ==================== 主逻辑入口 ====================
 
 if [[ ! -f "${CONFIG_FILE}" ]]; then
-    log_msg "ERROR" "找不到配置文件 ${CONFIG_FILE}"
+    log_error "找不到配置文件 ${CONFIG_FILE}"
     echo ""
     
     # 检测是否为交互式环境（有终端输入）
@@ -177,7 +126,7 @@ if [[ ! -f "${CONFIG_FILE}" ]]; then
         echo -e " ${YELLOW}DNSPod DNS 模块首次配置向导"
         echo -e "${CYAN}+------------------------------------------------------------+"
         echo ""
-        log_msg "INFO" "检测到您尚未配置 DNSPod 模块"
+        log_info "检测到您尚未配置 DNSPod 模块"
         echo ""
         echo -e "${GREEN}我们将帮助您完成以下配置：${NC}"
         echo "  ✓ DNSPod API ID 和 Token"
@@ -196,21 +145,21 @@ if [[ ! -f "${CONFIG_FILE}" ]]; then
             echo ""
             exec bash "$ROOT_DIR/modules/dnspod-dns/setup.sh"
         else
-            log_msg "WARN" "已取消操作"
+            log_warn "已取消操作"
             exit 1
         fi
     else
         # 非交互式环境（定时任务等），直接退出
-        log_msg "WARN" "请先运行配置向导创建配置文件"
-        log_msg "WARN" "命令: bash $ROOT_DIR/modules/dnspod-dns/setup.sh"
+        log_warn "请先运行配置向导创建配置文件"
+        log_warn "命令: bash $ROOT_DIR/modules/dnspod-dns/setup.sh"
         exit 1
     fi
 fi
 
 # 检查 jq 是否可用
 if ! command -v jq &> /dev/null; then
-    log_msg "ERROR" "jq 未安装 (必需工具)"
-    log_msg "WARN" "请安装 jq: apt install jq 或 yum install jq"
+    log_error "jq 未安装 (必需工具)"
+    log_warn "请安装 jq: apt install jq 或 yum install jq"
     exit 1
 fi
 
@@ -250,7 +199,7 @@ export ENABLED="${CFG[enabled]}"
 
 # 检查启用状态
 if [[ "${ENABLED}" != "true" ]]; then
-    log_msg "INFO" "DNSPod 模块当前处于禁用状态 (enabled=false)。"
+    log_info "DNSPod 模块当前处于禁用状态 (enabled=false)。"
     exit 0
 fi
 
@@ -287,11 +236,11 @@ export ISP_LINES="${CFG[isp_lines]}"
 
 # 验证必要配置
 if [[ -z "${DOMAIN}" ]] || [[ -z "${SECRETID}" ]] || [[ -z "${SECRETKEY}" ]]; then
-    log_msg "ERROR" "配置文件中缺少必要的配置项 (domain, api.id, api.token)"
+    log_error "配置文件中缺少必要的配置项 (domain, api.id, api.token)"
     exit 1
 fi
 
-log_msg "INFO" "配置文件已加载 ${CONFIG_FILE}"
+log_info "配置文件已加载 ${CONFIG_FILE}"
 echo ""
 
 # 删除指定线路的 DNS 记录
@@ -336,7 +285,7 @@ else
                 [[ -z "$ip_file" ]] && ip_file="$(get_default_ip_file "telecom")"
                 ;;
             *)
-                log_msg "WARN" "未知线路: ${line}，跳过检查"
+                log_warn "未知线路: ${line}，跳过检查"
                 continue
                 ;;
         esac
@@ -346,7 +295,7 @@ fi
 
 for ip_file in "${IP_FILES_TO_CHECK[@]}"; do
     if [[ ! -f "${ip_file}" ]]; then
-        log_msg "ERROR" "IP 文件不存在: ${ip_file}"
+        log_error "IP 文件不存在: ${ip_file}"
         exit 1
     fi
     
@@ -364,12 +313,12 @@ for ip_file in "${IP_FILES_TO_CHECK[@]}"; do
     # 提取 IP 部分（支持 IP|延迟|速度|地区码 格式）
     first_ip=$(echo "${FIRST_LINE}" | cut -d'|' -f1 | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
     if [[ -z "${first_ip}" ]] || [[ ! "${first_ip}" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-        log_msg "ERROR" "IP 文件格式错误或包含无效数据 (${ip_file}): ${FIRST_LINE:-空}"
-        log_msg "WARN" "这可能是测速程序的临时 Bug，请重新运行测速。"
+        log_error "IP 文件格式错误或包含无效数据 (${ip_file}): ${FIRST_LINE:-空}"
+        log_warn "这可能是测速程序的临时 Bug，请重新运行测速。"
         exit 1
     fi
 done
-log_msg "INFO" "IP 数据检查通过"
+log_info "IP 数据检查通过"
 echo ""
 
 # ==================== 模式检测 ====================
@@ -421,7 +370,7 @@ done
 if [[ -n "${ISP_LINES}" ]]; then
     IFS=' ' read -ra ISP_LINES <<< "${ISP_LINES}"
 else
-    log_msg "ERROR" "配置文件中缺少 isp_lines"
+    log_error "配置文件中缺少 isp_lines"
     exit 1
 fi
 
@@ -446,7 +395,7 @@ if [[ "${MODE}" = "multi" ]]; then
         done
         
         if [[ ${#missing_lines[@]} -gt 0 ]]; then
-            log_msg "WARN" "检测到统一模式配置不完整，正在自动补全..."
+            log_warn "检测到统一模式配置不完整，正在自动补全..."
             ISP_LINES=("默认" "联通" "移动" "电信")
             
             # 【修复】使用变量构建 isp_lines 字符串，避免硬编码（移除 local，因为在函数外）
@@ -457,10 +406,10 @@ if [[ "${MODE}" = "multi" ]]; then
             if jq --arg lines "$isp_lines_str" '.dns.isp_lines = $lines' "$CONFIG_FILE" > "$temp_file" 2>/dev/null; then
                 mv "$temp_file" "$CONFIG_FILE"
                 chmod 600 "$CONFIG_FILE"
-                log_msg "INFO" "已更新配置文件: isp_lines = \"${isp_lines_str}\""
+                log_info "已更新配置文件: isp_lines = \"${isp_lines_str}\""
             else
                 rm -f "$temp_file"
-                log_msg "ERROR" "更新配置文件失败"
+                log_error "更新配置文件失败"
             fi
         fi
     fi
@@ -561,7 +510,7 @@ get_cf_ip_from_file_by_line() {
             [[ -z "$ip_file" ]] && ip_file="$(get_default_ip_file "telecom")"
             ;;
         *)
-            log_msg "ERROR" "未知的线路名称: ${line_name}"
+            log_error "未知的线路名称: ${line_name}"
             return 1
             ;;
     esac
@@ -721,7 +670,7 @@ call_api() {
     
     while [[ "${retry}" -lt "${max_retries}" ]]; do
         if [[ "${retry}" -gt 0 ]]; then
-            log_msg "WARN" "API 请求失败，正在重试第 ${retry}/${max_retries} 次..."
+            log_warn "API 请求失败，正在重试第 ${retry}/${max_retries} 次..."
             sleep 2
         fi
         
@@ -760,7 +709,7 @@ call_api() {
                 # API 返回了错误
                 local error_msg
                 error_msg=$(echo "${result}" | jq -r '.Response.Error.Message // "未知错误"' 2>/dev/null)
-                log_msg "ERROR" "API 错误: ${error_code} - ${error_msg}"
+                log_error "API 错误: ${error_code} - ${error_msg}"
                 
                 # 认证错误不重试，直接返回失败
                 if [[ "$error_code" == "AuthFailure"* ]] || [[ "$error_code" == "Unauthorized"* ]]; then
@@ -782,7 +731,7 @@ call_api() {
         retry=$((retry + 1))
     done
     
-    log_msg "ERROR" "API 调用最终失败: ${action}"
+    log_error "API 调用最终失败: ${action}"
     echo "${result}"
     return 1
 }
@@ -837,8 +786,8 @@ validate_ip() {
 # 从文件读取优选 IP (单线路通用)
 get_cf_ip_from_file() {
     if [[ ! -f "${IP_FILE}" ]]; then
-        log_msg "ERROR" "IP 文件不存在: ${IP_FILE}"
-        log_msg "WARN" "请创建文件或修改 dnspod.json 中的配置"
+        log_error "IP 文件不存在: ${IP_FILE}"
+        log_warn "请创建文件或修改 dnspod.json 中的配置"
         return 1
     fi
     
@@ -852,20 +801,20 @@ main_single() {
     current_time="$(date +"%Y-%m-%d %H:%M:%S")"
     
     # 日志头部
-    log_msg "INFO" ""
-    log_msg "INFO" "================================================================"
-    log_msg "INFO" "DNSPod DNS 更新器 - 单线路模式"
-    log_msg "INFO" "================================================================"
-    log_msg "INFO" "执行时间: ${current_time}"
-    log_msg "INFO" "域名:     ${SUB_DOMAIN}.${DOMAIN}"
-    log_msg "INFO" "IP限制:   ${MAX_IPS_PER_RECORD} 个/记录"
-    log_msg "INFO" "================================================================"
-    log_msg "INFO" ""
+    log_info ""
+    log_info "================================================================"
+    log_info "DNSPod DNS 更新器 - 单线路模式"
+    log_info "================================================================"
+    log_info "执行时间: ${current_time}"
+    log_info "域名:     ${SUB_DOMAIN}.${DOMAIN}"
+    log_info "IP限制:   ${MAX_IPS_PER_RECORD} 个/记录"
+    log_info "================================================================"
+    log_info ""
     
     # 获取 DNS 记录
-    log_msg "INFO" "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-    log_msg "INFO" "步骤 1: 获取 DNS 记录"
-    log_msg "INFO" "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    log_info "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    log_info "步骤 1: 获取 DNS 记录"
+    log_info "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
     local record_response
     record_response="$(get_record)"
     
@@ -885,7 +834,7 @@ main_single() {
     if [[ -n "${error_code}" ]] && [[ "${error_code}" != "null" ]] && [[ "${error_code}" != "ResourceNotFound.NoDataOfRecord" ]]; then
         local error_msg
         error_msg="$(echo "${record_response}" | jq -r '.Response.Error.Message' 2>/dev/null)"
-        log_msg "ERROR" "[ERROR] API 错误: ${error_code} - ${error_msg}"
+        log_error "[ERROR] API 错误: ${error_code} - ${error_msg}"
         exit 1
     fi
     
@@ -894,7 +843,7 @@ main_single() {
     count="$(echo "${record_response}" | jq '.Response.RecordList | length' 2>/dev/null)"
     
     if [[ -z "${count}" ]] || [[ "${count}" = "null" ]] || [[ "${count}" -eq 0 ]]; then
-        log_msg "INFO" "状态: 未找到 DNS 记录,将自动创建"
+        log_info "状态: 未找到 DNS 记录,将自动创建"
     else
         # 提取所有记录信息
         for ((i=0; i<count; i++)); do
@@ -921,24 +870,24 @@ main_single() {
         record_count=${#record_ids[@]}
         
         if [[ "${record_count}" -eq 0 ]]; then
-            log_msg "INFO" "状态: 未找到 DNS 记录,将自动创建"
+            log_info "状态: 未找到 DNS 记录,将自动创建"
         else
-            log_msg "INFO" "状态: 找到 ${record_count} 条记录"
+            log_info "状态: 找到 ${record_count} 条记录"
             for i in "${!record_ids[@]}"; do
-                log_msg "INFO" "  [$((i+1))] RecordID=${record_ids[$i]}, IP=${current_values[$i]}"
+                log_info "  [$((i+1))] RecordID=${record_ids[$i]}, IP=${current_values[$i]}"
             done
         fi
-        log_msg "INFO" ""
+        log_info ""
     fi
     
     # 从文件获取优选 IP
-    log_msg "INFO" "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-    log_msg "INFO" "步骤 2: 读取优选 IP"
-    log_msg "INFO" "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-    log_msg "INFO" "IP文件: ${IP_FILE}"
+    log_info "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    log_info "步骤 2: 读取优选 IP"
+    log_info "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    log_info "IP文件: ${IP_FILE}"
     local cf_ip
     if ! cf_ip="$(get_cf_ip_from_file)"; then
-        log_msg "ERROR" "无法从文件读取IP,请检查IP文件是否存在且格式正确"
+        log_error "无法从文件读取IP,请检查IP文件是否存在且格式正确"
         exit 1
     fi
     
@@ -961,22 +910,22 @@ main_single() {
     
     # 显示无效 IP 警告
     if [[ ${#invalid_ips[@]} -gt 0 ]]; then
-        log_msg "WARN" "[WARN] 发现 ${#invalid_ips[@]} 个无效 IP，已跳过:"
+        log_warn "[WARN] 发现 ${#invalid_ips[@]} 个无效 IP，已跳过:"
         for invalid_ip in "${invalid_ips[@]}"; do
-            log_msg "WARN" "    - ${invalid_ip}"
+            log_warn "    - ${invalid_ip}"
         done
     fi
     
     if [[ ${#ip_addresses[@]} -eq 0 ]]; then
-        log_msg "ERROR" "未解析到有效 IP"
+        log_error "未解析到有效 IP"
         exit 1
     fi
     
-    log_msg "INFO" "状态: 获取到 ${#ip_addresses[@]} 个 IP"
+    log_info "状态: 获取到 ${#ip_addresses[@]} 个 IP"
     for i in "${!ip_addresses[@]}"; do
-        log_msg "INFO" "  [$((i+1))] ${ip_addresses[$i]}"
+        log_info "  [$((i+1))] ${ip_addresses[$i]}"
     done
-    log_msg "INFO" ""
+    log_info ""
     
     # 更新或创建 DNS 记录
     local updated_count=0
@@ -1014,7 +963,7 @@ main_single() {
                     local error_msg
                     error_msg="$(echo "${modify_response}" | jq -r '.Response.Error.Message' 2>/dev/null)"
                     echo ""  # 换行
-                    log_msg "ERROR" "  [ERROR] 更新失败: ${error_code} - ${error_msg}"
+                    log_error "  [ERROR] 更新失败: ${error_code} - ${error_msg}"
                 else
                     updated_count=$((updated_count + 1))
                 fi
@@ -1034,7 +983,7 @@ main_single() {
                 local error_msg
                 error_msg="$(echo "${create_response}" | jq -r '.Response.Error.Message' 2>/dev/null)"
                 echo ""  # 换行
-                log_msg "ERROR" "  [ERROR] 创建失败: ${error_code} - ${error_msg}"
+                log_error "  [ERROR] 创建失败: ${error_code} - ${error_msg}"
             else
                 created_count=$((created_count + 1))
             fi
@@ -1043,14 +992,14 @@ main_single() {
     echo ""  # 换行
     
     # 输出总结
-    log_msg "INFO" ""
-    log_msg "INFO" "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-    log_msg "INFO" "更新结果汇总"
-    log_msg "INFO" "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-    log_msg "INFO" "  [OK] 成功: ${updated_count}"
-    log_msg "INFO" "  [SKIP] 跳过: ${skipped_count}"
-    log_msg "INFO" "  ➕ 新建: ${created_count}"
-    log_msg "INFO" "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    log_info ""
+    log_info "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    log_info "更新结果汇总"
+    log_info "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    log_info "  [OK] 成功: ${updated_count}"
+    log_info "  [SKIP] 跳过: ${skipped_count}"
+    log_info "  ➕ 新建: ${created_count}"
+    log_info "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
     
     # 【功能增强】记录 DNSPod 更新历史
     record_dnspod_update_history "$DOMAIN_NAME" "$updated_count" "$created_count" "$skipped_count"
@@ -1063,16 +1012,16 @@ main_multi() {
     current_time="$(date +"%Y-%m-%d %H:%M:%S")"
     
     # 日志头部
-    log_msg "INFO" ""
-    log_msg "INFO" "================================================================"
-    log_msg "INFO" "DNSPod DNS 更新器 - 多线路模式"
-    log_msg "INFO" "================================================================"
-    log_msg "INFO" "执行时间: ${current_time}"
-    log_msg "INFO" "域名:     ${DOMAIN}"
-    log_msg "INFO" "运营商线路: ${ISP_LINES[*]}"
-    log_msg "INFO" "IP限制:   ${MAX_IPS_PER_RECORD} 个/记录"
-    log_msg "INFO" "================================================================"
-    log_msg "INFO" ""
+    log_info ""
+    log_info "================================================================"
+    log_info "DNSPod DNS 更新器 - 多线路模式"
+    log_info "================================================================"
+    log_info "执行时间: ${current_time}"
+    log_info "域名:     ${DOMAIN}"
+    log_info "运营商线路: ${ISP_LINES[*]}"
+    log_info "IP限制:   ${MAX_IPS_PER_RECORD} 个/记录"
+    log_info "================================================================"
+    log_info ""
     
     # 遍历每个运营商线路
     local total_updated=0
@@ -1082,15 +1031,15 @@ main_multi() {
     local processed_lines=0
     
     for line in "${ISP_LINES[@]}"; do
-        log_msg "INFO" "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-        log_msg "INFO" "处理线路: ${line}"
-        log_msg "INFO" "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+        log_info "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+        log_info "处理线路: ${line}"
+        log_info "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
         
         # 从文件获取该线路的优选 IP
-        log_msg "INFO" "步骤 1: 读取优选 IP"
+        log_info "步骤 1: 读取优选 IP"
         local cf_ip
         if ! cf_ip="$(get_cf_ip_from_file_by_line "${line}")"; then
-            log_msg "ERROR" "无法从文件读取IP,请检查IP文件是否存在且格式正确"
+            log_error "无法从文件读取IP,请检查IP文件是否存在且格式正确"
             continue
         fi
         
@@ -1112,24 +1061,24 @@ main_multi() {
         
         # 显示无效 IP 警告
         if [[ ${#invalid_ips[@]} -gt 0 ]]; then
-            log_msg "WARN" "[WARN] 发现 ${#invalid_ips[@]} 个无效 IP，已跳过:"
+            log_warn "[WARN] 发现 ${#invalid_ips[@]} 个无效 IP，已跳过:"
             for invalid_ip in "${invalid_ips[@]}"; do
-                log_msg "WARN" "    - ${invalid_ip}"
+                log_warn "    - ${invalid_ip}"
             done
         fi
         
         if [[ ${#ip_addresses[@]} -eq 0 ]]; then
-            log_msg "ERROR" "未解析到有效 IP"
+            log_error "未解析到有效 IP"
             continue
         fi
         
-        log_msg "INFO" "状态: 获取到 ${#ip_addresses[@]} 个 IP"
+        log_info "状态: 获取到 ${#ip_addresses[@]} 个 IP"
         for i in "${!ip_addresses[@]}"; do
-            log_msg "INFO" "  [$((i+1))] ${ip_addresses[$i]}"
+            log_info "  [$((i+1))] ${ip_addresses[$i]}"
         done
         
         # 获取该线路的 DNS 记录
-        log_msg "INFO" "步骤 2: 获取 DNS 记录"
+        log_info "步骤 2: 获取 DNS 记录"
         local record_response
         record_response="$(get_record_by_line "${line}")"
         
@@ -1146,7 +1095,7 @@ main_multi() {
         if [[ -n "${error_code}" ]] && [[ "${error_code}" != "null" ]] && [[ "${error_code}" != "ResourceNotFound.NoDataOfRecord" ]]; then
             local error_msg
             error_msg="$(echo "${record_response}" | jq -r '.Response.Error.Message' 2>/dev/null)"
-            log_msg "ERROR" "[ERROR] API 错误: ${error_code} - ${error_msg}"
+            log_error "[ERROR] API 错误: ${error_code} - ${error_msg}"
             continue
         fi
         
@@ -1155,7 +1104,7 @@ main_multi() {
         count="$(echo "${record_response}" | jq '.Response.RecordList | length' 2>/dev/null)"
         
         if [[ -z "${count}" ]] || [[ "${count}" = "null" ]] || [[ "${count}" -eq 0 ]]; then
-            log_msg "INFO" "状态: 该线路无记录,将自动创建"
+            log_info "状态: 该线路无记录,将自动创建"
         else
             # 提取所有记录信息
             for ((i=0; i<count; i++)); do
@@ -1170,15 +1119,15 @@ main_multi() {
             
             record_count=${#record_ids[@]}
             
-            log_msg "INFO" "状态: 找到 ${record_count} 条记录"
+            log_info "状态: 找到 ${record_count} 条记录"
             for i in "${!record_ids[@]}"; do
-                log_msg "INFO" "  [$((i+1))] RecordID=${record_ids[$i]}, IP=${current_values[$i]}"
+                log_info "  [$((i+1))] RecordID=${record_ids[$i]}, IP=${current_values[$i]}"
             done
         fi
-        log_msg "INFO" ""
+        log_info ""
         
         # 【安全修复】确定要处理的记录数（取 IP 数量和现有记录数的较小值）
-        log_msg "INFO" "步骤 3: 更新/创建 DNS 记录"
+        log_info "步骤 3: 更新/创建 DNS 记录"
         local updated=0
         local skipped=0
         local failed=0
@@ -1186,8 +1135,8 @@ main_multi() {
         
         # 【安全修复】检查 IP 数量与记录数量的关系
         if [[ ${#ip_addresses[@]} -lt ${record_count} ]]; then
-            log_msg "WARN" "IP 数量(${#ip_addresses[@]})少于记录数量(${record_count})"
-            log_msg "WARN" "部分 IP 将被循环使用，建议增加 IP 数量或减少 DNS 记录"
+            log_warn "IP 数量(${#ip_addresses[@]})少于记录数量(${record_count})"
+            log_warn "部分 IP 将被循环使用，建议增加 IP 数量或减少 DNS 记录"
         fi
         
         # 【安全修复】计算需要处理的记录数（取最大值以确保所有 IP 都被处理）
@@ -1235,7 +1184,7 @@ main_multi() {
                         local error_msg
                         error_msg="$(echo "${modify_response}" | jq -r '.Response.Error.Message' 2>/dev/null)"
                         echo ""  # 换行
-                        log_msg "ERROR" "  [ERROR] 更新失败: ${error_code} - ${error_msg}"
+                        log_error "  [ERROR] 更新失败: ${error_code} - ${error_msg}"
                         failed=$((failed + 1))
                     else
                         updated=$((updated + 1))
@@ -1256,7 +1205,7 @@ main_multi() {
                     local error_msg
                     error_msg="$(echo "${create_response}" | jq -r '.Response.Error.Message' 2>/dev/null)"
                     echo ""  # 换行
-                    log_msg "ERROR" "  [ERROR] 创建失败: ${error_code} - ${error_msg}"
+                    log_error "  [ERROR] 创建失败: ${error_code} - ${error_msg}"
                     failed=$((failed + 1))
                 else
                     created=$((created + 1))
@@ -1268,16 +1217,16 @@ main_multi() {
         # 【安全修复】如果 IP 数量少于记录数，提示跳过的记录
         if [[ ${#ip_addresses[@]} -lt ${record_count} ]]; then
             local skipped_records=$((record_count - ${#ip_addresses[@]}))
-            log_msg "INFO" "跳过第 $(( ${#ip_addresses[@]} + 1 ))-${record_count} 条记录（无对应 IP）"
+            log_info "跳过第 $(( ${#ip_addresses[@]} + 1 ))-${record_count} 条记录（无对应 IP）"
         fi
         
-        log_msg "INFO" ""
-        log_msg "INFO" "线路完成统计:"
-        log_msg "INFO" "  [OK] 成功: ${updated}"
-        log_msg "ERROR" "  [ERROR] 失败: ${failed}"
-        log_msg "INFO" "  [SKIP] 跳过: ${skipped}"
-        log_msg "INFO" "  ➕ 新建: ${created}"
-        log_msg "INFO" ""
+        log_info ""
+        log_info "线路完成统计:"
+        log_info "  [OK] 成功: ${updated}"
+        log_error "  [ERROR] 失败: ${failed}"
+        log_info "  [SKIP] 跳过: ${skipped}"
+        log_info "  ➕ 新建: ${created}"
+        log_info ""
         
         total_updated=$((total_updated + updated))
         total_skipped=$((total_skipped + skipped))
@@ -1287,15 +1236,15 @@ main_multi() {
     done
     
     # 总结
-    log_msg "INFO" "================================================================"
-    log_msg "INFO" "更新结果汇总"
-    log_msg "INFO" "================================================================"
-    log_msg "INFO" "处理线路: ${processed_lines}"
-    log_msg "INFO" "更新成功: ${total_updated}"
-    log_msg "INFO" "跳过:     ${total_skipped}"
-    log_msg "INFO" "失败:     ${total_failed}"
-    log_msg "INFO" "新建:     ${total_created}"
-    log_msg "INFO" "================================================================"
+    log_info "================================================================"
+    log_info "更新结果汇总"
+    log_info "================================================================"
+    log_info "处理线路: ${processed_lines}"
+    log_info "更新成功: ${total_updated}"
+    log_info "跳过:     ${total_skipped}"
+    log_info "失败:     ${total_failed}"
+    log_info "新建:     ${total_created}"
+    log_info "================================================================"
     
     # 【功能增强】记录 DNSPod 多线路更新历史
     record_dnspod_update_history "$DOMAIN_NAME" "$total_updated" "$total_created" "$total_skipped"
@@ -1313,24 +1262,24 @@ main_delete() {
         elif [[ -n "${SUB_DOMAIN}" ]]; then
             lines_to_delete=("默认")
         else
-            log_msg "ERROR" "未指定要删除的线路"
+            log_error "未指定要删除的线路"
             exit 1
         fi
     fi
     
-    log_msg "INFO" ""
-    log_msg "INFO" "================================================================"
-    log_msg "INFO" "DNSPod DNS 记录删除器"
-    log_msg "INFO" "================================================================"
-    log_msg "INFO" "域名: ${DOMAIN}"
-    log_msg "INFO" "线路: ${lines_to_delete[*]}"
-    log_msg "INFO" "================================================================"
-    log_msg "INFO" ""
+    log_info ""
+    log_info "================================================================"
+    log_info "DNSPod DNS 记录删除器"
+    log_info "================================================================"
+    log_info "域名: ${DOMAIN}"
+    log_info "线路: ${lines_to_delete[*]}"
+    log_info "================================================================"
+    log_info ""
     
     # ===== 预检阶段：查询所有将要删除的记录 =====
-    log_msg "INFO" "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-    log_msg "INFO" "预检：查询将要删除的记录"
-    log_msg "INFO" "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    log_info "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    log_info "预检：查询将要删除的记录"
+    log_info "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
     
     local -a all_record_ids=()
     local -a all_subdomains=()
@@ -1360,7 +1309,7 @@ main_delete() {
         if [[ -n "${error_code}" ]] && [[ "${error_code}" != "null" ]] && [[ "${error_code}" != "ResourceNotFound.NoDataOfRecord" ]]; then
             local error_msg
             error_msg="$(echo "${record_response}" | jq -r '.Response.Error.Message' 2>/dev/null)"
-            log_msg "ERROR" "[ERROR] 查询失败: ${line} - ${error_code}"
+            log_error "[ERROR] 查询失败: ${line} - ${error_code}"
             continue
         fi
         
@@ -1369,7 +1318,7 @@ main_delete() {
         count="$(echo "${record_response}" | jq '.Response.RecordList | length' 2>/dev/null)"
         
         if [[ -z "${count}" ]] || [[ "${count}" = "null" ]] || [[ "${count}" -eq 0 ]]; then
-            log_msg "INFO" "  [SKIP] ${subdomain}.${DOMAIN} - 无记录"
+            log_info "  [SKIP] ${subdomain}.${DOMAIN} - 无记录"
             continue
         fi
         
@@ -1385,24 +1334,24 @@ main_delete() {
             all_values+=("${value}")
             total_found=$((total_found + 1))
             
-            log_msg "INFO" "  [${total_found}] ${subdomain}.${DOMAIN} → ${value} (ID: ${record_id})"
+            log_info "  [${total_found}] ${subdomain}.${DOMAIN} → ${value} (ID: ${record_id})"
         done
     done
     
-    log_msg "INFO" ""
+    log_info ""
     
     if [[ "${total_found}" -eq 0 ]]; then
-        log_msg "WARN" "[INFO] 未找到任何记录，无需删除"
+        log_warn "[INFO] 未找到任何记录，无需删除"
         return 0
     fi
     
-    log_msg "INFO" "[OK] 共找到 ${total_found} 条记录"
-    log_msg "INFO" ""
+    log_info "[OK] 共找到 ${total_found} 条记录"
+    log_info ""
     
     # ===== 删除阶段 =====
-    log_msg "INFO" "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-    log_msg "INFO" "开始删除记录"
-    log_msg "INFO" "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    log_info "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    log_info "开始删除记录"
+    log_info "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
     
     local total_deleted=0
     local total_failed=0
@@ -1412,12 +1361,12 @@ main_delete() {
         local subdomain="${all_subdomains[$i]}"
         local value="${all_values[$i]}"
         
-        log_msg "INFO" ""
-        log_msg "INFO" "  记录 $((i+1))/${total_found}:"
-        log_msg "INFO" "    子域名:   ${subdomain}"
-        log_msg "INFO" "    RecordID: ${record_id}"
-        log_msg "INFO" "    IP:       ${value}"
-        log_msg "INFO" "    ⟳ 正在删除..."
+        log_info ""
+        log_info "  记录 $((i+1))/${total_found}:"
+        log_info "    子域名:   ${subdomain}"
+        log_info "    RecordID: ${record_id}"
+        log_info "    IP:       ${value}"
+        log_info "    ⟳ 正在删除..."
         
         local delete_response
         delete_response="$(delete_record_by_line "${record_id}")"
@@ -1428,41 +1377,41 @@ main_delete() {
             error_code="$(echo "${delete_response}" | jq -r '.Response.Error.Code' 2>/dev/null)"
             local error_msg
             error_msg="$(echo "${delete_response}" | jq -r '.Response.Error.Message' 2>/dev/null)"
-            log_msg "ERROR" "    [ERROR] 删除失败: ${error_code} - ${error_msg}"
+            log_error "    [ERROR] 删除失败: ${error_code} - ${error_msg}"
             total_failed=$((total_failed + 1))
         else
-            log_msg "INFO" "    [OK] 删除成功"
+            log_info "    [OK] 删除成功"
             total_deleted=$((total_deleted + 1))
         fi
     done
     
     # 总结
-    log_msg "INFO" ""
-    log_msg "INFO" "================================================================"
-    log_msg "INFO" "删除结果汇总"
-    log_msg "INFO" "================================================================"
-    log_msg "INFO" " [OK] 成功: ${total_deleted}"
-    log_msg "ERROR" " [ERROR] 失败: ${total_failed}"
-    log_msg "INFO" "================================================================"
+    log_info ""
+    log_info "================================================================"
+    log_info "删除结果汇总"
+    log_info "================================================================"
+    log_info " [OK] 成功: ${total_deleted}"
+    log_error " [ERROR] 失败: ${total_failed}"
+    log_info "================================================================"
 }
 
 # 删除统一模式记录的主函数
 main_delete_unified() {
     local unified_subdomain="${1:-dns}"
     
-    log_msg "INFO" ""
-    log_msg "INFO" "================================================================"
-    log_msg "INFO" "DNSPod DNS 记录删除器 - 统一模式"
-    log_msg "INFO" "================================================================"
-    log_msg "INFO" "域名: ${DOMAIN}"
-    log_msg "INFO" "子域名: ${unified_subdomain}.${DOMAIN}"
-    log_msg "INFO" "================================================================"
-    log_msg "INFO" ""
+    log_info ""
+    log_info "================================================================"
+    log_info "DNSPod DNS 记录删除器 - 统一模式"
+    log_info "================================================================"
+    log_info "域名: ${DOMAIN}"
+    log_info "子域名: ${unified_subdomain}.${DOMAIN}"
+    log_info "================================================================"
+    log_info ""
     
     # ===== 预检阶段：查询所有将要删除的记录 =====
-    log_msg "INFO" "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-    log_msg "INFO" "预检：查询统一模式的记录"
-    log_msg "INFO" "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    log_info "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    log_info "预检：查询统一模式的记录"
+    log_info "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
     
     local -a all_record_ids=()
     local -a all_lines=()
@@ -1485,7 +1434,7 @@ main_delete_unified() {
     if [[ -n "${error_code}" ]] && [[ "${error_code}" != "null" ]] && [[ "${error_code}" != "ResourceNotFound.NoDataOfRecord" ]]; then
         local error_msg
         error_msg="$(echo "${record_response}" | jq -r '.Response.Error.Message' 2>/dev/null)"
-        log_msg "ERROR" "[ERROR] 查询失败: ${error_code}"
+        log_error "[ERROR] 查询失败: ${error_code}"
         return 1
     fi
     
@@ -1494,7 +1443,7 @@ main_delete_unified() {
     count="$(echo "${record_response}" | jq '.Response.RecordList | length' 2>/dev/null)"
     
     if [[ -z "${count}" ]] || [[ "${count}" = "null" ]] || [[ "${count}" -eq 0 ]]; then
-        log_msg "WARN" "[INFO] 未找到任何记录"
+        log_warn "[INFO] 未找到任何记录"
         return 0
     fi
     
@@ -1515,24 +1464,24 @@ main_delete_unified() {
             all_values+=("${value}")
             total_found=$((total_found + 1))
             
-            log_msg "INFO" "  [${total_found}] ${unified_subdomain}.${DOMAIN} (${record_line}) → ${value} (ID: ${record_id})"
+            log_info "  [${total_found}] ${unified_subdomain}.${DOMAIN} (${record_line}) → ${value} (ID: ${record_id})"
         fi
     done
     
-    log_msg "INFO" ""
+    log_info ""
     
     if [[ "${total_found}" -eq 0 ]]; then
-        log_msg "WARN" "[INFO] 未找到任何记录，无需删除"
+        log_warn "[INFO] 未找到任何记录，无需删除"
         return 0
     fi
     
-    log_msg "INFO" "[OK] 共找到 ${total_found} 条记录"
-    log_msg "INFO" ""
+    log_info "[OK] 共找到 ${total_found} 条记录"
+    log_info ""
     
     # ===== 删除阶段 =====
-    log_msg "INFO" "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-    log_msg "INFO" "开始删除记录"
-    log_msg "INFO" "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    log_info "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    log_info "开始删除记录"
+    log_info "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
     
     local total_deleted=0
     local total_failed=0
@@ -1542,13 +1491,13 @@ main_delete_unified() {
         local line_name="${all_lines[$i]}"
         local value="${all_values[$i]}"
         
-        log_msg "INFO" ""
-        log_msg "INFO" "  记录 $((i+1))/${total_found}:"
-        log_msg "INFO" "    子域名:   ${unified_subdomain}.${DOMAIN}"
-        log_msg "INFO" "    线路:     ${line_name}"
-        log_msg "INFO" "    RecordID: ${record_id}"
-        log_msg "INFO" "    IP:       ${value}"
-        log_msg "INFO" "    ⟳ 正在删除..."
+        log_info ""
+        log_info "  记录 $((i+1))/${total_found}:"
+        log_info "    子域名:   ${unified_subdomain}.${DOMAIN}"
+        log_info "    线路:     ${line_name}"
+        log_info "    RecordID: ${record_id}"
+        log_info "    IP:       ${value}"
+        log_info "    ⟳ 正在删除..."
         
         local delete_response
         delete_response="$(delete_record_by_line "${record_id}")"
@@ -1556,44 +1505,44 @@ main_delete_unified() {
         delete_error="$(echo "${delete_response}" | jq -r '.Response.Error.Code' 2>/dev/null)"
         
         if [[ -z "${delete_error}" ]] || [[ "${delete_error}" = "null" ]]; then
-            log_msg "INFO" "    [OK] 删除成功"
+            log_info "    [OK] 删除成功"
             total_deleted=$((total_deleted + 1))
         else
             local delete_msg
             delete_msg="$(echo "${delete_response}" | jq -r '.Response.Error.Message' 2>/dev/null)"
-            log_msg "ERROR" "    [ERROR] 删除失败: ${delete_error} - ${delete_msg}"
+            log_error "    [ERROR] 删除失败: ${delete_error} - ${delete_msg}"
             total_failed=$((total_failed + 1))
         fi
     done
     
     # 总结
-    log_msg "INFO" ""
-    log_msg "INFO" "================================================================"
-    log_msg "INFO" "删除结果汇总"
-    log_msg "INFO" "================================================================"
-    log_msg "INFO" " [OK] 成功: ${total_deleted}"
-    log_msg "ERROR" " [ERROR] 失败: ${total_failed}"
-    log_msg "INFO" "================================================================"
+    log_info ""
+    log_info "================================================================"
+    log_info "删除结果汇总"
+    log_info "================================================================"
+    log_info " [OK] 成功: ${total_deleted}"
+    log_error " [ERROR] 失败: ${total_failed}"
+    log_info "================================================================"
 }
 
 # 删除统一模式非默认线路记录的主函数（保留默认线路）
 main_delete_unified_non_default() {
     local unified_subdomain="${1:-dns}"
     
-    log_msg "INFO" ""
-    log_msg "INFO" "================================================================"
-    log_msg "INFO" "DNSPod DNS 记录删除器 - 统一模式（非默认线路）"
-    log_msg "INFO" "================================================================"
-    log_msg "INFO" "域名: ${DOMAIN}"
-    log_msg "INFO" "子域名: ${unified_subdomain}.${DOMAIN}"
-    log_msg "INFO" "说明: 删除联通、移动、电信线路，保留默认线路"
-    log_msg "INFO" "================================================================"
-    log_msg "INFO" ""
+    log_info ""
+    log_info "================================================================"
+    log_info "DNSPod DNS 记录删除器 - 统一模式（非默认线路）"
+    log_info "================================================================"
+    log_info "域名: ${DOMAIN}"
+    log_info "子域名: ${unified_subdomain}.${DOMAIN}"
+    log_info "说明: 删除联通、移动、电信线路，保留默认线路"
+    log_info "================================================================"
+    log_info ""
     
     # ===== 预检阶段：查询所有将要删除的记录 =====
-    log_msg "INFO" "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-    log_msg "INFO" "预检：查询统一模式的非默认线路记录"
-    log_msg "INFO" "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    log_info "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    log_info "预检：查询统一模式的非默认线路记录"
+    log_info "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
         
     local -a all_record_ids=()
     local -a all_lines=()
@@ -1616,7 +1565,7 @@ main_delete_unified_non_default() {
     if [[ -n "${error_code}" ]] && [[ "${error_code}" != "null" ]] && [[ "${error_code}" != "ResourceNotFound.NoDataOfRecord" ]]; then
         local error_msg
         error_msg="$(echo "${record_response}" | jq -r '.Response.Error.Message' 2>/dev/null)"
-        log_msg "ERROR" "[ERROR] 查询失败: ${error_code}"
+        log_error "[ERROR] 查询失败: ${error_code}"
         return 1
     fi
         
@@ -1625,7 +1574,7 @@ main_delete_unified_non_default() {
     count="$(echo "${record_response}" | jq '.Response.RecordList | length' 2>/dev/null)"
         
     if [[ -z "${count}" ]] || [[ "${count}" = "null" ]] || [[ "${count}" -eq 0 ]]; then
-        log_msg "WARN" "[INFO] 未找到任何记录"
+        log_warn "[INFO] 未找到任何记录"
         return 0
     fi
         
@@ -1651,27 +1600,27 @@ main_delete_unified_non_default() {
             all_values+=("${value}")
             total_found=$((total_found + 1))
                 
-            log_msg "INFO" "  [${total_found}] ${unified_subdomain}.${DOMAIN} (${record_line}) → ${value} (ID: ${record_id})"
+            log_info "  [${total_found}] ${unified_subdomain}.${DOMAIN} (${record_line}) → ${value} (ID: ${record_id})"
         fi
     done
         
     # 显示保留的默认线路提示
-    log_msg "INFO" "  [OK] 默认线路 - 保留"
+    log_info "  [OK] 默认线路 - 保留"
     
-    log_msg "INFO" ""
+    log_info ""
     
     if [[ "${total_found}" -eq 0 ]]; then
-        log_msg "WARN" "[INFO] 未找到任何非默认线路记录，无需删除"
+        log_warn "[INFO] 未找到任何非默认线路记录，无需删除"
         return 0
     fi
     
-    log_msg "INFO" "[OK] 共找到 ${total_found} 条非默认线路记录"
-    log_msg "INFO" ""
+    log_info "[OK] 共找到 ${total_found} 条非默认线路记录"
+    log_info ""
     
     # ===== 删除阶段 =====
-    log_msg "INFO" "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-    log_msg "INFO" "开始删除非默认线路记录"
-    log_msg "INFO" "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    log_info "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    log_info "开始删除非默认线路记录"
+    log_info "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
     
     local total_deleted=0
     local total_failed=0
@@ -1681,13 +1630,13 @@ main_delete_unified_non_default() {
         local line_name="${all_lines[$i]}"
         local value="${all_values[$i]}"
         
-        log_msg "INFO" ""
-        log_msg "INFO" "  记录 $((i+1))/${total_found}:"
-        log_msg "INFO" "    子域名:   ${unified_subdomain}.${DOMAIN}"
-        log_msg "INFO" "    线路:     ${line_name}"
-        log_msg "INFO" "    RecordID: ${record_id}"
-        log_msg "INFO" "    IP:       ${value}"
-        log_msg "INFO" "    ⟳ 正在删除..."
+        log_info ""
+        log_info "  记录 $((i+1))/${total_found}:"
+        log_info "    子域名:   ${unified_subdomain}.${DOMAIN}"
+        log_info "    线路:     ${line_name}"
+        log_info "    RecordID: ${record_id}"
+        log_info "    IP:       ${value}"
+        log_info "    ⟳ 正在删除..."
         
         local delete_response
         delete_response="$(delete_record_by_line "${record_id}")"
@@ -1695,25 +1644,25 @@ main_delete_unified_non_default() {
         delete_error="$(echo "${delete_response}" | jq -r '.Response.Error.Code' 2>/dev/null)"
         
         if [[ -z "${delete_error}" ]] || [[ "${delete_error}" = "null" ]]; then
-            log_msg "INFO" "    [OK] 删除成功"
+            log_info "    [OK] 删除成功"
             total_deleted=$((total_deleted + 1))
         else
             local delete_msg
             delete_msg="$(echo "${delete_response}" | jq -r '.Response.Error.Message' 2>/dev/null)"
-            log_msg "ERROR" "    [ERROR] 删除失败: ${delete_error} - ${delete_msg}"
+            log_error "    [ERROR] 删除失败: ${delete_error} - ${delete_msg}"
             total_failed=$((total_failed + 1))
         fi
     done
     
     # 总结
-    log_msg "INFO" ""
-    log_msg "INFO" "================================================================"
-    log_msg "INFO" "删除结果汇总"
-    log_msg "INFO" "================================================================"
-    log_msg "INFO" " [OK] 成功: ${total_deleted}"
-    log_msg "ERROR" " [ERROR] 失败: ${total_failed}"
-    log_msg "INFO" " 保留: 默认线路记录"
-    log_msg "INFO" "================================================================"
+    log_info ""
+    log_info "================================================================"
+    log_info "删除结果汇总"
+    log_info "================================================================"
+    log_info " [OK] 成功: ${total_deleted}"
+    log_error " [ERROR] 失败: ${total_failed}"
+    log_info " 保留: 默认线路记录"
+    log_info "================================================================"
 }
 
 
@@ -1725,7 +1674,7 @@ update_config_field() {
     local new_value="$2"
     
     if ! command -v jq &>/dev/null; then
-        log_msg "ERROR" "jq 未安装，无法更新配置"
+        log_error "jq 未安装，无法更新配置"
         return 1
     fi
     
@@ -1741,11 +1690,11 @@ update_config_field() {
     if jq $jq_arg val "$new_value" "${field_path} = \$val" "$CONFIG_FILE" > "$temp_file" 2>/dev/null; then
         mv "$temp_file" "$CONFIG_FILE"
         chmod 600 "$CONFIG_FILE"
-        log_msg "INFO" "配置已更新: ${field_path} = ${new_value}"
+        log_info "配置已更新: ${field_path} = ${new_value}"
         return 0
     else
         rm -f "$temp_file"
-        log_msg "ERROR" "更新配置失败: ${field_path}"
+        log_error "更新配置失败: ${field_path}"
         return 1
     fi
 }
@@ -1756,7 +1705,7 @@ read_ips_from_file() {
     local max_ips="${2:-0}"  # 0 表示不限制
     
     if [[ ! -f "${ip_file}" ]]; then
-        log_msg "ERROR" "IP 文件不存在: ${ip_file}"
+        log_error "IP 文件不存在: ${ip_file}"
         return 1
     fi
     
@@ -1769,7 +1718,7 @@ read_ips_from_file() {
     content="$(awk '!/^#/ && !/^$/ { gsub(/#.*/, ""); split($0, a, "|"); printf "%s,", a[1] }' "${ip_file}" | sed 's/,$//')"
     
     if [[ -z "${content}" ]]; then
-        log_msg "WARN" "IP 文件为空: ${ip_file}"
+        log_warn "IP 文件为空: ${ip_file}"
         return 1
     fi
     
@@ -1781,8 +1730,8 @@ read_ips_from_file() {
         
         # 如果超出限制，只取前 N 个
         if [[ "${total_ips}" -gt "${max_ips}" ]]; then
-            log_msg "WARN" "IP 文件包含 ${total_ips} 个 IP，超出限制 ${max_ips} 个"
-            log_msg "INFO" "已自动截取前 ${max_ips} 个 IP (避免超出套餐限制)"
+            log_warn "IP 文件包含 ${total_ips} 个 IP，超出限制 ${max_ips} 个"
+            log_info "已自动截取前 ${max_ips} 个 IP (避免超出套餐限制)"
             
             # 取前 N 个 IP
             local limited_ips=""
@@ -1866,9 +1815,9 @@ handle_mode_switch() {
     local strategy="${3:-separate}"
     local new_subdomain="$4"
     
-    log_msg "INFO" "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-    log_msg "INFO" "开始处理模式切换: ${from_mode} → ${to_mode}"
-    log_msg "INFO" "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    log_info "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    log_info "开始处理模式切换: ${from_mode} → ${to_mode}"
+    log_info "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
     
     if [[ "$from_mode" == "single" ]] && [[ "$to_mode" == "multi" ]]; then
         # 单线路 → 多线路
@@ -1877,7 +1826,7 @@ handle_mode_switch() {
         # 多线路 → 单线路
         handle_multi_to_single "$strategy" "$new_subdomain"
     else
-        log_msg "ERROR" "不支持的模式切换: ${from_mode} → ${to_mode}"
+        log_error "不支持的模式切换: ${from_mode} → ${to_mode}"
         return 1
     fi
 }
@@ -1893,17 +1842,17 @@ handle_single_to_multi() {
     domain=$(jq -r '.dns.domain // empty' "$CONFIG_FILE")
     
     if [[ -z "$old_subdomain" ]] || [[ -z "$domain" ]]; then
-        log_msg "ERROR" "配置不完整，无法执行模式切换"
+        log_error "配置不完整，无法执行模式切换"
         return 1
     fi
     
-    log_msg "INFO" "检测到单线路记录: ${old_subdomain}.${domain}"
+    log_info "检测到单线路记录: ${old_subdomain}.${domain}"
     
     # 检查是否存在单线路记录
     if check_records_exist "$old_subdomain" "$domain"; then
         local record_count
         record_count=$(get_record_count "$old_subdomain" "$domain")
-        log_msg "INFO" "找到 ${record_count} 条单线路记录"
+        log_info "找到 ${record_count} 条单线路记录"
         
         # 询问用户如何处理（交互式环境）
         if [[ -t 0 ]]; then
@@ -1919,36 +1868,36 @@ handle_single_to_multi() {
             case "$choice" in
                 1)
                     # 删除单线路记录
-                    log_msg "INFO" "正在删除单线路记录..."
+                    log_info "正在删除单线路记录..."
                     main_delete
                     
                     # 创建多线路记录
-                    log_msg "INFO" "正在创建多线路记录..."
+                    log_info "正在创建多线路记录..."
                     main_multi
                     ;;
                 2)
                     # 仅创建多线路记录
-                    log_msg "INFO" "正在创建多线路记录（保留单线路记录）..."
+                    log_info "正在创建多线路记录（保留单线路记录）..."
                     main_multi
-                    log_msg "WARN" "注意: 单线路记录 ${old_subdomain}.${domain} 仍然保留"
+                    log_warn "注意: 单线路记录 ${old_subdomain}.${domain} 仍然保留"
                     ;;
                 3)
-                    log_msg "INFO" "已取消模式切换"
+                    log_info "已取消模式切换"
                     return 1
                     ;;
                 *)
-                    log_msg "ERROR" "无效的选择"
+                    log_error "无效的选择"
                     return 1
                     ;;
             esac
         else
             # 非交互式环境，默认删除并创建
-            log_msg "INFO" "非交互式环境，自动删除单线路记录并创建多线路记录"
+            log_info "非交互式环境，自动删除单线路记录并创建多线路记录"
             main_delete
             main_multi
         fi
     else
-        log_msg "INFO" "未找到单线路记录，直接创建多线路记录"
+        log_info "未找到单线路记录，直接创建多线路记录"
         main_multi
     fi
 }
@@ -1962,24 +1911,24 @@ handle_multi_to_single() {
     domain=$(jq -r '.dns.domain // empty' "$CONFIG_FILE")
     
     if [[ -z "$domain" ]]; then
-        log_msg "ERROR" "配置不完整，无法执行模式切换"
+        log_error "配置不完整，无法执行模式切换"
         return 1
     fi
     
-    log_msg "INFO" "检测到多线路配置"
+    log_info "检测到多线路配置"
     
     # 根据策略处理
     if [[ "$strategy" == "unified" ]]; then
         local unified_subdomain
         unified_subdomain=$(jq -r '.dns.sub_domain_unified // "dns"' "$CONFIG_FILE")
         
-        log_msg "INFO" "统一模式子域名: ${unified_subdomain}.${domain}"
+        log_info "统一模式子域名: ${unified_subdomain}.${domain}"
         
         # 检查是否存在统一模式记录
         if check_records_exist "$unified_subdomain" "$domain"; then
             local record_count
             record_count=$(get_record_count "$unified_subdomain" "$domain")
-            log_msg "INFO" "找到 ${record_count} 条统一模式记录"
+            log_info "找到 ${record_count} 条统一模式记录"
             
             if [[ -t 0 ]]; then
                 echo ""
@@ -1996,7 +1945,7 @@ handle_multi_to_single() {
                     new_sub=${new_sub:-$unified_subdomain}
                     
                     # 删除所有统一模式记录
-                    log_msg "INFO" "正在删除所有统一模式记录..."
+                    log_info "正在删除所有统一模式记录..."
                     main_delete_unified "$unified_subdomain"
                     
                     # 更新配置
@@ -2004,33 +1953,33 @@ handle_multi_to_single() {
                     update_config_field ".dns.sub_domain" "$new_sub"
                     
                     # 创建单线路记录
-                    log_msg "INFO" "正在创建单线路记录..."
+                    log_info "正在创建单线路记录..."
                     main_single
                 else
                     # 只删除非默认线路
-                    log_msg "INFO" "正在删除非默认线路记录..."
+                    log_info "正在删除非默认线路记录..."
                     main_delete_unified_non_default "$unified_subdomain"
                     
                     # 使用统一模式的子域名作为单线路子域名
                     # 更新配置
                     update_config_field ".dns.sub_domain" "$unified_subdomain"
                     
-                    log_msg "INFO" "单线路将使用子域名: ${unified_subdomain}.${domain}"
+                    log_info "单线路将使用子域名: ${unified_subdomain}.${domain}"
                 fi
             else
                 # 非交互式环境，默认保留默认线路
-                log_msg "INFO" "非交互式环境，保留默认线路记录"
+                log_info "非交互式环境，保留默认线路记录"
                 main_delete_unified_non_default "$unified_subdomain"
             fi
         else
-            log_msg "INFO" "未找到统一模式记录，直接配置单线路"
+            log_info "未找到统一模式记录，直接配置单线路"
         fi
     else
         # 分离模式
         local default_subdomain
         default_subdomain=$(jq -r '.dns.sub_domains.default // "default"' "$CONFIG_FILE")
         
-        log_msg "INFO" "分离模式，默认线路子域名: ${default_subdomain}.${domain}"
+        log_info "分离模式，默认线路子域名: ${default_subdomain}.${domain}"
         
         if [[ -t 0 ]]; then
             echo ""
@@ -2045,7 +1994,7 @@ handle_multi_to_single() {
             case "$choice" in
                 1)
                     # 删除所有分离模式记录
-                    log_msg "INFO" "正在删除分离模式记录..."
+                    log_info "正在删除分离模式记录..."
                     main_delete
                     
                     # 使用默认线路子域名
@@ -2053,7 +2002,7 @@ handle_multi_to_single() {
                     update_config_field ".dns.sub_domain" "$default_subdomain"
                     
                     # 创建单线路记录
-                    log_msg "INFO" "正在创建单线路记录..."
+                    log_info "正在创建单线路记录..."
                     main_single
                     ;;
                 2)
@@ -2062,7 +2011,7 @@ handle_multi_to_single() {
                     new_sub=${new_sub:-$default_subdomain}
                     
                     # 删除所有分离模式记录
-                    log_msg "INFO" "正在删除分离模式记录..."
+                    log_info "正在删除分离模式记录..."
                     main_delete
                     
                     # 更新配置
@@ -2070,21 +2019,21 @@ handle_multi_to_single() {
                     update_config_field ".dns.sub_domain" "$new_sub"
                     
                     # 创建单线路记录
-                    log_msg "INFO" "正在创建单线路记录..."
+                    log_info "正在创建单线路记录..."
                     main_single
                     ;;
                 3)
-                    log_msg "INFO" "已取消模式切换"
+                    log_info "已取消模式切换"
                     return 1
                     ;;
                 *)
-                    log_msg "ERROR" "无效的选择"
+                    log_error "无效的选择"
                     return 1
                     ;;
             esac
         else
             # 非交互式环境，默认使用默认线路子域名
-            log_msg "INFO" "非交互式环境，使用默认线路子域名"
+            log_info "非交互式环境，使用默认线路子域名"
             main_delete
             
             # 更新配置
@@ -2099,7 +2048,7 @@ handle_multi_to_single() {
 # 【修复】必须在所有函数定义之后执行，避免 "command not found" 错误
 if [[ -n "${DNSPOD_MODE_SWITCH:-}" ]]; then
     # 检测到模式切换请求，执行智能处理
-    log_msg "INFO" "检测到模式切换请求: ${DNSPOD_FROM_MODE} → ${DNSPOD_TO_MODE}"
+    log_info "检测到模式切换请求: ${DNSPOD_FROM_MODE} → ${DNSPOD_TO_MODE}"
     handle_mode_switch "$DNSPOD_FROM_MODE" "$DNSPOD_TO_MODE" "$DNSPOD_STRATEGY"
     exit $?
 fi

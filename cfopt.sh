@@ -24,73 +24,48 @@ NC='\033[0m'
 
 # ====================== 【统一错误处理系统】 ======================
 
+# 【修复】先定义最小化的日志函数（不依赖 INSTALL_DIR）
+# 在 INSTALL_DIR 确定后，会被公共库的完整版本替代
+_CFOPT_LOG_DIR="."
+
 # 日志轮转函数（防止日志无限增长）
-rotate_log() {
+# 【修复】内联版本，在公共库加载前使用
+_rotate_log_fallback() {
     local log_file="$1"
-    local max_size=${2:-$((10 * 1024 * 1024))}  # 默认 10MB
-    
+    local max_size=${2:-$((10 * 1024 * 1024))}
     if [[ -f "$log_file" ]]; then
         local file_size
-        # 【修复】跨平台获取文件大小（macOS 不支持 stat -c）
         if stat -f %z "$log_file" >/dev/null 2>&1; then
-            # macOS/BSD
             file_size=$(stat -f %z "$log_file")
         elif stat -c %s "$log_file" >/dev/null 2>&1; then
-            # Linux
             file_size=$(stat -c %s "$log_file")
         else
-            # 备用方案：使用 wc -c
             file_size=$(wc -c < "$log_file" | tr -d ' ')
         fi
-        
         if [[ "$file_size" -gt "$max_size" ]]; then
-            # 轮转日志：当前日志 -> .old
             mv "$log_file" "${log_file}.old"
-            # 删除更旧的备份（只保留1个）
             rm -f "${log_file}.old.old"
-            # 创建新的空日志文件
             touch "$log_file"
         fi
     fi
 }
 
-# ====================== 【统一结构化日志系统】 ======================
-
 # 统一日志格式: [2026-05-06 09:30:00] [INFO ] [cfopt] message
+# 【修复】在公共库加载前使用的临时版本
 log() {
     local level="$1"
     shift
     local timestamp
     timestamp="$(date '+%Y-%m-%d %H:%M:%S')"
-    
-    # 【修复】延迟求值 INSTALL_DIR，确保使用最新的值
-    local log_dir="${INSTALL_DIR:-.}/logs"
+    local log_dir="${_CFOPT_LOG_DIR}/logs"
     mkdir -p "$log_dir" 2>/dev/null || true
-    
-    # 格式化输出（对齐级别）
     printf "[%s] [%-5s] [cfopt] %s\n" "$timestamp" "$level" "$*" | tee -a "${log_dir}/error.log" 2>/dev/null || true
 }
 
-# 记录错误日志
-log_error() {
-    log "ERROR" "$@"
-}
-
-# 记录警告信息
-# 【统一日志函数命名】使用 log_warn 而非 log_warning
-log_warn() {
-    log "WARN" "$@"
-}
-
-# 记录成功信息
-log_success() {
-    log "OK" "$@"
-}
-
-# 记录信息
-log_info() {
-    log "INFO" "$@"
-}
+log_error() { log "ERROR" "$@"; }
+log_warn() { log "WARN" "$@"; }
+log_success() { log "OK" "$@"; }
+log_info() { log "INFO" "$@"; }
 
 # 触发回滚
 # 【新增】回滚函数（用于 trigger_rollback）
@@ -256,6 +231,17 @@ if [[ "${EUID}" -eq 0 ]]; then
     INSTALL_DIR="/root/cfopt"
 else
     INSTALL_DIR="${HOME}/cfopt"
+fi
+
+# 【修复】更新日志目录变量，使日志写入正确位置
+_CFOPT_LOG_DIR="${INSTALL_DIR}"
+
+# 【修复】加载公共函数库（在 INSTALL_DIR 确定后）
+if [[ -f "${INSTALL_DIR}/lib/common.sh" ]]; then
+    # shellcheck source=lib/common.sh
+    source "${INSTALL_DIR}/lib/common.sh"
+    _LOG_MODULE="cfopt"
+    _LOG_FILE="${INSTALL_DIR}/logs/error.log"
 fi
 
 # --- 自动归位逻辑：确保脚本在标准目录下运行 ---
@@ -1697,7 +1683,8 @@ init_cfopt() {
     install_system_cmd
 
     # 4. 创建目录结构
-    mkdir -p "${INSTALL_DIR}/modules/manager" \
+    mkdir -p "${INSTALL_DIR}/lib" \
+             "${INSTALL_DIR}/modules/manager" \
              "${INSTALL_DIR}/modules/quick-deploy" \
              "${INSTALL_DIR}/modules/cf-ip" \
              "${INSTALL_DIR}/modules/cf-dns" \
@@ -1724,6 +1711,7 @@ init_cfopt() {
     
     # 定义需要下载的核心模块列表
     local core_modules=(
+        "lib/common.sh"
         "modules/updater/update.sh"
         "modules/quick-deploy/setup.sh"
         "modules/cf-ip/menu.sh"
@@ -1747,6 +1735,7 @@ init_cfopt() {
         # 提取模块名称（例如：modules/cf-dns/core.sh -> CF_DNS_CORE）
         # 特殊处理：对于 update.sh 和 setup.sh，使用目录名而非文件名
         case "${module_path}" in
+            "lib/common.sh") module_key="COMMON_LIB" ;;
             "modules/updater/update.sh") module_key="UPDATER" ;;
             "modules/quick-deploy/setup.sh") module_key="QUICK_DEPLOY" ;;
             "cfopt.sh") module_key="CFOPT" ;;

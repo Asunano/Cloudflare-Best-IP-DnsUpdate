@@ -21,14 +21,6 @@ if [[ ! -t 0 ]] && [[ -z "${CF_OPT_ENTRY:-}" ]]; then
     exit 1
 fi
 
-RED='\033[0;31m'
-GREEN='\033[0;32m'
-YELLOW='\033[1;33m'
-BLUE='\033[0;34m'
-CYAN='\033[0;36m'
-BOLD='\033[1m'
-NC='\033[0m' # No Color
-
 # ==================== 跨平台文件查找辅助函数 ====================
 # 【修复】跨平台查找最新文件（替代 find -printf，兼容 macOS/BSD）
 # 参数: $1=目录路径, $2=文件名模式 (如 "cfdns_*.log")
@@ -136,8 +128,8 @@ show_menu() {
         # 从 JSON 读取配置
         local cf_dns_name
         local cf_domain
-        cf_dns_name=$(jq -r '.dns.record_name // empty' "$CONFIG_FILE" 2>/dev/null)
-        cf_domain=$(jq -r '.dns.domain // empty' "$CONFIG_FILE" 2>/dev/null)
+        cf_dns_name=$(jq -r '.dns.record_name // empty' "$CONFIG_FILE" 2>/dev/null || true)
+        cf_domain=$(jq -r '.dns.domain // empty' "$CONFIG_FILE" 2>/dev/null || true)
         
         # 构建完整域名显示
         local full_domain=""

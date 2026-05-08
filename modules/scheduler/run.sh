@@ -10,9 +10,17 @@ set -euo pipefail
 SCRIPT_VERSION="0.1"
 
 # ==================== 路径初始化 ====================
-# 获取当前脚本所在目录及项目根目录，确保在不同调用环境下路径正确
 SCRIPT_DIR="$( cd -P "$( dirname "${BASH_SOURCE[0]}" )" >/dev/null 2>&1 && pwd )"
 ROOT_DIR="$(cd "$SCRIPT_DIR/../.." && pwd)"
+
+# 【修复】加载公共函数库
+# shellcheck source=../../lib/common.sh
+source "${ROOT_DIR}/lib/common.sh"
+
+_LOG_MODULE="scheduler"
+# 【修复】设置日志文件路径，使 log_info 等函数能写入文件
+mkdir -p "${ROOT_DIR}/logs"
+_LOG_FILE="${ROOT_DIR}/logs/scheduler.log"
 
 # ==================== 权限与入口校验 ====================
 # 确保脚本具有执行权限，并在非 Root 环境下尝试自动修复
@@ -20,15 +28,6 @@ if [[ ! -x "${SCRIPT_DIR}/run.sh" ]] && [[ "$(id -u)" -ne 0 ]]; then
     echo -e "${YELLOW}[WARN] 脚本可能缺少执行权限，正在尝试修复...${NC}"
     chmod +x "${SCRIPT_DIR}/run.sh" 2>/dev/null || true
 fi
-
-# ==================== 终端显示配置 ====================
-RED='\033[0;31m'
-GREEN='\033[0;32m'
-YELLOW='\033[1;33m'
-CYAN='\033[0;36m'
-MAGENTA='\033[0;35m'
-BOLD='\033[1m'
-NC='\033[0m'
 
 echo -e "${CYAN}+------------------------------------------------------------+${NC}"
 echo -e " ${BOLD}${YELLOW}Cloudflare-Best-IP-DnsUpdate v${SCRIPT_VERSION}${NC}"
@@ -38,53 +37,7 @@ echo -e "${CYAN}+------------------------------------------------------------+${
 
 # ==================== 【安全配置】日志轮转 ====================
 # 防止日志文件无限增长（每10MB轮转一次，保留1个备份）
-
-# 【修复】跨平台获取文件大小函数（兼容 Linux/macOS/BSD）
-get_file_size() {
-    local file="$1"
-    local size
-    
-    if [[ ! -f "${file}" ]]; then
-        echo "0"
-        return
-    fi
-    
-    # 【修复】优先尝试 macOS/BSD stat（无 --version 参数）
-    if stat -f %z "${file}" >/dev/null 2>&1; then
-        # macOS/BSD stat
-        size=$(stat -f %z "${file}" 2>/dev/null)
-    elif stat -c %s "${file}" >/dev/null 2>&1; then
-        # Linux stat
-        size=$(stat -c %s "${file}" 2>/dev/null)
-    else
-        # 备用方案：使用 wc -c
-        size=$(wc -c < "${file}" | tr -d ' ')
-    fi
-    
-    # 最终校验
-    if [[ -z "${size}" ]] || [[ ! "${size}" =~ ^[0-9]+$ ]]; then
-        echo "0"
-    else
-        echo "${size}"
-    fi
-}
-
-rotate_log() {
-    local log_file="$1"
-    local max_size=${2:-$((10 * 1024 * 1024))}  # 默认 10MB
-    
-    if [[ -f "$log_file" ]]; then
-        local file_size
-        # 【修复】使用跨平台函数获取文件大小
-        file_size=$(get_file_size "$log_file")
-        
-        if [[ "$file_size" -gt "$max_size" ]]; then
-            mv "$log_file" "${log_file}.old"
-            rm -f "${log_file}.old.old"
-            touch "$log_file"
-        fi
-    fi
-}
+# 【修复】使用 lib/common.sh 中的公共 get_file_size 和 rotate_log
 
 # 轮转 scheduler 日志和错误日志
 rotate_log "${ROOT_DIR}/logs/scheduler.log"
@@ -93,40 +46,36 @@ rotate_log "${ROOT_DIR}/logs/error.log"
 # ==================== 【安全配置】测速超时保护 ====================
 # 防止 cfst 进程挂起导致 scheduler 无限等待
 SCHEDULER_TIMEOUT=${SCHEDULER_TIMEOUT:-600}  # 默认 10 分钟，可通过环境变量覆盖
-TASK_PID=""  # 【新增】记录当前任务的 PID
+TASK_PID=""  # 记录当前任务的 PID
+# 【修复】使用文件传递 PID，解决子 shell 无法获取父 shell 后续变量的问题
+WATCHDOG_PID_FILE=$(mktemp /tmp/cfopt_watchdog.XXXXXX)
 
 # 启动看门狗定时器
+# 【修复】看门狗通过文件获取任务 PID，而非依赖子 shell 变量继承
 start_watchdog() {
     local timeout="$1"
     local task_name="$2"
-    
+    local pid_file="$3"
+
+    # 清空 PID 文件
+    : > "${pid_file}"
+
     (
         sleep "$timeout"
-        echo -e "\n${RED}[TIMEOUT] ${task_name} 超时 (${timeout}秒)，强制终止所有子进程${NC}"
-        # 【修复】使用进程组杀死整个进程树，确保 cfst 等深层子进程也被终止
-        if [[ -n "${TASK_PID:-}" ]]; then
-            if [[ "${USE_PROCESS_GROUP:-false}" = true ]]; then
-                # 方法1: 尝试杀死整个进程组（最彻底，需要 setsid）
-                kill -- -"${TASK_PID}" 2>/dev/null || true
-            fi
-            
-            # 方法2: 递归杀死所有子进程（通用方案）
-            pkill -P "${TASK_PID}" 2>/dev/null || true
-            
-            # 方法3: 最后杀死主进程
-            kill "${TASK_PID}" 2>/dev/null || true
-            
-            # 等待进程完全退出
+        # 【修复】从文件读取 PID（子 shell 创建时变量尚未赋值）
+        local task_pid
+        task_pid=$(cat "${pid_file}" 2>/dev/null | tr -d '[:space:]')
+
+        if [[ -n "${task_pid}" ]] && [[ "${task_pid}" =~ ^[0-9]+$ ]]; then
+            echo -e "\n${RED}[TIMEOUT] ${task_name} 超时 (${timeout}秒)，强制终止所有子进程${NC}"
+            # 递归杀死所有子进程
+            pkill -P "${task_pid}" 2>/dev/null || true
+            kill "${task_pid}" 2>/dev/null || true
             sleep 1
-            
             # 如果还有残留进程，强制杀死
-            if kill -0 "${TASK_PID}" 2>/dev/null; then
-                if [[ "${USE_PROCESS_GROUP:-false}" = true ]]; then
-                    kill -9 -- -"${TASK_PID}" 2>/dev/null || true
-                fi
-                kill -9 "${TASK_PID}" 2>/dev/null || true
-                # 再次尝试杀死所有子进程
-                pkill -9 -P "${TASK_PID}" 2>/dev/null || true
+            if kill -0 "${task_pid}" 2>/dev/null; then
+                kill -9 "${task_pid}" 2>/dev/null || true
+                pkill -9 -P "${task_pid}" 2>/dev/null || true
             fi
         fi
         exit 1
@@ -138,13 +87,14 @@ start_watchdog() {
 # 停止看门狗定时器
 stop_watchdog() {
     if [[ -n "${WATCHDOG_PID:-}" ]]; then
-        # 【修复】先检查进程是否存在，避免 wait 已退出的进程
         if kill -0 "$WATCHDOG_PID" 2>/dev/null; then
             kill "$WATCHDOG_PID" 2>/dev/null || true
             wait "$WATCHDOG_PID" 2>/dev/null || true
         fi
         unset WATCHDOG_PID
     fi
+    # 清理临时文件
+    rm -f "${WATCHDOG_PID_FILE}" 2>/dev/null || true
 }
 
 # ==================== 核心函数定义 ====================
@@ -167,26 +117,19 @@ run_task() {
     fi
     
     # 【新增】启动超时保护看门狗
-    start_watchdog "${SCHEDULER_TIMEOUT}" "${task_name}"
+    start_watchdog "${SCHEDULER_TIMEOUT}" "${task_name}" "${WATCHDOG_PID_FILE}"
     
     # 执行脚本并捕获退出码
     # 【修复】后台启动任务以获取 PID，确保看门狗能正确杀死所有子进程
-    # 【修复】优先使用 setsid 创建新的进程组，确保 kill -- -PID 能杀死整个进程树
     # 【修复】设置 CF_OPT_ENTRY=scheduler，允许子模块通过入口校验
     export CF_OPT_ENTRY=scheduler
     
-    # 尝试使用 setsid 创建新进程组（推荐方式）
-    if command -v setsid >/dev/null 2>&1; then
-        setsid bash "${script_path}" &
-        TASK_PID=$!
-        # 【修复】记录是否使用了进程组，用于看门狗清理策略
-        USE_PROCESS_GROUP=true
-    else
-        # 备用方案：直接后台执行（无进程组隔离）
-        bash "${script_path}" &
-        TASK_PID=$!
-        USE_PROCESS_GROUP=false
-    fi
+    # 后台执行任务
+    bash "${script_path}" &
+    TASK_PID=$!
+
+    # 【修复】将 PID 写入文件，供看门狗子 shell 读取
+    echo "${TASK_PID}" > "${WATCHDOG_PID_FILE}"
     
     wait "${TASK_PID}"
     local exit_code=$?

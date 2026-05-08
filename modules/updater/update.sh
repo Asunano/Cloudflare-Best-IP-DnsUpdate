@@ -68,6 +68,7 @@ EXIT_MISSING_TOOL=4   # 缺少必要工具
 # 定义需要更新的组件映射
 # 格式: "KEY:本地路径:远程相对路径:显示名称"
 declare -a COMPONENTS=(
+    "COMMON_LIB:lib/common.sh:lib/common.sh:公共函数库"
     "UPDATER:modules/updater/update.sh:modules/updater/update.sh:自动更新组件"
     "QUICK_DEPLOY:modules/quick-deploy/setup.sh:modules/quick-deploy/setup.sh:快速部署向导"
     "CF_IP_MENU:modules/cf-ip/menu.sh:modules/cf-ip/menu.sh:CF-IP 测速管理"
