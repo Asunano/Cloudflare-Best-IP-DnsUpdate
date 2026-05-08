@@ -1776,7 +1776,6 @@ init_cfopt() {
     for module_path in "${core_modules[@]}"; do
         local module_name
         module_name=$(basename "${module_path}")
-        echo -e "  ${CYAN}[INFO] 正在下载 ${module_name}...${NC}"
         
         # 【新增】从 version.txt 中获取预期哈希值
         local module_key
@@ -1795,6 +1794,18 @@ init_cfopt() {
         
         local expected_hash
         expected_hash=$(echo "${version_content}" | grep "^${module_key}=" | head -1 | cut -d':' -f2)
+        
+        # 【性能优化】检查文件是否已存在且哈希匹配，跳过重复下载
+        if [[ -f "${INSTALL_DIR}/${module_path}" ]] && [[ -n "${expected_hash}" ]]; then
+            local existing_hash
+            existing_hash=$(sha256sum "${INSTALL_DIR}/${module_path}" 2>/dev/null | awk '{print $1}')
+            if [[ "${existing_hash}" = "${expected_hash}" ]]; then
+                echo -e "  ${GREEN}[SKIP]${NC} ${module_path} (已是最新)"
+                continue
+            fi
+        fi
+        
+        echo -e "  ${CYAN}[INFO] 正在下载 ${module_path}...${NC}"
         
         # 优先使用镜像源，并进行哈希校验
         local download_ok=false
