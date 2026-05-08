@@ -628,8 +628,15 @@ download_with_retry() {
         fi
         
         # 使用 curl 进行下载，仅显示进度条
-        http_code=$(curl -sfL --connect-timeout 10 --max-time 60 --create-dirs -o "${output}" -w "%{http_code}" "${current_url}" 2>/dev/null)
-        curl_exit=$?
+        # 【安全修复】先保存退出码，避免 local 声明重置 $?
+        local curl_output
+        curl_output=$(curl -sfL --connect-timeout 10 --max-time 60 --create-dirs -o "${output}" -w "%{http_code}" "${current_url}" 2>/dev/null) && {
+            http_code="${curl_output}"
+            curl_exit=0
+        } || {
+            http_code="${curl_output:-000}"
+            curl_exit=$?
+        }
         
         if [[ ${curl_exit} -eq 0 ]] && [[ "${http_code}" = "200" ]]; then
             # 【增强】多重完整性校验
@@ -1940,11 +1947,13 @@ init_cfopt() {
     # 4.1 下载 updater 模块（用于后续更新检查）
     echo -e "${CYAN}[INFO] 正在下载核心组件...${NC}"
     
-    # 【新增】先下载 version.txt 获取哈希值
-    local version_content
-    version_content=$(curl -s --max-time 10 "${REMOTE_URL_MIRROR}/version.txt" 2>/dev/null)
+    # 【关键修复】先下载 version.txt 获取哈希值
+    # 【安全修复】使用 || true 防止 set -e 导致脚本退出
+    # 【增强】添加 -f 参数，使 curl 在 HTTP 错误时返回非零退出码
+    local version_content=""
+    version_content=$(curl -sf --max-time 10 "${REMOTE_URL_MIRROR}/version.txt" 2>/dev/null) || true
     if [[ -z "${version_content}" ]]; then
-        version_content=$(curl -s --max-time 10 "${REMOTE_URL}/version.txt" 2>/dev/null)
+        version_content=$(curl -sf --max-time 10 "${REMOTE_URL}/version.txt" 2>/dev/null) || true
     fi
     
     # 定义需要下载的核心模块列表
