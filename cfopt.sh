@@ -1335,7 +1335,7 @@ manage_scheduler() {
                 echo -e "${CYAN}+------------------------------------------------------------+${NC}"
                 echo ""
                 if [[ -f "${INSTALL_DIR}/modules/scheduler/run.sh" ]]; then
-                    bash "${INSTALL_DIR}/modules/scheduler/run.sh"
+                    bash "${INSTALL_DIR}/modules/scheduler/run.sh" || true
                 else
                     echo -e "${RED}[ERROR] 调度组件不存在。${NC}"
                 fi
