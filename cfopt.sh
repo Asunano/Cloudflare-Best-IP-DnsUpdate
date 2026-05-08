@@ -1793,7 +1793,8 @@ init_cfopt() {
         esac
         
         local expected_hash
-        expected_hash=$(echo "${version_content}" | grep "^${module_key}=" | head -1 | cut -d':' -f2)
+        # 【修复】version.txt 格式为 KEY=VERSION:HASH，需要提取最后一个冒号后的哈希值
+        expected_hash=$(echo "${version_content}" | grep "^${module_key}=" | head -1 | sed 's/^[^:]*://')
         
         # 【性能优化】检查文件是否已存在且哈希匹配，跳过重复下载
         if [[ -f "${INSTALL_DIR}/${module_path}" ]] && [[ -n "${expected_hash}" ]]; then
