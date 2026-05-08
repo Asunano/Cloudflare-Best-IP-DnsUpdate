@@ -613,8 +613,8 @@ progress_bar_width=40
 
 # 【增强】测速结果验证与自动重试
 # 【修复】将首次测速也纳入循环，确保 MAX_RETRY 含义符合用户预期
-# 【安全修复】将 local 变量声明移到循环外部，避免重复声明问题
-local cfst_timeout=300
+# 【安全修复】将变量声明移到循环外部，避免重复声明问题
+cfst_timeout=300
 if [[ -n "${CFST_TIMEOUT:-}" ]] && [[ "${CFST_TIMEOUT}" =~ ^[0-9]+$ ]]; then
     cfst_timeout="${CFST_TIMEOUT}"
 fi
