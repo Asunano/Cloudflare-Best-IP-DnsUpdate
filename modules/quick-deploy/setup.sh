@@ -22,15 +22,7 @@ if [[ -f "${ROOT_DIR}/lib/common.sh" ]]; then
     source "${ROOT_DIR}/lib/common.sh"
 fi
 
-# ==================== 路径初始化 ====================
-SOURCE="${BASH_SOURCE[0]}"
-while [[ -L "$SOURCE" ]]; do
-    DIR="$( cd -P "$( dirname "$SOURCE" )" >/dev/null 2>&1 && pwd )"
-    SOURCE="$(readlink "$SOURCE")"
-    [[ $SOURCE != /* ]] && SOURCE="$DIR/$SOURCE"
-done
-SCRIPT_DIR="$( cd -P "$( dirname "$SOURCE" )" >/dev/null 2>&1 && pwd )"
-ROOT_DIR="$(cd "$SCRIPT_DIR/../.." && pwd)"
+# 【已移除】SCRIPT_DIR/ROOT_DIR 已在文件开头定义，此处删除重复定义
 
 # ==================== 入口权限校验 ====================
 if [[ "${CF_OPT_ENTRY:-}" != "main_menu" ]]; then
