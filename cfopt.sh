@@ -2022,6 +2022,10 @@ init_cfopt() {
         version_content=$(curl -sf --max-time 10 "${REMOTE_URL}/version.txt" 2>/dev/null) || true
     fi
     
+    # 【修复】临时禁用 set -e，防止下载循环中管道命令的非关键失败导致脚本静默退出
+    # 根因：set -o pipefail 使 module_key 提取管道（5 个命令串联）中任一命令失败即触发 set -e
+    set +e
+    
     # 定义需要下载的核心模块列表
     local core_modules=(
         "lib/common.sh"
@@ -2117,6 +2121,9 @@ init_cfopt() {
     else
         echo -e "${YELLOW}[WARN] 部分组件下载失败，稍后可通过菜单手动更新${NC}"
     fi
+    
+    # 【修复】恢复 set -e
+    set -e
         
     # 【安全修复】无论下载是否成功，都继续执行后续步骤
     # 避免因单个模块下载失败导致整个安装流程中断
