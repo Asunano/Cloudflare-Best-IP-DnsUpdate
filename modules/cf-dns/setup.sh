@@ -62,14 +62,7 @@ acquire_lock() {
     # 锁会在脚本退出时自动释放（fd 9 关闭）
 }
 
-# 释放锁（flock 会自动释放，此函数保留用于兼容性）
-release_lock() {
-    rm -f "$LOCK_FILE"
-}
-
 # ==================== 路径初始化 ====================
-
-# 获取根目录 (如果之前没定义)
 if [ -z "$ROOT_DIR" ]; then
     SCRIPT_DIR="$( cd -P "$( dirname "${BASH_SOURCE[0]}" )" >/dev/null 2>&1 && pwd )"
     ROOT_DIR="$(cd "$SCRIPT_DIR/../.." && pwd)"

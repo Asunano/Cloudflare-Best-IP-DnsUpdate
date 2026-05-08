@@ -816,7 +816,8 @@ main_single() {
     log_info "步骤 1: 获取 DNS 记录"
     log_info "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
     local record_response
-    record_response="$(get_record)"
+    # 【安全修复】在 set -e 模式下，API 调用失败会导致脚本退出
+    record_response="$(get_record || true)"
     
     # 使用 jq 解析 JSON
     local -a all_record_ids=()
@@ -891,10 +892,10 @@ main_single() {
         exit 1
     fi
     
-    # 解析多个 IP 地址
+    # 解析多个 IP 地址（公共库版本返回空格分隔）
     local -a ip_addresses=()
     local -a invalid_ips=()
-    IFS=',' read -ra raw_ips <<< "${cf_ip}"
+    IFS=' ' read -ra raw_ips <<< "${cf_ip}"
     for ip in "${raw_ips[@]}"; do
         # 去除首尾空格和空白字符
         ip=$(echo "${ip}" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
@@ -954,7 +955,8 @@ main_single() {
             else
                 # 需要更新
                 local modify_response
-                modify_response="$(modify_record "${record_id}" "${new_ip}")"
+                # 【安全修复】在 set -e 模式下，API 调用失败会导致脚本退出
+                modify_response="$(modify_record "${record_id}" "${new_ip}" || true)"
                 
                 # 检查结果
                 if echo "${modify_response}" | jq -r '.Response.Error' 2>/dev/null | grep -q 'Code'; then
@@ -974,7 +976,8 @@ main_single() {
             printf "\r  [%d/%d] 正在创建 %s..." "$((i+1))" "${#ip_addresses[@]}" "$new_ip"
             
             local create_response
-            create_response="$(create_record "${new_ip}")"
+            # 【安全修复】在 set -e 模式下，API 调用失败会导致脚本退出
+            create_response="$(create_record "${new_ip}" || true)"
             
             # 检查结果
             if echo "${create_response}" | jq -r '.Response.Error' 2>/dev/null | grep -q 'Code'; then
@@ -1043,10 +1046,10 @@ main_multi() {
             continue
         fi
         
-        # 解析多个 IP 地址
+        # 解析多个 IP 地址（公共库版本返回空格分隔）
         local -a ip_addresses=()
         local -a invalid_ips=()
-        IFS=',' read -ra raw_ips <<< "${cf_ip}"
+        IFS=' ' read -ra raw_ips <<< "${cf_ip}"
         for ip in "${raw_ips[@]}"; do
             ip=$(echo "${ip}" | tr -d ' \r')
             if [[ -n "${ip}" ]]; then
@@ -1080,7 +1083,8 @@ main_multi() {
         # 获取该线路的 DNS 记录
         log_info "步骤 2: 获取 DNS 记录"
         local record_response
-        record_response="$(get_record_by_line "${line}")"
+        # 【安全修复】在 set -e 模式下，API 调用失败会导致脚本退出
+        record_response="$(get_record_by_line "${line}" || true)"
         
         # 使用 jq 解析 JSON
         local -a record_ids=()
@@ -1136,7 +1140,10 @@ main_multi() {
         # 【安全修复】检查 IP 数量与记录数量的关系
         if [[ ${#ip_addresses[@]} -lt ${record_count} ]]; then
             log_warn "IP 数量(${#ip_addresses[@]})少于记录数量(${record_count})"
-            log_warn "部分 IP 将被循环使用，建议增加 IP 数量或减少 DNS 记录"
+            log_warn "将更新前 ${#ip_addresses[@]} 条记录，并删除多余的 $((record_count - ${#ip_addresses[@]})) 条记录"
+        elif [[ ${#ip_addresses[@]} -gt ${record_count} ]]; then
+            log_info "IP 数量(${#ip_addresses[@]})多于记录数量(${record_count})"
+            log_info "将更新所有现有记录，并新建 $(( ${#ip_addresses[@]} - record_count )) 条记录"
         fi
         
         # 【安全修复】计算需要处理的记录数（取最大值以确保所有 IP 都被处理）
@@ -1148,7 +1155,7 @@ main_multi() {
         fi
         
         for ((i=0; i<process_count; i++)); do
-            # 【安全修复】循环使用 IP 地址（当 IP 数量少于记录数时）
+            # 【安全修复】获取当前要使用的 IP（循环使用）
             local ip_index=$((i % ${#ip_addresses[@]}))
             local new_ip="${ip_addresses[$ip_index]}"
             
@@ -1175,7 +1182,8 @@ main_multi() {
                 else
                     # 需要更新
                     local modify_response
-                    modify_response="$(modify_record_by_line "${record_id}" "${new_ip}" "${line}")"
+                    # 【安全修复】在 set -e 模式下，API 调用失败会导致脚本退出
+                    modify_response="$(modify_record_by_line "${record_id}" "${new_ip}" "${line}" || true)"
                             
                     # 检查结果
                     if echo "${modify_response}" | jq -r '.Response.Error' 2>/dev/null | grep -q 'Code'; then
@@ -1191,33 +1199,61 @@ main_multi() {
                     fi
                 fi
             else
-                # 自动新建记录
-                # 【功能增强】显示进度
-                printf "\r    [%d/%d] 正在创建 %s..." "$((i+1))" "${process_count}" "$new_ip"
-                        
-                local create_response
-                create_response="$(create_record_by_line "${new_ip}" "${line}")"
-                        
-                # 检查结果
-                if echo "${create_response}" | jq -r '.Response.Error' 2>/dev/null | grep -q 'Code'; then
-                    local error_code
-                    error_code="$(echo "${create_response}" | jq -r '.Response.Error.Code' 2>/dev/null)"
-                    local error_msg
-                    error_msg="$(echo "${create_response}" | jq -r '.Response.Error.Message' 2>/dev/null)"
-                    echo ""  # 换行
-                    log_error "  [ERROR] 创建失败: ${error_code} - ${error_msg}"
-                    failed=$((failed + 1))
-                else
-                    created=$((created + 1))
+                # 【安全修复】当 IP 数量 >= 记录数时，才创建新记录
+                # 如果 IP 数量 < 记录数，这里不应该执行（process_count = record_count）
+                if [[ ${#ip_addresses[@]} -ge ${record_count} ]]; then
+                    # 自动新建记录
+                    # 【功能增强】显示进度
+                    printf "\r    [%d/%d] 正在创建 %s..." "$((i+1))" "${process_count}" "$new_ip"
+                            
+                    local create_response
+                    # 【安全修复】在 set -e 模式下，API 调用失败会导致脚本退出
+                    create_response="$(create_record_by_line "${new_ip}" "${line}" || true)"
+                            
+                    # 检查结果
+                    if echo "${create_response}" | jq -r '.Response.Error' 2>/dev/null | grep -q 'Code'; then
+                        local error_code
+                        error_code="$(echo "${create_response}" | jq -r '.Response.Error.Code' 2>/dev/null)"
+                        local error_msg
+                        error_msg="$(echo "${create_response}" | jq -r '.Response.Error.Message' 2>/dev/null)"
+                        echo ""  # 换行
+                        log_error "  [ERROR] 创建失败: ${error_code} - ${error_msg}"
+                        failed=$((failed + 1))
+                    else
+                        created=$((created + 1))
+                    fi
                 fi
             fi
         done
         echo ""  # 换行
         
-        # 【安全修复】如果 IP 数量少于记录数，提示跳过的记录
+        # 【安全修复】如果 IP 数量少于记录数，删除多余的记录
         if [[ ${#ip_addresses[@]} -lt ${record_count} ]]; then
-            local skipped_records=$((record_count - ${#ip_addresses[@]}))
-            log_info "跳过第 $(( ${#ip_addresses[@]} + 1 ))-${record_count} 条记录（无对应 IP）"
+            log_info "步骤 4: 清理多余记录"
+            local deleted=0
+            for ((i=${#ip_addresses[@]}; i<record_count; i++)); do
+                local record_id="${record_ids[$i]}"
+                local current_value="${current_values[$i]}"
+                log_info "  正在删除第 $((i+1)) 条记录 (RecordID=${record_id}, IP=${current_value})..."
+                
+                local delete_response
+                delete_response="$(delete_record_by_line "${record_id}" "${line}")"
+                
+                # 检查结果
+                if echo "${delete_response}" | jq -r '.Response.Error' 2>/dev/null | grep -q 'Code'; then
+                    local error_code
+                    error_code="$(echo "${delete_response}" | jq -r '.Response.Error.Code' 2>/dev/null)"
+                    local error_msg
+                    error_msg="$(echo "${delete_response}" | jq -r '.Response.Error.Message' 2>/dev/null)"
+                    log_error "  [ERROR] 删除失败: ${error_code} - ${error_msg}"
+                    failed=$((failed + 1))
+                else
+                    deleted=$((deleted + 1))
+                    log_info "  [OK] 已删除"
+                fi
+            done
+            log_info "共删除 ${deleted} 条多余记录"
+            log_info ""
         fi
         
         log_info ""
@@ -1700,59 +1736,8 @@ update_config_field() {
 }
 
 # 通用的 IP 文件读取函数（支持单线路和多线路）
-read_ips_from_file() {
-    local ip_file="$1"
-    local max_ips="${2:-0}"  # 0 表示不限制
-    
-    if [[ ! -f "${ip_file}" ]]; then
-        log_error "IP 文件不存在: ${ip_file}"
-        return 1
-    fi
-    
-    # 读取文件内容，支持两种格式:
-    # 1. 每行一个 IP
-    # 2. 逗号分隔的 IP
-    # 3. .iplist 格式（IP|延迟|速度|地区码）
-    local content
-    # 【修复】支持 .iplist 的 | 分隔，提取第一列 IP
-    content="$(awk '!/^#/ && !/^$/ { gsub(/#.*/, ""); split($0, a, "|"); printf "%s,", a[1] }' "${ip_file}" | sed 's/,$//')"
-    
-    if [[ -z "${content}" ]]; then
-        log_warn "IP 文件为空: ${ip_file}"
-        return 1
-    fi
-    
-    # 限制 IP 数量
-    if [[ "${max_ips}" -gt 0 ]]; then
-        # 将 IP 转换为数组
-        IFS=',' read -ra ip_array <<< "${content}"
-        local total_ips=${#ip_array[@]}
-        
-        # 如果超出限制，只取前 N 个
-        if [[ "${total_ips}" -gt "${max_ips}" ]]; then
-            log_warn "IP 文件包含 ${total_ips} 个 IP，超出限制 ${max_ips} 个"
-            log_info "已自动截取前 ${max_ips} 个 IP (避免超出套餐限制)"
-            
-            # 取前 N 个 IP
-            local limited_ips=""
-            for ((i=0; i<max_ips && i<total_ips; i++)); do
-                if [[ -z "${limited_ips}" ]]; then
-                    limited_ips="${ip_array[$i]}"
-                else
-                    limited_ips="${limited_ips},${ip_array[$i]}"
-                fi
-            done
-            echo "${limited_ips}"
-        else
-            echo "${content}"
-        fi
-    else
-        # 不限制
-        echo "${content}"
-    fi
-    
-    return 0
-}
+# 【已移除】read_ips_from_file() 函数
+# 统一使用 lib/common.sh 中的公共版本，避免行为不一致
 
 # 检查是否存在 DNS 记录
 check_records_exist() {

@@ -613,6 +613,12 @@ progress_bar_width=40
 
 # 【增强】测速结果验证与自动重试
 # 【修复】将首次测速也纳入循环，确保 MAX_RETRY 含义符合用户预期
+# 【安全修复】将 local 变量声明移到循环外部，避免重复声明问题
+local cfst_timeout=300
+if [[ -n "${CFST_TIMEOUT:-}" ]] && [[ "${CFST_TIMEOUT}" =~ ^[0-9]+$ ]]; then
+    cfst_timeout="${CFST_TIMEOUT}"
+fi
+
 for ((retry=0; retry<=MAX_RETRY; retry++)); do
     if [[ ${retry} -gt 0 ]]; then
         echo -e "\n${CYAN}[INFO] 第 ${retry} 次自动重试测速...${NC}"
@@ -628,25 +634,40 @@ for ((retry=0; retry<=MAX_RETRY; retry++)); do
     # 【重构】使用函数构建命令，消除代码重复
     build_cfst_cmd "${TARGET_COLO}" "${OUTPUT_CSV}" "${IP_DATA_FILE}"
     
-    # 【修复】设置测速超时时间（默认 300 秒 = 5 分钟）
-    local cfst_timeout=300
-    if [[ -n "${CFST_TIMEOUT:-}" ]] && [[ "${CFST_TIMEOUT}" =~ ^[0-9]+$ ]]; then
-        cfst_timeout="${CFST_TIMEOUT}"
-    fi
-    
     # 2. 【修复】使用 subshell 隔离目录切换
     (
         cd "$(dirname "${CFST_BIN}")" || exit 1
         
         # 3. 【修复】启动测速程序（后台运行），添加超时保护
         if command -v timeout >/dev/null 2>&1; then
-            # 使用 timeout 命令限制执行时间
+            # 使用 timeout 命令限制执行时间（推荐方式）
             timeout "${cfst_timeout}" "${CFST_CMD_ARRAY[@]}" > "${LOG_FILE}" 2>&1 &
+            CFST_PID=$!
         else
-            # fallback：不使用超时（兼容旧系统）
+            # 【安全增强】fallback：使用 Bash 内置功能实现超时保护
+            # 避免在没有 timeout 命令的系统上进程无限挂起
             "${CFST_CMD_ARRAY[@]}" > "${LOG_FILE}" 2>&1 &
+            CFST_PID=$!
+            
+            # 启动超时监控子进程
+            (
+                sleep "${cfst_timeout}"
+                # 检查主进程是否仍在运行
+                if kill -0 "${CFST_PID}" 2>/dev/null; then
+                    echo -e "\n${YELLOW}[WARN] 测速超时 (${cfst_timeout}秒)，强制终止进程${NC}" >&2
+                    kill -TERM "${CFST_PID}" 2>/dev/null
+                    sleep 2
+                    # 如果仍未退出，强制杀死
+                    if kill -0 "${CFST_PID}" 2>/dev/null; then
+                        kill -KILL "${CFST_PID}" 2>/dev/null
+                    fi
+                fi
+            ) &
+            TIMEOUT_MONITOR_PID=$!
+            
+            # 确保超时监控进程在主进程退出后被清理
+            trap "kill ${TIMEOUT_MONITOR_PID} 2>/dev/null" EXIT
         fi
-        CFST_PID=$!
         
         # 4. 实时显示进度（使用通用监控函数）
         echo -e "\n${CYAN}+------------------------------------------------------------+"
@@ -661,9 +682,22 @@ for ((retry=0; retry<=MAX_RETRY; retry++)); do
         
         monitor_progress "${CFST_PID}" "${LOG_FILE}" "${progress_bar_width}" || true
         
-        # 5. 等待进程结束（屏蔽错误输出）
+        # 5. 【安全修复】等待进程结束，正确处理退出码
+        # 使用 wait 捕获真实退出码，避免被信号干扰
         wait "${CFST_PID}" 2>/dev/null
         EXIT_CODE=$?
+        
+        # 【安全修复】处理特殊退出码
+        # 124 = timeout 命令超时
+        # 137 = SIGKILL (128 + 9)
+        # 143 = SIGTERM (128 + 15)
+        # 127 = 命令未找到或进程已不存在
+        if [[ "${EXIT_CODE}" -eq 124 ]]; then
+            echo -e "${YELLOW}[WARN] 测速超时 (${cfst_timeout}秒)${NC}"
+        elif [[ "${EXIT_CODE}" -ge 128 ]]; then
+            signal=$((EXIT_CODE - 128))
+            echo -e "${YELLOW}[WARN] 测速进程被信号终止 (Signal: ${signal})${NC}"
+        fi
         
         # 修复：固定长度输出，确保覆盖干净
         echo ""

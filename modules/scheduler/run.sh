@@ -68,13 +68,25 @@ start_watchdog() {
 
         if [[ -n "${task_pid}" ]] && [[ "${task_pid}" =~ ^[0-9]+$ ]]; then
             echo -e "\n${RED}[TIMEOUT] ${task_name} 超时 (${timeout}秒)，强制终止所有子进程${NC}"
-            # 递归杀死所有子进程
+            
+            # 【安全修复】使用进程组杀死整个进程树
+            # 方法1: 尝试杀死整个进程组（最彻底，需要 setsid）
+            kill -- -"${task_pid}" 2>/dev/null || true
+            
+            # 方法2: 递归杀死所有子进程（通用方案）
             pkill -P "${task_pid}" 2>/dev/null || true
+            
+            # 方法3: 最后杀死主进程
             kill "${task_pid}" 2>/dev/null || true
+            
+            # 等待进程完全退出
             sleep 1
+            
             # 如果还有残留进程，强制杀死
             if kill -0 "${task_pid}" 2>/dev/null; then
+                kill -9 -- -"${task_pid}" 2>/dev/null || true
                 kill -9 "${task_pid}" 2>/dev/null || true
+                # 再次尝试杀死所有子进程
                 pkill -9 -P "${task_pid}" 2>/dev/null || true
             fi
         fi
@@ -120,13 +132,19 @@ run_task() {
     start_watchdog "${SCHEDULER_TIMEOUT}" "${task_name}" "${WATCHDOG_PID_FILE}"
     
     # 执行脚本并捕获退出码
-    # 【修复】后台启动任务以获取 PID，确保看门狗能正确杀死所有子进程
+    # 【安全修复】使用 setsid 创建新进程组，确保 kill -- -PID 能杀死整个进程树
     # 【修复】设置 CF_OPT_ENTRY=scheduler，允许子模块通过入口校验
     export CF_OPT_ENTRY=scheduler
     
-    # 后台执行任务
-    bash "${script_path}" &
-    TASK_PID=$!
+    # 【安全修复】尝试使用 setsid 创建新进程组（推荐方式）
+    if command -v setsid >/dev/null 2>&1; then
+        setsid bash "${script_path}" &
+        TASK_PID=$!
+    else
+        # 备用方案：直接后台执行（无进程组隔离）
+        bash "${script_path}" &
+        TASK_PID=$!
+    fi
 
     # 【修复】将 PID 写入文件，供看门狗子 shell 读取
     echo "${TASK_PID}" > "${WATCHDOG_PID_FILE}"

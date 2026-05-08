@@ -223,31 +223,13 @@ if [ -z "$CF_API_TOKEN" ] || [ -z "$CF_ZONE_ID" ] || [ -z "$CF_DNS_NAME" ]; then
     exit 1
 fi
 
-# 【修复】验证 API Token 格式（Cloudflare API Token 为 40 字符 hex 字符串）
-if [ -z "$CF_API_TOKEN" ]; then
-    echo -e "${RED}错误${NC}: API Token 不能为空"
-    echo "请检查 CF_API_TOKEN 配置"
+# 【安全修复】统一验证 API Token 格式
+# Cloudflare API Token 通常为 40 字符，但可能包含特殊字符，最小长度为 30
+if [[ ${#CF_API_TOKEN} -lt 30 ]]; then
+    echo -e "${RED}错误${NC}: API Token 格式不正确 (长度: ${#CF_API_TOKEN})"
+    echo "Cloudflare API Token 应至少 30 字符"
+    echo "请检查 CF_API_TOKEN 配置是否正确复制"
     exit 1
-fi
-
-# 严格校验：长度必须 >= 30 且为十六进制字符
-if [ ${#CF_API_TOKEN} -lt 30 ]; then
-    echo -e "${RED}错误${NC}: API Token 格式不正确 (长度: ${#CF_API_TOKEN}, 太短)"
-    echo "Cloudflare API Token 应为 40 字符的十六进制字符串"
-    echo "请检查 CF_API_TOKEN 配置"
-    exit 1
-fi
-
-# 【修复】移除过严的十六进制校验，Cloudflare API Token 可包含 -、_ 等字符
-# 只检查 Token 是否为空和最小长度
-if [[ -z "$CF_API_TOKEN" ]]; then
-    echo -e "${RED}错误${NC}: CF_API_TOKEN 为空"
-    exit 1
-fi
-
-if [[ ${#CF_API_TOKEN} -lt 20 ]]; then
-    echo -e "${YELLOW}警告${NC}: API Token 长度异常 (${#CF_API_TOKEN} 字符)，可能无效"
-    echo "建议检查 Token 是否正确复制"
 fi
 
 # 验证 DNS 名称格式（只允许字母、数字、@、.、-、_）
@@ -492,6 +474,16 @@ needs_update() {
         fi
     done
     
+    # 【安全修复】如果目标数组为空，无需更新
+    if [[ ${#_target[@]} -eq 0 ]]; then
+        return 1  # 无需更新
+    fi
+    
+    # 【安全修复】如果现有数组为空但目标不为空，需要更新（首次创建）
+    if [[ ${#_existing[@]} -eq 0 ]] && [[ ${#_target[@]} -gt 0 ]]; then
+        return 0  # 需要更新
+    fi
+    
     # 数量不同，肯定需要更新
     if [[ ${#_existing[@]} -ne ${#_target[@]} ]]; then
         return 0  # 需要更新
@@ -662,7 +654,8 @@ update_dns_record() {
     data=$(jq -n --arg name "$name" --arg ip "$cf_ip" '{"type":"A","name":$name,"content":$ip,"proxied":false}')
     
     local response
-    response=$(http_put "$url" "$data")
+    # 【安全修复】在 set -e 模式下，API 调用失败会导致脚本退出
+    response=$(http_put "$url" "$data" || true)
     
     if echo "$response" | jq -r '.success' 2>/dev/null | grep -q 'true'; then
         # 【修复】验证 API 返回的 IP 是否与预期一致
@@ -689,7 +682,8 @@ create_dns_record() {
     data=$(jq -n --arg name "$name" --arg ip "$cf_ip" '{"type":"A","name":$name,"content":$ip,"ttl":1,"proxied":false}')
     
     local response
-    response=$(http_post "$url" "$data")
+    # 【安全修复】在 set -e 模式下，API 调用失败会导致脚本退出
+    response=$(http_post "$url" "$data" || true)
     
     if echo "$response" | jq -r '.success' 2>/dev/null | grep -q 'true'; then
         # 【修复】验证 API 返回的 IP 是否与预期一致
@@ -713,7 +707,8 @@ delete_dns_record() {
     
     # 【修复】使用 http_delete 替代直接调用 curl，支持重试和统一错误处理
     local response
-    response=$(http_delete "$url")
+    # 【安全修复】在 set -e 模式下，API 调用失败会导致脚本退出
+    response=$(http_delete "$url" || true)
     
     if echo "$response" | jq -r '.success' 2>/dev/null | grep -q 'true'; then
         echo "success"
@@ -880,7 +875,9 @@ main() {
     log "${BLUE}[2/3]${NC} 查询 DNS 记录: $(build_full_domain "$CF_DNS_NAME" "$CF_DOMAIN")"
     
     local records_output
-    records_output=$(get_dns_records "$CF_DNS_NAME")
+    # 【安全修复】在 set -e 模式下，API 调用失败会导致脚本退出
+    # 使用 || true 捕获错误，然后通过返回值判断是否成功
+    records_output=$(get_dns_records "$CF_DNS_NAME" || true)
     local first_line
     first_line=$(echo "$records_output" | head -n 1)
     
@@ -937,18 +934,22 @@ main() {
         local to_add=0
         local to_remove=0
         
+        # 【性能优化】使用关联数组实现 O(n) 查找，替代 O(n²) 嵌套循环
+        declare -A existing_map
+        for existing_ip in "${current_values[@]}"; do
+            local clean_existing
+            clean_existing=$(echo "$existing_ip" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
+            existing_map["$clean_existing"]=1
+        done
+        
         # 计算相同 IP 的数量（集合交集）
         for new_ip in "${ip_addresses[@]}"; do
             local clean_new
             clean_new=$(echo "$new_ip" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
-            for existing_ip in "${current_values[@]}"; do
-                local clean_existing
-                clean_existing=$(echo "$existing_ip" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
-                if [ "$clean_new" = "$clean_existing" ]; then
-                    same_count=$((same_count + 1))
-                    break
-                fi
-            done
+            # 【安全修复】使用 ${map[key]+_} 判断 key 是否存在，比 -n "${map[key]}" 更可靠
+            if [[ -n "${existing_map[$clean_new]+_}" ]]; then
+                same_count=$((same_count + 1))
+            fi
         done
         
         # 需要新增的 IP（目标中有但现有中没有）
@@ -965,6 +966,9 @@ main() {
     # 1. 找出现有记录中需要删除的 IP（不在目标列表中）
     local -a records_to_delete_ids=()
     local -a records_to_delete_values=()
+    # 【性能优化】维护保留的记录列表，避免删除后重新查询
+    local -a retained_record_ids=()
+    local -a retained_record_values=()
     
     if [ "$record_count" -gt 0 ]; then
         for ((i=0; i<record_count; i++)); do
@@ -983,10 +987,13 @@ main() {
                 fi
             done
             
-            # 如果不在目标列表中，标记为删除
+            # 如果不在目标列表中，标记为删除；否则加入保留列表
             if [ "$found" = false ]; then
                 records_to_delete_ids+=("${record_ids[$i]}")
                 records_to_delete_values+=("$existing_ip")
+            else
+                retained_record_ids+=("${record_ids[$i]}")
+                retained_record_values+=("$existing_ip")
             fi
         done
     fi
@@ -1010,31 +1017,10 @@ main() {
         done
         log "  [OK] 已删除 ${deleted_count} 条记录"
         
-        # 重新获取记录列表（删除后）
-        local new_records_output
-        new_records_output=$(get_dns_records "$CF_DNS_NAME")
-        local new_record_count
-        new_record_count=$(echo "$new_records_output" | head -n 1)
-        
-        record_ids=()
-        current_values=()
-        
-        if [ "$new_record_count" -gt 0 ]; then
-            local idx=0
-            while IFS= read -r line; do
-                if [ $idx -gt 0 ]; then
-                    local rid
-                    rid=$(echo "$line" | cut -d'|' -f1)
-                    local rval
-                    rval=$(echo "$line" | cut -d'|' -f2)
-                    record_ids+=("$rid")
-                    current_values+=("$rval")
-                fi
-                idx=$((idx + 1))
-            done <<< "$new_records_output"
-        fi
-        
-        record_count=$new_record_count
+        # 【性能优化】直接使用保留的记录列表，避免重新查询 API
+        record_ids=("${retained_record_ids[@]}")
+        current_values=("${retained_record_values[@]}")
+        record_count=${#record_ids[@]}
     fi
     
     # 3. 【重构】智能同步逻辑：删除、更新、创建
