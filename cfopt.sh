@@ -1860,17 +1860,17 @@ init_cfopt() {
 
     # 0. 检查是否有待应用的新版本 cfopt.sh
     if [[ -f "${INSTALL_DIR}/cfopt.sh.new" ]]; then
-        log_info "检测到新版本主脚本，正在应用..."
+        echo -e "${CYAN}[INFO] 检测到新版本主脚本，正在应用...${NC}"
         if mv "${INSTALL_DIR}/cfopt.sh.new" "${INSTALL_DIR}/cfopt.sh" 2>/dev/null; then
             chmod +x "${INSTALL_DIR}/cfopt.sh"
-            log_success "主脚本已更新到最新版本"
+            echo -e "${GREEN}[OK] 主脚本已更新到最新版本${NC}"
             echo ""
-            log_info "正在重新启动以加载新版本..."
+            echo -e "${CYAN}[INFO] 正在重新启动以加载新版本...${NC}"
             echo ""
             # 使用 exec 替换当前进程，自动进入主菜单
             exec bash "${INSTALL_DIR}/cfopt.sh"
         else
-            log_error "应用新版本失败，请手动执行: mv ${INSTALL_DIR}/cfopt.sh.new ${INSTALL_DIR}/cfopt.sh"
+            echo -e "${RED}[ERROR] 应用新版本失败，请手动执行: mv ${INSTALL_DIR}/cfopt.sh.new ${INSTALL_DIR}/cfopt.sh${NC}"
             echo ""
         fi
     fi
@@ -2028,7 +2028,7 @@ init_cfopt() {
         if [[ "${download_ok}" = true ]]; then
             chmod +x "${INSTALL_DIR}/${module_path}" 2>/dev/null || true
         else
-            log_warn "${module_name} 下载失败或校验失败"
+            echo -e "${YELLOW}[WARN] ${module_name} 下载失败或校验失败${NC}"
             # 【调试】显示失败的 URL 和预期哈希
             echo -e "${YELLOW}[DEBUG] 失败URL: ${REMOTE_URL_MIRROR}/${module_path}${NC}"
             echo -e "${YELLOW}[DEBUG] 预期哈希: ${expected_hash:-无}${NC}"
@@ -2037,9 +2037,9 @@ init_cfopt() {
     done
     
     if [[ "${download_success}" = true ]]; then
-        log_success "所有核心组件下载完成"
+        echo -e "${GREEN}[OK] 所有核心组件下载完成${NC}"
     else
-        log_warn "部分组件下载失败，稍后可通过菜单手动更新"
+        echo -e "${YELLOW}[WARN] 部分组件下载失败，稍后可通过菜单手动更新${NC}"
     fi
         
     # 【安全修复】无论下载是否成功，都继续执行后续步骤
@@ -2059,16 +2059,16 @@ init_cfopt() {
             cfst_file=$(find "${INSTALL_DIR}/assets/cfst/" -name "cfst" -type f 2>/dev/null | head -1 || true)
             if [[ -n "${cfst_file}" ]] && [[ -f "${cfst_file}" ]]; then
                 chmod +x "${cfst_file}"
-                log_success "cfst 测速程序已安装: ${cfst_file}"
+                echo -e "${GREEN}[OK] cfst 测速程序已安装: ${cfst_file}${NC}"
             else
-                log_warn "cfst 解压后未找到可执行文件"
+                echo -e "${YELLOW}[WARN] cfst 解压后未找到可执行文件${NC}"
             fi
         else
-            log_warn "cfst 解压失败"
+            echo -e "${YELLOW}[WARN] cfst 解压失败${NC}"
         fi
         rm -f "${cfst_temp}"
     else
-        log_warn "cfst 下载失败，请手动运行 CF-IP 测速以自动安装"
+        echo -e "${YELLOW}[WARN] cfst 下载失败，请手动运行 CF-IP 测速以自动安装${NC}"
     fi
 
     # 初始化状态配置文件 (如果不存在)
@@ -2097,7 +2097,7 @@ EOF
     fi
 
     # 5. 初次安装完成，直接进入主菜单
-    log_info "初始化完成，正在进入主菜单..."
+    echo -e "${CYAN}[INFO] 初始化完成，正在进入主菜单...${NC}"
     echo ""
 
     # 7. 进入主菜单循环
