@@ -521,6 +521,35 @@ install_system_cmd() {
     fi
 }
 
+# ==================== 【通用包安装函数】 ====================
+# 跨平台包管理器抽象，支持 apt-get/yum/dnf/apk
+# 用法: install_packages "package1" "package2" ...
+# 返回: 0 = 成功, 1 = 失败
+install_packages() {
+    local packages=("$@")
+    
+    if [[ ${#packages[@]} -eq 0 ]]; then
+        log_error "install_packages: 未指定要安装的包"
+        return 1
+    fi
+    
+    # 【安全修复】直接调用包管理器，避免 bash -c 字符串拼接
+    if command -v apt-get &>/dev/null; then
+        sudo apt-get install -y "${packages[@]}" 2>/dev/null || return 1
+    elif command -v yum &>/dev/null; then
+        sudo yum install -y "${packages[@]}" 2>/dev/null || return 1
+    elif command -v dnf &>/dev/null; then
+        sudo dnf install -y "${packages[@]}" 2>/dev/null || return 1
+    elif command -v apk &>/dev/null; then
+        sudo apk add "${packages[@]}" 2>/dev/null || return 1
+    else
+        log_error "未检测到支持的包管理器 (apt-get/yum/dnf/apk)"
+        return 1
+    fi
+    
+    return 0
+}
+
 # --- 网络健康检查系统 ---
 # 在执行下载前检查网络连通性，快速失败避免长时间等待
 check_network_health() {
@@ -720,15 +749,11 @@ check_environment() {
         echo -e "${RED}[ERROR] 缺失必要工具: ${missing_tools[*]}${NC}"
         echo -e "${YELLOW}[INFO] 正在尝试自动安装...${NC}"
         
-        # 【安全修复】直接调用包管理器，避免 bash -c 字符串拼接导致的命令注入
-        if command -v apt-get &>/dev/null; then
-            sudo apt-get install -y "${missing_tools[@]}" 2>/dev/null || true
-        elif command -v yum &>/dev/null; then
-            sudo yum install -y "${missing_tools[@]}" 2>/dev/null || true
-        elif command -v dnf &>/dev/null; then
-            sudo dnf install -y "${missing_tools[@]}" 2>/dev/null || true
-        elif command -v apk &>/dev/null; then
-            sudo apk add "${missing_tools[@]}" 2>/dev/null || true
+        # 【重构】使用通用包安装函数
+        if install_packages "${missing_tools[@]}"; then
+            log_success "依赖工具安装成功"
+        else
+            log_warn "部分依赖工具安装失败，将继续检查"
         fi
         
         # 安装后二次检查，若仍缺失则报错退出
@@ -1002,27 +1027,8 @@ system_health_check() {
             # 修复依赖
             if [[ ${#missing_tools[@]} -gt 0 ]]; then
                 echo -n "正在安装依赖工具... "
-                # 【安全修复】直接调用包管理器，避免 bash -c 字符串拼接
-                local install_success=false
-                if command -v apt-get &>/dev/null; then
-                    if sudo apt-get install -y "${missing_tools[@]}" &>/dev/null; then
-                        install_success=true
-                    fi
-                elif command -v yum &>/dev/null; then
-                    if sudo yum install -y "${missing_tools[@]}" &>/dev/null; then
-                        install_success=true
-                    fi
-                elif command -v dnf &>/dev/null; then
-                    if sudo dnf install -y "${missing_tools[@]}" &>/dev/null; then
-                        install_success=true
-                    fi
-                elif command -v apk &>/dev/null; then
-                    if sudo apk add "${missing_tools[@]}" &>/dev/null; then
-                        install_success=true
-                    fi
-                fi
-                
-                if [[ "${install_success}" = true ]]; then
+                # 【重构】使用通用包安装函数
+                if install_packages "${missing_tools[@]}"; then
                     echo -e "${GREEN}成功${NC}"
                     fixed_count=$((fixed_count + 1))
                 else
@@ -1328,22 +1334,27 @@ setup_auto_cron() {
         INSTALL_CRON="${INSTALL_CRON:-y}"
         
         if [[ "${INSTALL_CRON}" =~ ^[Yy]$ ]]; then
-            # 【安全修复】直接调用包管理器，避免 bash -c 字符串拼接
+            # 【重构】使用通用包安装函数，但需要特殊处理不同发行版
             local install_success=false
+            
             if command -v apt-get &>/dev/null; then
-                if sudo apt-get update &>/dev/null && sudo apt-get install -y cron &>/dev/null; then
+                # Debian/Ubuntu: 先更新源，再安装 cron
+                if sudo apt-get update &>/dev/null && install_packages "cron"; then
                     install_success=true
                 fi
             elif command -v yum &>/dev/null; then
-                if sudo yum install -y cronie &>/dev/null; then
+                # CentOS/RHEL: 安装 cronie
+                if install_packages "cronie"; then
                     install_success=true
                 fi
             elif command -v dnf &>/dev/null; then
-                if sudo dnf install -y cronie &>/dev/null; then
+                # Fedora: 安装 cronie
+                if install_packages "cronie"; then
                     install_success=true
                 fi
             elif command -v apk &>/dev/null; then
-                if sudo apk add --no-cache busybox-suid openrc &>/dev/null; then
+                # Alpine: 安装 busybox-suid 和 openrc
+                if install_packages "busybox-suid" "openrc"; then
                     sudo rc-update add cron default 2>/dev/null || true
                     sudo service cron start 2>/dev/null || true
                     install_success=true
