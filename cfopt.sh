@@ -524,9 +524,9 @@ download_with_retry() {
     local http_code=""
     local curl_exit=0
     
-    # 判断是否为 GitHub raw 链接，如果是则启用镜像回退
+    # 【优化】判断是否为 GitHub raw 链接，启用镜像加速
     local use_mirror=false
-    local mirror_url=""  # 【修复】在函数开头初始化，避免作用域混淆
+    local mirror_url=""
     
     if [[ "${url}" == *"raw.githubusercontent.com"* ]]; then
         use_mirror=true
@@ -543,14 +543,24 @@ download_with_retry() {
             return 1
         fi
         
-        # 优先使用镜像下载（如果启用），失败后回退到原始 URL
+        # 【优化】智能选择下载 URL
+        # - 首次尝试：优先使用镜像（如果可用）
+        # - 重试时：回退到原始 URL
+        # - 非 GitHub 链接：直接使用原始 URL
         local current_url="${url}"
         if [[ "${use_mirror}" == true ]] && [[ "${retry_count}" -eq 0 ]]; then
+            # 首次尝试：使用镜像加速
             current_url="${mirror_url}"
             echo -e "${CYAN}[INFO] 尝试使用镜像加速...${NC}"
         elif [[ "${use_mirror}" == true ]] && [[ "${retry_count}" -ge 1 ]]; then
+            # 重试时：回退到原始地址
             current_url="${url}"
             echo -e "${YELLOW}[INFO] 镜像失败，回退到原始地址...${NC}"
+        else
+            # 非 GitHub 链接：直接使用原始 URL（无镜像）
+            if [[ "${retry_count}" -ge 1 ]]; then
+                echo -e "${YELLOW}[INFO] 正在重试 (${retry_count}/${max_retries})...${NC}"
+            fi
         fi
         
         # 使用 curl 进行下载，仅显示进度条
