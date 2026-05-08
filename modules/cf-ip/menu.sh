@@ -1210,8 +1210,8 @@ view_logs() {
 
 # ====================== 【主程序入口】 ======================
 # 检查配置文件状态
-check_config
-config_status=$?
+local config_status=0
+check_config || config_status=$?
 
 if [[ "${config_status}" -ne 0 ]]; then
     echo -e "${YELLOW}[INFO] 检测到尚未配置 CF 优选参数。${NC}"
