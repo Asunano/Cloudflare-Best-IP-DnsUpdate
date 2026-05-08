@@ -1910,6 +1910,18 @@ init_cfopt() {
     
     # 1. 环境检测
     check_environment
+    
+    # 【新增】网络健康检查（首次安装时）
+    # 在下载核心组件前快速检测网络连通性，避免长时间等待后失败
+    if [[ ! -f "${STATUS_CONF:-}" ]] || ! grep -q '^INSTALL_CHECKED="true"' "${STATUS_CONF:-}" 2>/dev/null; then
+        echo ""
+        if ! check_network_health; then
+            echo ""
+            log_error "网络检测失败，请修复网络问题后重试"
+            exit 1
+        fi
+        echo ""
+    fi
 
     # 2. 智能启动检测
     STATUS_CONF="${INSTALL_DIR}/conf/status.conf"
