@@ -1593,12 +1593,30 @@ fi
 # 【安全修复】路径规范化，防止注入攻击
 # 1. 去除末尾斜杠
 INSTALL_DIR="${INSTALL_DIR%/}"
-# 2. 验证路径格式（只允许字母、数字、下划线、连字符、点、斜杠）
+
+# 2. 安全检查：禁止路径遍历（.. 序列）
+if [[ "${INSTALL_DIR}" == *".."* ]]; then
+    echo "[$(date)] [ERROR] INSTALL_DIR 包含路径遍历序列 (..): ${INSTALL_DIR}" >> "${LOG_FILE}"
+    exit 1
+fi
+
+# 3. 验证路径格式（只允许字母、数字、下划线、连字符、点、斜杠）
 if [[ ! "${INSTALL_DIR}" =~ ^/[a-zA-Z0-9_./-]+$ ]]; then
     echo "[$(date)] [ERROR] INSTALL_DIR 包含非法字符: ${INSTALL_DIR}" >> "${LOG_FILE}"
     exit 1
 fi
-# 3. 安全检查：禁止危险路径
+
+# 4. 路径规范化：使用 realpath 解析符号链接和相对路径
+# 注意：目录可能已被删除，所以先检查是否存在
+if [[ -d "${INSTALL_DIR}" ]]; then
+    normalized_dir=$(realpath "${INSTALL_DIR}" 2>/dev/null || true)
+    if [[ -n "${normalized_dir}" ]] && [[ "${normalized_dir}" != "${INSTALL_DIR}" ]]; then
+        echo "[$(date)] [WARN] 路径规范化: ${INSTALL_DIR} -> ${normalized_dir}" >> "${LOG_FILE}"
+        INSTALL_DIR="${normalized_dir}"
+    fi
+fi
+
+# 5. 安全检查：禁止危险路径
 if [[ "${INSTALL_DIR}" = "/" ]] || [[ "${INSTALL_DIR}" = "/root" ]] || [[ "${INSTALL_DIR}" = "/home" ]] || [[ "${INSTALL_DIR}" = "/usr" ]]; then
     echo "[$(date)] [ERROR] 拒绝删除系统目录: ${INSTALL_DIR}" >> "${LOG_FILE}"
     exit 1
