@@ -722,7 +722,10 @@ perform_update() {
         rm -f "${ROOT_DIR}/modules/updater/update.sh.new" 2>/dev/null || true
         rm -f "${ROOT_DIR}/cfopt.sh.new" 2>/dev/null || true
         
-        read -r -p "按回车键返回..."
+        # 【修复】非交互式环境跳过 read，防止 set -e 触发退出
+        if [[ -t 0 ]]; then
+            read -r -p "按回车键返回..."
+        fi
         exit 0
     fi
     
