@@ -1412,7 +1412,7 @@ log_management() {
     fi
     
     local log_count
-    log_count=$(find "$log_dir" -name "cfdns_*.log" 2>/dev/null | wc -l)
+    log_count=$(find "$log_dir" -name "cfdns_*.log" 2>/dev/null | wc -l || true)
     
     if [ "$log_count" -eq 0 ]; then
         echo -e "${YELLOW}暂无日志文件${NC}"

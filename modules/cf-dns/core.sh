@@ -327,7 +327,7 @@ rotate_logs() {
     # 【修复】限制日志文件数量，只保留最近 20 个日志文件
     local max_files=20
     local file_count
-    file_count=$(find "$LOG_DIR" -name "cfdns_*.log" -type f | wc -l)
+    file_count=$(find "$LOG_DIR" -name "cfdns_*.log" -type f 2>/dev/null | wc -l || true)
     
     if [[ "$file_count" -gt "$max_files" ]]; then
         local excess=$((file_count - max_files))

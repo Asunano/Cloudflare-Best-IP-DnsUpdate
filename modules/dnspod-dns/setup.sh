@@ -2124,7 +2124,7 @@ manage_logs() {
             read -r -p "确认执行? (y/n): " confirm
             if [[ "$confirm" == "y" ]] || [[ "$confirm" == "Y" ]]; then
                 local deleted
-                deleted=$(find "$log_dir" -name "*.log" -mtime +7 -delete -print | wc -l)
+                deleted=$(find "$log_dir" -name "*.log" -mtime +7 -delete -print 2>/dev/null | wc -l || true)
                 echo -e "${GREEN}[OK] 已清理 ${deleted} 个旧日志文件"
             else
                 echo -e "${YELLOW}[INFO] 已取消"

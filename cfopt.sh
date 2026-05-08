@@ -81,7 +81,7 @@ rollback_on_failure() {
     
     # 查找最新的备份
     local latest_backup
-    latest_backup=$(find "${backup_dir}" -maxdepth 1 -type d -name "backup_*" | sort -r | head -1)
+    latest_backup=$(find "${backup_dir}" -maxdepth 1 -type d -name "backup_*" 2>/dev/null | sort -r | head -1 || true)
     
     if [[ -z "${latest_backup}" ]] || [[ ! -d "${latest_backup}" ]]; then
         log_error "未找到有效的备份文件"
@@ -1042,7 +1042,7 @@ show_main_menu() {
         if curl -sfL --connect-timeout 10 --max-time 60 -o "${cfst_temp}" "${cfst_url}" 2>/dev/null; then
             if tar -xzf "${cfst_temp}" -C "${INSTALL_DIR}/assets/cfst/" 2>/dev/null; then
                 local cfst_file
-                cfst_file=$(find "${INSTALL_DIR}/assets/cfst/" -name "cfst" -type f 2>/dev/null | head -1)
+                cfst_file=$(find "${INSTALL_DIR}/assets/cfst/" -name "cfst" -type f 2>/dev/null | head -1 || true)
                 if [[ -n "${cfst_file}" ]] && [[ -f "${cfst_file}" ]]; then
                     chmod +x "${cfst_file}"
                     log_success "cfst 测速程序已安装: ${cfst_file}"
@@ -1076,7 +1076,7 @@ show_main_menu() {
     if [[ -d "${INSTALL_DIR}/conf/cf-dns" ]]; then
         # 【安全修复】查找第一个启用的配置文件，使用精确布尔匹配
         local cf_dns_conf
-        cf_dns_conf=$(find "${INSTALL_DIR}/conf/cf-dns" -name "*.json" -type f -exec sh -c 'jq -e ".enabled == true" "$1" >/dev/null 2>&1 && echo "$1"' _ {} \; | head -1)
+        cf_dns_conf=$(find "${INSTALL_DIR}/conf/cf-dns" -name "*.json" -type f -exec sh -c 'jq -e ".enabled == true" "$1" >/dev/null 2>&1 && echo "$1"' _ {} \; 2>/dev/null | head -1 || true)
         if [[ -n "${cf_dns_conf}" ]]; then
             cf_dns_status="$(get_module_status "${cf_dns_conf}" "")"
         else
@@ -1093,7 +1093,7 @@ show_main_menu() {
     if [[ -d "${INSTALL_DIR}/conf/dnspod" ]]; then
         # 【安全修复】查找第一个启用的配置文件，使用精确布尔匹配
         local dnspod_conf
-        dnspod_conf=$(find "${INSTALL_DIR}/conf/dnspod" -name "*.json" -type f -exec sh -c 'jq -e ".enabled == true" "$1" >/dev/null 2>&1 && echo "$1"' _ {} \; | head -1)
+        dnspod_conf=$(find "${INSTALL_DIR}/conf/dnspod" -name "*.json" -type f -exec sh -c 'jq -e ".enabled == true" "$1" >/dev/null 2>&1 && echo "$1"' _ {} \; 2>/dev/null | head -1 || true)
         if [[ -n "${dnspod_conf}" ]]; then
             dnspod_status="$(get_module_status "${dnspod_conf}" "")"
         else
@@ -1473,7 +1473,7 @@ uninstall_cfopt() {
         # 列出主要子目录
         if [[ -d "${INSTALL_DIR}/modules" ]]; then
             local modules_count
-            modules_count=$(find "${INSTALL_DIR}/modules" -type f 2>/dev/null | wc -l)
+            modules_count=$(find "${INSTALL_DIR}/modules" -type f 2>/dev/null | wc -l || true)
             echo -e "  ${CYAN}- modules/${NC} (${modules_count} 个文件)"
         fi
         if [[ -d "${INSTALL_DIR}/conf" ]]; then
@@ -1844,7 +1844,7 @@ init_cfopt() {
         if tar -xzf "${cfst_temp}" -C "${INSTALL_DIR}/assets/cfst/" 2>/dev/null; then
             # 找到解压后的 cfst 文件
             local cfst_file
-            cfst_file=$(find "${INSTALL_DIR}/assets/cfst/" -name "cfst" -type f 2>/dev/null | head -1)
+            cfst_file=$(find "${INSTALL_DIR}/assets/cfst/" -name "cfst" -type f 2>/dev/null | head -1 || true)
             if [[ -n "${cfst_file}" ]] && [[ -f "${cfst_file}" ]]; then
                 chmod +x "${cfst_file}"
                 log_success "cfst 测速程序已安装: ${cfst_file}"
