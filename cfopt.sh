@@ -101,6 +101,11 @@ trigger_rollback() {
 # 安全执行命令（带错误检查）
 # 先保存退出码，避免 local 声明重置 $?
 safe_execute() {
+    # 【关键修复】确保日志函数已定义，防止首次安装时 common.sh 未加载
+    if ! declare -f log_error >/dev/null 2>&1; then
+        log_error() { echo -e "${RED}[ERROR] $*${NC}" >&2; }
+    fi
+    
     local description="$1"
     shift
     local exit_code
@@ -118,6 +123,11 @@ safe_execute() {
 
 # 安全的文件移动（带备份和验证）
 safe_move() {
+    # 【关键修复】确保日志函数已定义，防止首次安装时 common.sh 未加载
+    if ! declare -f log_error >/dev/null 2>&1; then
+        log_error() { echo -e "${RED}[ERROR] $*${NC}" >&2; }
+    fi
+    
     local source="$1"
     local target="$2"
     local description="${3:-文件移动}"
@@ -154,6 +164,11 @@ safe_move() {
 # 安全的文件复制（带验证）
 # 增强目录复制的验证逻辑，处理 target 已存在的情况
 safe_copy() {
+    # 【关键修复】确保日志函数已定义，防止首次安装时 common.sh 未加载
+    if ! declare -f log_error >/dev/null 2>&1; then
+        log_error() { echo -e "${RED}[ERROR] $*${NC}" >&2; }
+    fi
+    
     local source="$1"
     local target="$2"
     local description="${3:-文件复制}"
@@ -214,6 +229,12 @@ safe_copy() {
 
 # 安全的目录删除（带确认和保护）
 safe_remove_dir() {
+    # 【关键修复】确保日志函数已定义，防止首次安装时 common.sh 未加载
+    if ! declare -f log_error >/dev/null 2>&1; then
+        log_error() { echo -e "${RED}[ERROR] $*${NC}" >&2; }
+        log_warn() { echo -e "${YELLOW}[WARN] $*${NC}" >&2; }
+    fi
+    
     local dir_path="$1"
     local description="${2:-目录删除}"
     
