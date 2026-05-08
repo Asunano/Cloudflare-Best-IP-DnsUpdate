@@ -1193,10 +1193,24 @@ show_main_menu() {
             bash "${INSTALL_DIR}/modules/dnspod-dns/setup.sh" || true
             ;;
         5)
-            manage_scheduler
+            # 【安全修复】检查调度模块是否存在
+            if [[ ! -f "${INSTALL_DIR}/modules/scheduler/run.sh" ]]; then
+                echo -e "${RED}[ERROR] 调度模块不存在: modules/scheduler/run.sh${NC}"
+                echo -e "${YELLOW}[INFO] 请重新运行快速部署向导或手动安装该模块${NC}"
+                read -r -p "按回车键返回主菜单..."
+            else
+                manage_scheduler
+            fi
             ;;
         6)
-            check_and_update_components
+            # 【安全修复】检查更新模块是否存在
+            if [[ ! -f "${INSTALL_DIR}/modules/updater/update.sh" ]]; then
+                echo -e "${RED}[ERROR] 更新模块不存在: modules/updater/update.sh${NC}"
+                echo -e "${YELLOW}[INFO] 请重新运行快速部署向导或手动安装该模块${NC}"
+                read -r -p "按回车键返回主菜单..."
+            else
+                check_and_update_components
+            fi
             ;;
         7)
             system_health_check
@@ -1718,6 +1732,15 @@ CLEANUP_EOF
 # --- 组件更新逻辑（委托给 updater 模块）---
 check_and_update_components() {
     clear
+    
+    # 【安全修复】检查更新模块是否存在
+    if [[ ! -f "${INSTALL_DIR}/modules/updater/update.sh" ]]; then
+        log_error "更新模块不存在: modules/updater/update.sh"
+        log_info "请重新运行快速部署向导或手动安装该模块"
+        read -r -p "按回车键继续..."
+        return
+    fi
+    
     bash "${INSTALL_DIR}/modules/updater/update.sh" update || true
     
     # 【安全修复】检查 updater 是否标记需要重启，添加防循环保护
