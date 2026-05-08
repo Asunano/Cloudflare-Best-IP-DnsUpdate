@@ -1330,6 +1330,10 @@ manage_scheduler() {
         case "${sched_choice}" in
             1)
                 clear
+                echo -e "${CYAN}+------------------------------------------------------------+${NC}"
+                echo -e " ${YELLOW}自动化调度管理中心 - 立即执行${NC}"
+                echo -e "${CYAN}+------------------------------------------------------------+${NC}"
+                echo ""
                 if [[ -f "${INSTALL_DIR}/modules/scheduler/run.sh" ]]; then
                     bash "${INSTALL_DIR}/modules/scheduler/run.sh"
                 else
