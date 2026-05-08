@@ -1560,14 +1560,15 @@ uninstall_cfopt() {
         
         cat > "${cleanup_script}" << 'CLEANUP_EOF'
 #!/bin/bash
-# 等待 3 秒，确保主脚本已完全退出
-sleep 3
+# 等待 5 秒，确保主脚本已完全退出（增加到 5 秒以提高可靠性）
+sleep 5
 
 # 【安全增强】从 $1 接收 INSTALL_DIR 参数
 # bash 会正确处理带空格或特殊字符的路径（因为调用时使用了双引号）
 INSTALL_DIR="$1"
 LOG_FILE="/tmp/cfopt_cleanup.log"
 CFOPT_UNINSTALL_LOCK="/tmp/.cfopt_uninstalling"
+CURRENT_PID=$$  # 【新增】记录当前清理脚本的 PID
 
 # 【安全修复】验证 INSTALL_DIR 非空且为合法路径
 if [[ -z "${INSTALL_DIR}" ]]; then
@@ -1589,7 +1590,7 @@ if [[ "${INSTALL_DIR}" = "/" ]] || [[ "${INSTALL_DIR}" = "/root" ]] || [[ "${INS
     exit 1
 fi
 
-echo "[$(date)] 开始清理: ${INSTALL_DIR}" >> "${LOG_FILE}"
+echo "[$(date)] 开始清理: ${INSTALL_DIR} (PID: ${CURRENT_PID})" >> "${LOG_FILE}"
 
 # 【新增】清理卸载锁文件
 if [[ -f "${CFOPT_UNINSTALL_LOCK}" ]]; then
@@ -1598,11 +1599,24 @@ if [[ -f "${CFOPT_UNINSTALL_LOCK}" ]]; then
 fi
 
 if [[ -d "${INSTALL_DIR}" ]]; then
-    # 第一遍：尝试终止所有相关进程（排除当前清理脚本）
+    # 第一遍：精确终止当前卸载会话的相关进程（排除当前清理脚本）
     echo "[$(date)] 第1步: 终止相关进程" >> "${LOG_FILE}"
-    # 【安全修复】转义 INSTALL_DIR 中的正则特殊字符，避免误匹配
+    # 【安全修复】使用更精确的匹配，避免误杀其他 cfopt 实例
+    # 只终止属于当前 INSTALL_DIR 的进程，并排除当前清理脚本
     escaped_dir=$(echo "${INSTALL_DIR}" | sed 's/[.[\*^$()+?{|]/\\&/g')
-    pkill -9 -f "${escaped_dir}/cfopt\.sh" 2>/dev/null || true
+    
+    # 查找并终止相关进程（排除当前脚本和 grep 自身）
+    pids_to_kill=$(ps aux | grep "${escaped_dir}" | grep -v grep | grep -v "${CURRENT_PID}" | awk '{print $2}' || true)
+    
+    if [[ -n "${pids_to_kill}" ]]; then
+        echo "[$(date)] 发现需要终止的进程: ${pids_to_kill}" >> "${LOG_FILE}"
+        for pid in ${pids_to_kill}; do
+            kill -9 "${pid}" 2>/dev/null || true
+            echo "[$(date)] 已终止进程: ${pid}" >> "${LOG_FILE}"
+        done
+    else
+        echo "[$(date)] 未发现需要终止的进程" >> "${LOG_FILE}"
+    fi
     sleep 1
     
     # 第二遍：删除所有文件（包括隐藏文件）
