@@ -1900,6 +1900,9 @@ init_cfopt() {
         fi
     fi
     
+    # 【新增】ERR trap：当 set -e 触发退出时，打印诊断信息而非静默退出
+    trap 'echo "[ERROR] 脚本异常退出 - 行号: ${LINENO}, 退出码: $?, 命令: ${BASH_COMMAND}" >&2' ERR
+    
     # 检查卸载锁，防止在卸载过程中重复执行
     if [[ -f "${CFOPT_UNINSTALL_LOCK:-}" ]]; then
         echo -e "${RED}[ERROR] cfopt 正在卸载中，请稍后再试${NC}"
