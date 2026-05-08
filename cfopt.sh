@@ -1828,8 +1828,25 @@ check_and_update_components() {
 
 # --- 初始化流程 ---
 init_cfopt() {
-    # 【新增】检查卸载锁，防止在卸载过程中重复执行
-    if [[ -f "${CFOPT_UNINSTALL_LOCK}" ]]; then
+    # 【关键修复】确保 lib/common.sh 已加载
+    # 在首次安装后的重启场景中，common.sh 可能还未下载，需要先加载
+    if ! declare -f log_info >/dev/null 2>&1; then
+        # common.sh 未加载，尝试加载
+        if [[ -f "${INSTALL_DIR}/lib/common.sh" ]]; then
+            source "${INSTALL_DIR}/lib/common.sh"
+            _LOG_MODULE="cfopt"
+            _LOG_FILE="${INSTALL_DIR}/logs/error.log"
+        else
+            # common.sh 不存在，定义临时的日志函数
+            log_info() { echo -e "${CYAN}[INFO] $*${NC}"; }
+            log_success() { echo -e "${GREEN}[OK] $*${NC}"; }
+            log_warn() { echo -e "${YELLOW}[WARN] $*${NC}"; }
+            log_error() { echo -e "${RED}[ERROR] $*${NC}"; }
+        fi
+    fi
+    
+    # 检查卸载锁，防止在卸载过程中重复执行
+    if [[ -f "${CFOPT_UNINSTALL_LOCK:-}" ]]; then
         echo -e "${RED}[ERROR] cfopt 正在卸载中，请稍后再试${NC}"
         exit 1
     fi
