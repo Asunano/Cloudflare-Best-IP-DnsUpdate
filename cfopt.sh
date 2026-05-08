@@ -6,11 +6,9 @@
 # Author: cfopt Team
 # ==============================================================================
 set -euo pipefail
-# 【移除】删除非标准的 IFS 设置，使用默认 IFS=$' \t\n'
-# 原因：修改全局 IFS 会影响 read、for 循环和命令替换的行为
-#       应通过良好的编码实践（始终使用双引号）来避免单词分割问题
+# 使用默认 IFS=$' \t\n'，避免修改全局 IFS 影响单词分割行为
 
-# 【修复】在脚本开头保存原始参数，防止后续被修改或消耗
+# 在脚本开头保存原始参数，防止后续被修改或消耗
 ORIGINAL_ARGS=("$@")
 
 # --- 终端颜色定义 (必须最先定义，防止 set -u 报错) ---
@@ -26,12 +24,12 @@ NC='\033[0m'
 
 # ====================== 【统一错误处理系统】 ======================
 
-# 【修复】先定义最小化的日志轮转函数（不依赖 INSTALL_DIR）
+# 先定义最小化的日志轮转函数（不依赖 INSTALL_DIR）
 # 在 INSTALL_DIR 确定后，会被公共库的完整版本替代
 _CFOPT_LOG_DIR="."
 
 # 日志轮转函数（防止日志无限增长）
-# 【修复】内联版本，在公共库加载前使用
+# 内联版本，在公共库加载前使用
 _rotate_log_fallback() {
     local log_file="$1"
     local max_size=${2:-$((10 * 1024 * 1024))}
@@ -52,14 +50,14 @@ _rotate_log_fallback() {
     fi
 }
 
-# 【移除】临时日志函数已删除，改用 echo 直接输出
-# 原因：lib/common.sh 中的 log() 函数签名更智能（自动判断级别）
+# 临时日志函数已删除，改用 echo 直接输出
+# lib/common.sh 中的 log() 函数签名更智能（自动判断级别）
 #       临时版本强制将第一个参数作为级别，可能导致行为不一致
 #       在 common.sh 加载前的日志需求极少，直接使用 echo 即可
 
 # 触发回滚
-# 【新增】回滚函数（用于 trigger_rollback）
-# 【安全修复】此函数可能在 common.sh 加载前被调用，使用 echo 替代 log_* 函数
+# 回滚函数（用于 trigger_rollback）
+# 此函数可能在 common.sh 加载前被调用，使用 echo 替代 log_* 函数
 rollback_on_failure() {
     echo -e "${YELLOW}[WARN] 执行回滚操作...${NC}"
     
@@ -101,7 +99,7 @@ trigger_rollback() {
 }
 
 # 安全执行命令（带错误检查）
-# 【安全修复】先保存退出码，避免 local 声明重置 $?
+# 先保存退出码，避免 local 声明重置 $?
 safe_execute() {
     local description="$1"
     shift
@@ -154,7 +152,7 @@ safe_move() {
 }
 
 # 安全的文件复制（带验证）
-# 【安全修复】增强目录复制的验证逻辑，处理 target 已存在的情况
+# 增强目录复制的验证逻辑，处理 target 已存在的情况
 safe_copy() {
     local source="$1"
     local target="$2"
@@ -176,7 +174,7 @@ safe_copy() {
     
     # 执行复制
     if cp -r "${source}" "${target}" 2>/dev/null; then
-        # 【修复】根据源类型进行不同的验证
+        # 根据源类型进行不同的验证
         if [[ -d "${source}" ]]; then
             # 源是目录：需要验证正确的目标路径
             if [[ -d "${target}" ]]; then
@@ -254,10 +252,10 @@ else
     INSTALL_DIR="${HOME}/cfopt"
 fi
 
-# 【修复】更新日志目录变量，使日志写入正确位置
+# 更新日志目录变量，使日志写入正确位置
 _CFOPT_LOG_DIR="${INSTALL_DIR}"
 
-# 【修复】加载公共函数库（在 INSTALL_DIR 确定后）
+# 加载公共函数库（在 INSTALL_DIR 确定后）
 if [[ -f "${INSTALL_DIR}/lib/common.sh" ]]; then
     # shellcheck source=lib/common.sh
     source "${INSTALL_DIR}/lib/common.sh"
@@ -273,7 +271,7 @@ if [[ "${CURRENT_SCRIPT_PATH}" != "${TARGET_SCRIPT_PATH}" ]]; then
     echo -e "${CYAN}[INFO] 检测到脚本位于非标准目录，正在迁移至: ${INSTALL_DIR}${NC}"
     mkdir -p "${INSTALL_DIR}"
     
-    # 【安全修复】如果目标文件已存在，直接复制而非移动（避免破坏正在运行的脚本）
+    # 如果目标文件已存在，直接复制而非移动（避免破坏正在运行的脚本）
     if [[ -f "${TARGET_SCRIPT_PATH}" ]]; then
         log_info "目标位置已存在脚本，正在更新..."
         if safe_copy "${CURRENT_SCRIPT_PATH}" "${TARGET_SCRIPT_PATH}" "脚本更新"; then
