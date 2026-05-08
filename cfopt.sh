@@ -1716,10 +1716,11 @@ if [[ -d "${INSTALL_DIR}" ]]; then
     
     if [[ -n "${pids_to_kill}" ]]; then
         echo "[$(date)] 发现需要终止的进程: ${pids_to_kill}" >> "${LOG_FILE}"
-        for pid in ${pids_to_kill}; do
+        while IFS= read -r pid; do
+            [[ -z "${pid}" ]] && continue
             kill -9 "${pid}" 2>/dev/null || true
             echo "[$(date)] 已终止进程: ${pid}" >> "${LOG_FILE}"
-        done
+        done <<< "${pids_to_kill}"
     else
         echo "[$(date)] 未发现需要终止的进程" >> "${LOG_FILE}"
     fi
