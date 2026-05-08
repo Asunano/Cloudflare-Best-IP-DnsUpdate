@@ -2128,22 +2128,33 @@ init_cfopt() {
     # 【安全修复】确保 conf 目录存在
     mkdir -p "${INSTALL_DIR}/conf" 2>/dev/null || true
     
+    # 【关键修复】根据下载结果决定是否标记为已安装
+    # INSTALL_CHECKED 的语义应该是"安装流程完成且成功"，而非"安装流程跑过了"
+    local all_critical_ok=true
+    for critical_module in "modules/cf-ip/menu.sh" "modules/scheduler/run.sh" "modules/updater/update.sh"; do
+        if [[ ! -f "${INSTALL_DIR}/${critical_module}" ]]; then
+            all_critical_ok=false
+            echo -e "${YELLOW}[WARN] 关键模块缺失: ${critical_module}${NC}"
+            break
+        fi
+    done
+    
     if [[ ! -f "${STATUS_CONF}" ]]; then
-        cat > "${STATUS_CONF}" << 'EOF'
+        cat > "${STATUS_CONF}" << EOF
 # cfopt 模块状态配置文件
 CF_IP_ENABLED="true"
 CF_DNS_ENABLED="false"
 DNSPOD_ENABLED="false"
 SCHEDULER_ENABLED="false"
 LAST_UPDATE_TIME=""
-INSTALL_CHECKED="true"
+INSTALL_CHECKED="${all_critical_ok}"
 EOF
         # 【安全修复】设置严格权限，防止敏感信息泄露
         chmod 600 "${STATUS_CONF}"
     else
         # 如果文件已存在但未标记，则追加标记
         if ! grep -q '^INSTALL_CHECKED=' "${STATUS_CONF}"; then
-            echo 'INSTALL_CHECKED="true"' >> "${STATUS_CONF}"
+            echo "INSTALL_CHECKED=\"${all_critical_ok}\"" >> "${STATUS_CONF}"
         fi
     fi
 
