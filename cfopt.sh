@@ -1359,7 +1359,36 @@ setup_auto_cron() {
             echo -e "${CYAN}提示:${NC} Cron 格式为 '分 时 日 月 周'"
             read -r -p "请输入 Cron 表达式: " custom_cron
             if [[ -n "${custom_cron}" ]]; then
+                # 【安全修复】验证 Cron 表达式格式，防止注入攻击
+                # 检查是否包含换行符（防止多行注入）
+                if [[ "${custom_cron}" == *$'\n'* ]] || [[ "${custom_cron}" == *$'\r'* ]]; then
+                    echo -e "${RED}[ERROR] Cron 表达式不能包含换行符${NC}"
+                    read -r -p "按回车键继续..."
+                    return
+                fi
+                
+                # 检查字段数量（标准 Cron 有 5 个字段）
+                local field_count
+                field_count=$(echo "${custom_cron}" | awk '{print NF}')
+                if [[ "${field_count}" -lt 5 ]]; then
+                    echo -e "${RED}[ERROR] Cron 表达式格式错误：至少需要 5 个字段（分 时 日 月 周）${NC}"
+                    echo -e "${YELLOW}示例: 0 */4 * * * (每 4 小时执行一次)${NC}"
+                    read -r -p "按回车键继续..."
+                    return
+                fi
+                
+                # 检查是否只包含合法的 Cron 字符（数字、*、,、-、/、空格）
+                if ! echo "${custom_cron}" | grep -qE '^[0-9*,\-/ ]+$'; then
+                    echo -e "${RED}[ERROR] Cron 表达式包含非法字符${NC}"
+                    echo -e "${YELLOW}只允许: 数字、*、,、-、/、空格${NC}"
+                    read -r -p "按回车键继续..."
+                    return
+                fi
+                
                 cron_expr="${custom_cron}"
+                echo -e "${GREEN}[OK] Cron 表达式验证通过${NC}"
+            else
+                echo -e "${YELLOW}[INFO] 未输入自定义表达式，使用默认值: 0 */4 * * *${NC}"
             fi
             ;;
     esac
