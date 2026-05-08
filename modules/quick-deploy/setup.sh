@@ -1000,7 +1000,7 @@ manage_deployed_domains_menu() {
         
         echo -e " ${GREEN}${index})${NC} ${full_domain} (${dns_label}, ${mode_label})"
         domain_array+=("$domain")
-        ((index++))
+        index=$((index + 1))
     done <<< "$deployed_domains"
     
     echo ""
@@ -1254,7 +1254,7 @@ deploy_cloudflare_dns() {
         domain_name=$(echo "$line" | awk '{print $1}')
         echo -e " ${GREEN}${index})${NC} ${line}"
         domain_array+=("$domain_name")
-        ((index++))
+        index=$((index + 1))
     done <<< "$(echo "$zones_response" | jq -r '.result[] | "\(.name) (Zone ID: \(.id))"' | head -n 10)"
     echo ""
     

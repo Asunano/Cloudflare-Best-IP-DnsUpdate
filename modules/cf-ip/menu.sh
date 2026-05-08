@@ -1073,7 +1073,7 @@ remove_cron() {
     while IFS= read -r line; do
         TASKS[$idx]="$line"
         echo -e " ${GREEN}[${idx}]${NC} $line"
-        ((idx++))
+        idx=$((idx + 1))
     done <<< "${CRON_LIST}"
     echo "--------------------------------------------------------"
     echo ""
