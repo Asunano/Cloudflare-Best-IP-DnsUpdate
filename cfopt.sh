@@ -1705,11 +1705,37 @@ check_and_update_components() {
     clear
     bash "${INSTALL_DIR}/modules/updater/update.sh" update || true
     
-    # 【修复】检查 updater 是否标记需要重启
+    # 【安全修复】检查 updater 是否标记需要重启，添加防循环保护
     if [[ -f "${INSTALL_DIR}/.restart_needed" ]]; then
+        # 检查重启计数器，防止无限循环
+        local restart_count_file="${INSTALL_DIR}/.restart_count"
+        local restart_count=0
+        
+        if [[ -f "${restart_count_file}" ]]; then
+            restart_count=$(cat "${restart_count_file}" 2>/dev/null || echo "0")
+            # 确保是数字
+            if ! [[ "${restart_count}" =~ ^[0-9]+$ ]]; then
+                restart_count=0
+            fi
+        fi
+        
+        # 安全检查：最多允许连续重启 3 次
+        if [[ ${restart_count} -ge 3 ]]; then
+            log_error "检测到连续重启 ${restart_count} 次，可能存在更新循环"
+            log_error "已停止自动重启，请手动检查更新问题"
+            rm -f "${INSTALL_DIR}/.restart_needed"
+            rm -f "${restart_count_file}"
+            read -r -p "按回车键继续..."
+            return
+        fi
+        
+        # 增加重启计数
+        restart_count=$((restart_count + 1))
+        echo "${restart_count}" > "${restart_count_file}"
+        
         rm -f "${INSTALL_DIR}/.restart_needed"
         echo ""
-        log_info "检测到主程序已更新，正在重启..."
+        log_info "检测到主程序已更新，正在重启 (第 ${restart_count} 次)..."
         echo ""
         # 使用 exec 替换当前进程，这是安全的，因为是在父进程中执行
         exec bash "${INSTALL_DIR}/cfopt.sh"
@@ -1726,6 +1752,13 @@ init_cfopt() {
     if [[ -f "${CFOPT_UNINSTALL_LOCK}" ]]; then
         echo -e "${RED}[ERROR] cfopt 正在卸载中，请稍后再试${NC}"
         exit 1
+    fi
+    
+    # 【安全修复】清理重启计数器（正常启动时）
+    # 如果脚本正常启动（非更新重启），清除之前的计数
+    local restart_count_file="${INSTALL_DIR}/.restart_count"
+    if [[ -f "${restart_count_file}" ]] && [[ ! -f "${INSTALL_DIR}/.restart_needed" ]]; then
+        rm -f "${restart_count_file}" 2>/dev/null || true
     fi
 
     # 0. 检查是否有待应用的新版本 cfopt.sh
