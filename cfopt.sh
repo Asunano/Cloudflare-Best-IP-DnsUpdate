@@ -99,17 +99,21 @@ trigger_rollback() {
 }
 
 # 安全执行命令（带错误检查）
+# 【安全修复】先保存退出码，避免 local 声明重置 $?
 safe_execute() {
     local description="$1"
     shift
+    local exit_code
     
-    if "$@"; then
-        return 0
-    else
-        local exit_code=$?
+    # 执行命令并立即保存退出码
+    "$@"
+    exit_code=$?
+    
+    if [[ ${exit_code} -ne 0 ]]; then
         log_error "${description} (退出码: ${exit_code})"
-        return 1
+        return ${exit_code}
     fi
+    return 0
 }
 
 # 安全的文件移动（带备份和验证）
