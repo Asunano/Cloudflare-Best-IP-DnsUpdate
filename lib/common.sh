@@ -196,20 +196,36 @@ read_ips_from_file() {
 # ==================== 验证 IPv4 地址格式 ====================
 # 参数: $1=IP地址
 # 返回: 0=有效, 1=无效
+# IP 地址格式验证
+# 验证 IPv4 地址格式和合法性，拒绝 0.0.0.0 和 255.255.255.255 等无效地址
 validate_ip() {
     local ip="$1"
 
-    if [[ "${ip}" =~ ^([0-9]{1,3})\.([0-9]{1,3})\.([0-9]{1,3})\.([0-9]{1,3})$ ]]; then
-        local i
-        for i in 1 2 3 4; do
-            if [[ "${BASH_REMATCH[$i]}" -gt 255 ]]; then
-                return 1
-            fi
-        done
-        return 0
-    else
+    # 基本格式检查
+    if [[ ! "${ip}" =~ ^([0-9]{1,3})\.([0-9]{1,3})\.([0-9]{1,3})\.([0-9]{1,3})$ ]]; then
         return 1
     fi
+    
+    # 检查每个字段的范围（0-255）
+    local i
+    for i in 1 2 3 4; do
+        if [[ "${BASH_REMATCH[$i]}" -gt 255 ]]; then
+            return 1
+        fi
+    done
+    
+    # 拒绝特殊地址
+    # 0.0.0.0：无效地址
+    if [[ "${ip}" == "0.0.0.0" ]]; then
+        return 1
+    fi
+    
+    # 255.255.255.255：广播地址，不能作为目标 IP
+    if [[ "${ip}" == "255.255.255.255" ]]; then
+        return 1
+    fi
+    
+    return 0
 }
 
 # ==================== 统一日志函数 ====================
@@ -248,9 +264,16 @@ log_success() { _cfopt_log "${_LOG_MODULE:-cfopt}" "${_LOG_FILE:-}" "OK" "$@"; }
 # 向后兼容别名（dnspod-dns 使用 log_msg）
 log_msg() { _cfopt_log "${_LOG_MODULE:-cfopt}" "${_LOG_FILE:-}" "$@"; }
 
-# 向后兼容：旧版 log(level, msg...) 签名
-# cf-dns/core.sh 中大量使用 log "${RED}[ERROR]..." 和 log "" 格式
-# 兼容处理：如果第一个参数不是已知级别，将其作为消息而非级别
+# 通用日志函数（智能级别判断）
+# 支持两种调用方式：
+#   1. 标准调用: log "INFO" "message..."
+#   2. 简化调用: log "message..." （自动识别为 INFO 级别）
+#
+# 设计说明：
+# - cf-dns/core.sh 中大量使用 log "${RED}[ERROR]..." 和 log "" 格式
+# - 为了向后兼容，如果第一个参数不是已知级别（INFO/WARN/ERROR/OK），
+#   则将其作为消息而非级别处理
+# - 推荐使用 log_info/log_warn/log_error/log_success 以获得更清晰的代码
 log() {
     # 如果没有参数，直接返回
     [[ $# -eq 0 ]] && return 0
@@ -262,7 +285,7 @@ log() {
             _cfopt_log "${_LOG_MODULE:-cfopt}" "${_LOG_FILE:-}" "$@"
             ;;
         *)
-            # 非标准调用: log "some message" 或 log ""
+            # 简化调用: log "some message" 或 log ""
             # 整个内容作为消息，级别设为 INFO
             _cfopt_log "${_LOG_MODULE:-cfopt}" "${_LOG_FILE:-}" "INFO" "$@"
             ;;
