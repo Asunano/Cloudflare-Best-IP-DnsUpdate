@@ -1913,7 +1913,10 @@ init_cfopt() {
     
     # 【新增】网络健康检查（首次安装时）
     # 在下载核心组件前快速检测网络连通性，避免长时间等待后失败
-    if [[ ! -f "${STATUS_CONF:-}" ]] || ! grep -q '^INSTALL_CHECKED="true"' "${STATUS_CONF:-}" 2>/dev/null; then
+    # 【关键修复】先定义 STATUS_CONF，防止未定义变量错误
+    STATUS_CONF="${INSTALL_DIR}/conf/status.conf"
+    
+    if [[ ! -f "${STATUS_CONF}" ]] || ! grep -q '^INSTALL_CHECKED="true"' "${STATUS_CONF}" 2>/dev/null; then
         echo ""
         if ! check_network_health; then
             echo ""
@@ -1924,7 +1927,7 @@ init_cfopt() {
     fi
 
     # 2. 智能启动检测
-    STATUS_CONF="${INSTALL_DIR}/conf/status.conf"
+    # STATUS_CONF 已在上面定义，无需重复
     
     # 核心判断：如果状态文件存在、标记为已安装、且核心模块文件齐全，则直接进入主菜单
     if [[ -f "${STATUS_CONF}" ]] && \
