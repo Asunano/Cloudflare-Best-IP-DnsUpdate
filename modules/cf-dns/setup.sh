@@ -458,7 +458,7 @@ full_config_wizard() {
         domain_name=$(echo "$line" | awk '{print $1}')
         echo -e " ${GREEN}${index})${NC} ${line}"
         domain_array+=("$domain_name")
-        ((index++))
+        index=$((index + 1))
     done <<< "$(echo "$zones_response" | jq -r '.result[] | "\(.name) (Zone ID: \(.id))"' | head -n 10)"
     if [[ "$zones_count" -gt 10 ]]; then
         echo -e "  ... 还有 $((zones_count - 10)) 个域名"
@@ -1888,7 +1888,7 @@ select_domain_menu() {
         
         echo -e " ${GREEN}${index})${NC} ${full_domain} ${status_label}"
         domain_array+=("$config_file")
-        ((index++))
+        index=$((index + 1))
     done
     
     echo ""
@@ -2068,7 +2068,7 @@ main() {
             
             echo -e " ${GREEN}${index})${NC} ${full_domain} ${status_label}"
             domain_array+=("$config_file")
-            ((index++))
+            index=$((index + 1))
         done
         
         echo ""

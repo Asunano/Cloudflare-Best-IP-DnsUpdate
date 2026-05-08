@@ -875,7 +875,7 @@ system_health_check() {
                 echo -n "正在修复全局命令... "
                 if fix_system_cmd "$(readlink -f "$0")"; then
                     echo -e "${GREEN}成功${NC}"
-                    ((fixed_count++))
+                    fixed_count=$((fixed_count + 1))
                 else
                     echo -e "${RED}失败${NC}"
                 fi
@@ -900,7 +900,7 @@ system_health_check() {
                         cp "${template_file}" "${target_file}"
                         chmod 600 "${target_file}"
                         echo -e "${GREEN}成功${NC} (从模板)"
-                        ((fixed_count++))
+                        fixed_count=$((fixed_count + 1))
                     else
                         # 使用 jq 创建最小化配置
                         case "${cfg}" in
@@ -947,7 +947,7 @@ system_health_check() {
                         esac
                         chmod 600 "${target_file}"
                         echo -e "${GREEN}成功${NC} (最小化配置)"
-                        ((fixed_count++))
+                        fixed_count=$((fixed_count + 1))
                     fi
                 done
             fi
@@ -977,7 +977,7 @@ system_health_check() {
                 
                 if [[ "${install_success}" = true ]]; then
                     echo -e "${GREEN}成功${NC}"
-                    ((fixed_count++))
+                    fixed_count=$((fixed_count + 1))
                 else
                     echo -e "${RED}失败${NC} (请手动安装)"
                 fi

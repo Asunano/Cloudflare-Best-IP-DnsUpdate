@@ -609,7 +609,7 @@ perform_update() {
         # 对比哈希值，相同则跳过
         if [[ "${local_hash}" == "${expected_hash}" ]]; then
             echo -e "  ${GREEN}[SKIP]${NC} ${display_name} (已是最新)"
-            ((skip_count++))
+            skip_count=$((skip_count + 1))
             continue
         fi
         
@@ -621,7 +621,7 @@ perform_update() {
             if [[ ! -d "${target_dir}" ]]; then
                 mkdir -p "${target_dir}" 2>/dev/null || {
                     echo -e "  ${RED}[FAIL]${NC} ${display_name} (无法创建目录)"
-                    ((fail_count++))
+                    fail_count=$((fail_count + 1))
                     continue
                 }
             fi
@@ -631,9 +631,9 @@ perform_update() {
             cfopt_updated=true  # 【修复】标记 cfopt.sh 已更新
             # 先下载到 .new 文件
             if download_file "${local_path}.new" "${remote_path}" "${display_name}" "${expected_hash}"; then
-                ((success_count++))  # 【修复】计入成功计数
+                success_count=$((success_count + 1))  # 【修复】计入成功计数
             else
-                ((fail_count++))
+                fail_count=$((fail_count + 1))
                 cfopt_updated=false  # 【修复】下载失败，取消标记
             fi
             continue
@@ -642,18 +642,18 @@ perform_update() {
         # 【特殊处理】updater.sh 需要更新时，计入统计
         if [[ "${remote_path}" = "modules/updater/update.sh" ]]; then
             if download_file "${local_path}" "${remote_path}" "${display_name}" "${expected_hash}"; then
-                ((success_count++))  # 【修复】计入成功计数
+                success_count=$((success_count + 1))  # 【修复】计入成功计数
             else
-                ((fail_count++))
+                fail_count=$((fail_count + 1))
             fi
             continue
         fi
         
         # 哈希值不同，执行下载
         if download_file "${local_path}" "${remote_path}" "${display_name}" "${expected_hash}"; then
-            ((success_count++))
+            success_count=$((success_count + 1))
         else
-            ((fail_count++))
+            fail_count=$((fail_count + 1))
         fi
     done
     
