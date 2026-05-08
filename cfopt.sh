@@ -467,9 +467,24 @@ install_system_cmd() {
             return 1
         fi
         
-        # 【安全修复】确保路径不包含危险字符（虽然 readlink -f 已规范化）
-        if [[ "${script_path}" =~ [\;\|\&\$\`] ]]; then
+        # 【安全修复】使用白名单方式验证路径，只允许安全的字符
+        # 允许：字母、数字、下划线、连字符、点、斜杠、空格（用于带空格的路径）
+        if [[ ! "${script_path}" =~ ^[a-zA-Z0-9_./\ -]+$ ]]; then
             log_error "脚本路径包含非法字符，拒绝安装"
+            log_error "路径: ${script_path}"
+            return 1
+        fi
+        
+        # 【安全修复】额外检查：禁止危险路径模式
+        # 1. 禁止以斜杠开头后紧跟危险目录
+        if [[ "${script_path}" =~ ^/(tmp|dev|proc|sys)/ ]]; then
+            log_error "拒绝从系统临时或虚拟文件系统安装: ${script_path}"
+            return 1
+        fi
+        
+        # 2. 禁止包含连续斜杠（可能是路径遍历尝试）
+        if [[ "${script_path}" == *"//"* ]]; then
+            log_error "脚本路径包含连续斜杠，拒绝安装: ${script_path}"
             return 1
         fi
         
