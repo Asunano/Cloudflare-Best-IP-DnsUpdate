@@ -21,6 +21,14 @@ if [[ ! -t 0 ]] && [[ -z "${CF_OPT_ENTRY:-}" ]]; then
     exit 1
 fi
 
+# ==================== 路径初始化 ====================
+SCRIPT_DIR="$( cd -P "$( dirname "${BASH_SOURCE[0]}" )" >/dev/null 2>&1 && pwd )"
+ROOT_DIR="$(cd "$SCRIPT_DIR/../.." && pwd)"
+
+# ==================== 加载公共函数库 ====================
+# shellcheck source=../../lib/common.sh
+source "${ROOT_DIR}/lib/common.sh"
+
 # 限制：此脚本应由主程序 cfopt.sh 统一调度启动
 if [ -z "$CF_OPT_ENTRY" ] && [ "$(basename "$0")" != "setup.sh" ]; then
     SCRIPT_DIR="$( cd -P "$( dirname "${BASH_SOURCE[0]}" )" >/dev/null 2>&1 && pwd )"
@@ -37,37 +45,6 @@ if [ -z "$ROOT_DIR" ]; then
     SCRIPT_DIR="$( cd -P "$( dirname "${BASH_SOURCE[0]}" )" >/dev/null 2>&1 && pwd )"
     ROOT_DIR="$(cd "$SCRIPT_DIR/../.." && pwd)"
 fi
-
-# ==================== 终端显示配置 ====================
-RED='\033[0;31m'
-GREEN='\033[0;32m'
-YELLOW='\033[1;33m'
-BLUE='\033[0;34m'
-CYAN='\033[0;36m'
-BOLD='\033[1m'
-NC='\033[0m'
-
-# ==================== 跨平台文件查找辅助函数 ====================
-# 【修复】跨平台查找最新文件（替代 find -printf，兼容 macOS/BSD）
-# 参数: $1=目录路径, $2=文件名模式 (如 "*.log")
-# 返回: 最新文件的完整路径
-find_latest_file() {
-    local search_dir="$1"
-    local pattern="$2"
-    
-    # 方法1: 使用 stat -f '%m' (macOS/BSD)
-    if stat -f '%m' /dev/null >/dev/null 2>&1; then
-        find "${search_dir}" -name "${pattern}" -type f -exec stat -f '%m %N' {} \; 2>/dev/null | \
-            sort -rn | head -n 1 | awk '{print $2}'
-    # 方法2: 使用 stat -c '%Y' (Linux)
-    elif stat -c '%Y' /dev/null >/dev/null 2>&1; then
-        find "${search_dir}" -name "${pattern}" -type f -exec stat -c '%Y %n' {} \; 2>/dev/null | \
-            sort -rn | head -n 1 | awk '{print $2}'
-    # 方法3: 使用 ls -t (备用方案)
-    else
-        ls -t "${search_dir}"/${pattern} 2>/dev/null | head -n 1
-    fi
-}
 
 # 【修复】跨平台列出日志文件信息（替代 find -printf，兼容 macOS/BSD）
 # 参数: $1=目录路径, $2=文件名模式 (如 "*.log")
@@ -147,7 +124,7 @@ json_get() {
     fi
     
     local value
-    value=$(jq -r "${key} // empty" "$CONFIG_FILE" 2>/dev/null)
+    value=$(jq -r "${key} // empty" "$CONFIG_FILE" 2>/dev/null || true)
     
     if [[ -z "$value" ]] || [[ "$value" == "null" ]]; then
         echo "$default"
@@ -609,11 +586,11 @@ quick_run() {
     # 临时加载配置 (使用子shell避免污染当前环境变量)
     (
         local mode domain sub_domain isp_lines max_ips
-        mode=$(jq -r '.dns.mode // "single"' "$CONFIG_FILE" 2>/dev/null)
-        domain=$(jq -r '.dns.domain // ""' "$CONFIG_FILE" 2>/dev/null)
-        sub_domain=$(jq -r '.dns.sub_domain // "dns"' "$CONFIG_FILE" 2>/dev/null)
-        isp_lines=$(jq -r '.dns.isp_lines // "默认"' "$CONFIG_FILE" 2>/dev/null)
-        max_ips=$(jq -r '.dns.max_ips_per_record // 2' "$CONFIG_FILE" 2>/dev/null)
+        mode=$(jq -r '.dns.mode // "single"' "$CONFIG_FILE" 2>/dev/null || true)
+        domain=$(jq -r '.dns.domain // ""' "$CONFIG_FILE" 2>/dev/null || true)
+        sub_domain=$(jq -r '.dns.sub_domain // "dns"' "$CONFIG_FILE" 2>/dev/null || true)
+        isp_lines=$(jq -r '.dns.isp_lines // "默认"' "$CONFIG_FILE" 2>/dev/null || true)
+        max_ips=$(jq -r '.dns.max_ips_per_record // 2' "$CONFIG_FILE" 2>/dev/null || true)
         
         # 转换为中文显示
         if [[ "$mode" == "multi" ]]; then
@@ -2512,9 +2489,9 @@ else
         echo "   检测到缺少必要的配置项:"
         
         # 检查具体缺少哪些配置
-        has_domain=$(jq -r '.dns.domain // empty' "$CONFIG_FILE" 2>/dev/null)
-        has_secretid=$(jq -r '.api.id // empty' "$CONFIG_FILE" 2>/dev/null)
-        has_secretkey=$(jq -r '.api.token // empty' "$CONFIG_FILE" 2>/dev/null)
+        has_domain=$(jq -r '.dns.domain // empty' "$CONFIG_FILE" 2>/dev/null || true)
+        has_secretid=$(jq -r '.api.id // empty' "$CONFIG_FILE" 2>/dev/null || true)
+        has_secretkey=$(jq -r '.api.token // empty' "$CONFIG_FILE" 2>/dev/null || true)
         
         if [[ -z "$has_domain" ]] || [[ "$has_domain" == "null" ]]; then
             echo -e "   ${YELLOW}- dns.domain (域名)"
@@ -3180,12 +3157,12 @@ jq -n \
             "isp_lines": $isp_lines
         },
         "ip_source": {
-            "file_path": (if $mode == "single" then "./assets/data/dnspod-dns/ip_list.txt" else null end),
+            "file_path": (if $mode == "single" then "./assets/data/dnspod-dns/ip_list.iplist" else null end),
             "files": (if $mode == "multi" then {
-                "default": "./assets/data/dnspod-dns/default.txt",
-                "unicom": "./assets/data/dnspod-dns/unicom.txt",
-                "mobile": "./assets/data/dnspod-dns/mobile.txt",
-                "telecom": "./assets/data/dnspod-dns/telecom.txt"
+                "default": "./assets/data/dnspod-dns/default.iplist",
+                "unicom": "./assets/data/dnspod-dns/unicom.iplist",
+                "mobile": "./assets/data/dnspod-dns/mobile.iplist",
+                "telecom": "./assets/data/dnspod-dns/telecom.iplist"
             } else null end)
         },
         "logging": {
@@ -3215,7 +3192,7 @@ if [ "$MODE" = "multi" ]; then
     echo ""
     
     # 【修复】移除函数外的 local 关键字
-    ip_dir=$(jq -r '.ip_source.files // empty' "$CONFIG_FILE" 2>/dev/null)
+    ip_dir=$(jq -r '.ip_source.files // empty' "$CONFIG_FILE" 2>/dev/null || true)
     
     if [[ -z "$ip_dir" ]] || [[ "$ip_dir" == "null" ]]; then
         # 如果配置文件中没有 files 字段，使用默认路径
@@ -3223,7 +3200,7 @@ if [ "$MODE" = "multi" ]; then
     else
         # 提取目录路径（从第一个文件路径推断）
         local first_file
-        first_file=$(echo "$ip_dir" | jq -r 'to_entries[0].value // empty' 2>/dev/null)
+        first_file=$(echo "$ip_dir" | jq -r 'to_entries[0].value // empty' 2>/dev/null || true)
         if [[ -n "$first_file" ]] && [[ "$first_file" != "null" ]]; then
             ip_dir=$(dirname "$first_file")
         else
@@ -3237,10 +3214,10 @@ if [ "$MODE" = "multi" ]; then
     
     # 定义线路和文件名的映射
     declare -A line_files=(
-        ["默认"]="default.txt"
-        ["联通"]="unicom.txt"
-        ["移动"]="mobile.txt"
-        ["电信"]="telecom.txt"
+        ["默认"]="default.iplist"
+        ["联通"]="unicom.iplist"
+        ["移动"]="mobile.iplist"
+        ["电信"]="telecom.iplist"
     )
     
     # 遍历配置的线路，创建对应的 IP 文件

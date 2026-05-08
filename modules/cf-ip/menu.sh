@@ -12,38 +12,15 @@ IFS=$'\n\t'
 # shellcheck disable=SC2034
 SCRIPT_VERSION="0.1"
 
-# ==================== 颜色定义（必须最先定义） ====================
-RED='\033[0;31m'
-GREEN='\033[0;32m'
-YELLOW='\033[1;33m'
-BLUE='\033[0;34m'
-MAGENTA='\033[0;35m'
-CYAN='\033[0;36m'
-BOLD='\033[1m'
-GRAY='\033[0;90m'
-NC='\033[0m' # No Color
+# ==================== 路径初始化 ====================
+SCRIPT_DIR="$( cd -P "$( dirname "${BASH_SOURCE[0]}" )" >/dev/null 2>&1 && pwd )"
+ROOT_DIR="$(cd "$SCRIPT_DIR/../.." && pwd)"
 
-# ==================== 跨平台文件查找辅助函数 ====================
-# 【修复】跨平台查找最新文件（替代 find -printf，兼容 macOS/BSD）
-# 参数: $1=目录路径, $2=文件名模式 (如 "cfst_*.log")
-# 返回: 最新文件的完整路径
-find_latest_file() {
-    local search_dir="$1"
-    local pattern="$2"
-    
-    # 方法1: 使用 stat -f '%m' (macOS/BSD)
-    if stat -f '%m' /dev/null >/dev/null 2>&1; then
-        find "${search_dir}" -name "${pattern}" -type f -exec stat -f '%m %N' {} \; 2>/dev/null | \
-            sort -rn | head -n 1 | awk '{print $2}'
-    # 方法2: 使用 stat -c '%Y' (Linux)
-    elif stat -c '%Y' /dev/null >/dev/null 2>&1; then
-        find "${search_dir}" -name "${pattern}" -type f -exec stat -c '%Y %n' {} \; 2>/dev/null | \
-            sort -rn | head -n 1 | awk '{print $2}'
-    # 方法3: 使用 ls -t (备用方案)
-    else
-        ls -t "${search_dir}"/${pattern} 2>/dev/null | head -n 1
-    fi
-}
+# ==================== 加载公共函数库 ====================
+if [[ -f "${ROOT_DIR}/lib/common.sh" ]]; then
+    # shellcheck source=../../lib/common.sh
+    source "${ROOT_DIR}/lib/common.sh"
+fi
 
 # ==================== 信号捕获与资源清理 ====================
 # shellcheck disable=SC2329

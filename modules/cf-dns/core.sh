@@ -2,7 +2,7 @@
 # shellcheck shell=bash
 # ==============================================================================
 # cfopt - Cloudflare DNS 更新核心 (Core)
-# Version: 0.1
+# Version: 0.2
 # Description: 负责将优选 IP 同步至 Cloudflare DNS 记录，支持有效性校验与日志记录
 # Usage: bash modules/cf-dns/core.sh
 # ==============================================================================
@@ -11,43 +11,23 @@ set -euo pipefail
 
 # shellcheck disable=SC2034
 SCRIPT_VERSION="0.1"
-MODULE_NAME="cf-dns"  # 【修复】定义模块名称，用于日志输出
+MODULE_NAME="cf-dns"
 
-# ==================== 终端显示配置 ====================
-RED='\033[0;31m'
-GREEN='\033[0;32m'
-YELLOW='\033[1;33m'
-BLUE='\033[0;34m'
-CYAN='\033[0;36m'
-BOLD='\033[1m'
-NC='\033[0m' # No Color
-
-# ==================== 跨平台文件查找辅助函数 ====================
-# 【修复】跨平台查找最新文件（替代 find -printf，兼容 macOS/BSD）
-# 参数: $1=目录路径, $2=文件名模式 (如 "cfdns_*.log")
-# 返回: 最新文件的完整路径
-find_latest_file() {
-    local search_dir="$1"
-    local pattern="$2"
-    
-    # 方法1: 使用 stat -f '%m' (macOS/BSD)
-    if stat -f '%m' /dev/null >/dev/null 2>&1; then
-        find "${search_dir}" -name "${pattern}" -type f -exec stat -f '%m %N' {} \; 2>/dev/null | \
-            sort -rn | head -n 1 | awk '{print $2}'
-    # 方法2: 使用 stat -c '%Y' (Linux)
-    elif stat -c '%Y' /dev/null >/dev/null 2>&1; then
-        find "${search_dir}" -name "${pattern}" -type f -exec stat -c '%Y %n' {} \; 2>/dev/null | \
-            sort -rn | head -n 1 | awk '{print $2}'
-    # 方法3: 使用 ls -t (备用方案)
-    else
-        ls -t "${search_dir}"/${pattern} 2>/dev/null | head -n 1
-    fi
-}
-
-# ==================== 路径初始化与进程锁管理 ====================
-# 动态获取项目根目录，确保在不同调用环境下路径正确
+# ==================== 路径初始化 ====================
 SCRIPT_DIR="$( cd -P "$( dirname "${BASH_SOURCE[0]}" )" >/dev/null 2>&1 && pwd )"
 ROOT_DIR="$(cd "$SCRIPT_DIR/../.." && pwd)"
+
+# 【修复】加载公共函数库
+# shellcheck source=../../lib/common.sh
+source "${ROOT_DIR}/lib/common.sh"
+
+# 设置日志模块名
+_LOG_MODULE="cf-dns"
+
+# ==================== 跨平台文件查找辅助函数 ====================
+# find_latest_file: 使用 lib/common.sh 中的公共实现
+
+
 
 # ==================== 配置加载逻辑（支持多域名） ====================
 # 优先级：
@@ -102,91 +82,9 @@ LOG_DIR_DEFAULT="$ROOT_DIR/logs/cf-dns"
 LOG_DIR="${LOG_DIR:-$LOG_DIR_DEFAULT}"
 mkdir -p "$LOG_DIR"
 LOG_FILE="${LOG_DIR}/cfdns_$(date +%Y%m%d_%H%M%S).log"
+_LOG_FILE="${LOG_FILE}"
 
-# 【安全配置】日志轮转：防止日志无限增长
-# ==================== 文件大小获取函数 ====================
-# 兼容 Linux、macOS、BSD 系统，返回字节数
-get_file_size() {
-    local file="$1"
-    local size
-    
-    if [[ ! -f "${file}" ]]; then
-        echo "0"
-        return
-    fi
-    
-    # 【修复】优先尝试 macOS/BSD stat（无 --version 参数）
-    if stat -f %z "${file}" >/dev/null 2>&1; then
-        # macOS/BSD stat
-        size=$(stat -f %z "${file}" 2>/dev/null)
-    elif stat -c %s "${file}" >/dev/null 2>&1; then
-        # Linux stat
-        size=$(stat -c %s "${file}" 2>/dev/null)
-    else
-        # 降级方案：wc -c（去除空格）
-        size=$(wc -c < "${file}" 2>/dev/null | tr -d '[:space:]')
-    fi
-    
-    # 最终校验
-    if [[ -z "${size}" ]] || [[ ! "${size}" =~ ^[0-9]+$ ]]; then
-        echo "0"
-    else
-        echo "${size}"
-    fi
-}
-
-# ==================== 文件修改时间获取函数 ====================
-# 兼容 Linux、macOS、BSD 系统，返回 Unix 时间戳
-stat_file_mtime() {
-    local file="$1"
-    local mtime
-    
-    if [[ ! -f "${file}" ]]; then
-        echo "0"
-        return
-    fi
-    
-    # 【修复】优先尝试 macOS/BSD stat
-    if stat -f %m "${file}" >/dev/null 2>&1; then
-        # macOS/BSD stat: %m = 修改时间（Unix 时间戳）
-        mtime=$(stat -f %m "${file}" 2>/dev/null)
-    elif stat -c %Y "${file}" >/dev/null 2>&1; then
-        # Linux stat: %Y = 修改时间（Unix 时间戳）
-        mtime=$(stat -c %Y "${file}" 2>/dev/null)
-    else
-        # 降级方案：使用 date -r（macOS）或 stat 输出解析
-        if date -r "${file}" +%s >/dev/null 2>&1; then
-            mtime=$(date -r "${file}" +%s 2>/dev/null)
-        else
-            echo "0"
-            return
-        fi
-    fi
-    
-    # 最终校验
-    if [[ -z "${mtime}" ]] || [[ ! "${mtime}" =~ ^[0-9]+$ ]]; then
-        echo "0"
-    else
-        echo "${mtime}"
-    fi
-}
-
-rotate_log() {
-    local log_file="$1"
-    local max_size=${2:-$((10 * 1024 * 1024))}  # 默认 10MB
-    
-    if [[ -f "$log_file" ]]; then
-        local file_size
-        # 【修复】使用跨平台函数获取文件大小
-        file_size=$(get_file_size "$log_file")
-        
-        if [[ "$file_size" -gt "$max_size" ]]; then
-            mv "$log_file" "${log_file}.old"
-            rm -f "${log_file}.old.old"
-            touch "$log_file"
-        fi
-    fi
-}
+# 【安全配置】日志轮转：使用 lib/common.sh 中的公共 rotate_log
 
 # 轮转旧的 cfdns 日志文件
 for old_log in "${LOG_DIR}"/cfdns_*.log.old; do
@@ -194,30 +92,8 @@ for old_log in "${LOG_DIR}"/cfdns_*.log.old; do
 done
 
 # ====================== 【统一结构化日志系统】 ======================
-# 格式: [2026-05-06 09:30:00] [INFO ] [cf-dns] message
-log() {
-    local level="$1"
-    shift
-    local timestamp
-    timestamp=$(date +"%Y-%m-%d %H:%M:%S")
-    
-    # 【修复】写入文件时剥离 ANSI 颜色码，终端输出保留颜色
-    local plain_message
-    # 【修复】同时匹配真正的 ESC 字符 (\x1b) 和文本形式的 \033
-    plain_message=$(echo "$*" | sed -e 's/\x1b\[[0-9;]*m//g' -e 's/\\033\[[0-9;]*m//g')
-    
-    # 写入日志文件（纯文本）
-    printf "[%s] [%-5s] [cf-dns] %s\n" "$timestamp" "$level" "$plain_message" >> "$LOG_FILE"
-    
-    # 终端输出（带颜色）
-    printf "[%s] [%-5s] [cf-dns] %s\n" "$timestamp" "$level" "$*"
-}
-
-# 便捷函数
-log_info() { log "INFO" "$@"; }
-log_warn() { log "WARN" "$@"; }
-log_error() { log "ERROR" "$@"; }
-log_success() { log "OK" "$@"; }
+# 【修复】日志函数已移至 lib/common.sh，通过 _LOG_FILE 变量指定日志文件
+# log, log_info, log_warn, log_error, log_success 均由公共库提供
 
 # ====================== 【执行历史记录】 ======================
 # 记录 DNS 更新结果到 history.jsonl
@@ -385,8 +261,8 @@ fi
 MAX_RETRIES=${MAX_RETRIES:-3}
 REQUEST_TIMEOUT=${REQUEST_TIMEOUT:-10}
 MAX_IPS_PER_RECORD=${MAX_IPS_PER_RECORD:-2}
-# 【修复】默认使用纯 IP 格式文件，与 sync.sh 写入格式一致
-IP_FILE=${IP_FILE:-"$ROOT_DIR/assets/data/cf-dns/ip_list.txt"}
+# 【修复】默认使用 .iplist 标准格式文件，与 sync.sh 写入格式一致
+IP_FILE=${IP_FILE:-"$ROOT_DIR/assets/data/cf-dns/ip_list.iplist"}
 
 # 【修复】将相对路径转为绝对路径
 if [[ "${IP_FILE}" != /* ]]; then

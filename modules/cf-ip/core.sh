@@ -11,15 +11,20 @@ set -euo pipefail
 
 SCRIPT_VERSION="0.1"
 
-# ==================== 终端显示配置 ====================
-RED='\033[0;31m'
-GREEN='\033[0;32m'
-YELLOW='\033[1;33m'
-CYAN='\033[0;36m'
-MAGENTA='\033[0;35m'
-BOLD='\033[1m'
-GRAY='\033[0;90m'
-NC='\033[0m'
+# ==================== 路径初始化 ====================
+SCRIPT_DIR="$( cd -P "$( dirname "${BASH_SOURCE[0]}" )" >/dev/null 2>&1 && pwd )"
+ROOT_DIR="$(cd "$SCRIPT_DIR/../.." && pwd)"
+
+# 【修复】加载公共函数库
+# shellcheck source=../../lib/common.sh
+source "${ROOT_DIR}/lib/common.sh"
+
+# 设置日志模块名
+_LOG_MODULE="cf-ip"
+# 【修复】设置临时日志路径（acquire_lock 等早期调用需要）
+# 实际路径在后面 ENABLE_LOG 判断后更新
+mkdir -p "${ROOT_DIR}/logs/cf-ip" 2>/dev/null || true
+_LOG_FILE="${ROOT_DIR}/logs/cf-ip/cfst_$(date +%Y%m%d_%H%M%S).log"
 
 # ==================== 地区码转换函数 ====================
 # 将 Cloudflare Colo 代码转换为中文名称
@@ -277,73 +282,6 @@ fi
 # 【修复】统一锁文件命名规范：.${module_name}_${type}_${identifier}.lock
 LOCK_FILE="${OUTPUT_DIR}/.cf-ip_core_${LINE_TAG}.lock"
 
-# ==================== 文件大小获取函数 ====================
-# 兼容 Linux、macOS、BSD 系统，返回字节数
-get_file_size() {
-    local file="$1"
-    local size
-    
-    if [[ ! -f "${file}" ]]; then
-        echo "0"
-        return
-    fi
-    
-    # 【修复】优先尝试 macOS/BSD stat（无 --version 参数）
-    if stat -f %z "${file}" >/dev/null 2>&1; then
-        # macOS/BSD stat
-        size=$(stat -f %z "${file}" 2>/dev/null)
-    elif stat -c %s "${file}" >/dev/null 2>&1; then
-        # Linux stat
-        size=$(stat -c %s "${file}" 2>/dev/null)
-    else
-        # 降级方案：wc -c（去除空格）
-        size=$(wc -c < "${file}" 2>/dev/null | tr -d '[:space:]')
-    fi
-    
-    # 最终校验
-    if [[ -z "${size}" ]] || [[ ! "${size}" =~ ^[0-9]+$ ]]; then
-        echo "0"
-    else
-        echo "${size}"
-    fi
-}
-
-# ==================== 文件修改时间获取函数 ====================
-# 兼容 Linux、macOS、BSD 系统，返回 Unix 时间戳
-stat_file_mtime() {
-    local file="$1"
-    local mtime
-    
-    if [[ ! -f "${file}" ]]; then
-        echo "0"
-        return
-    fi
-    
-    # 【修复】优先尝试 macOS/BSD stat
-    if stat -f %m "${file}" >/dev/null 2>&1; then
-        # macOS/BSD stat: %m = 修改时间（Unix 时间戳）
-        mtime=$(stat -f %m "${file}" 2>/dev/null)
-    elif stat -c %Y "${file}" >/dev/null 2>&1; then
-        # Linux stat: %Y = 修改时间（Unix 时间戳）
-        mtime=$(stat -c %Y "${file}" 2>/dev/null)
-    else
-        # 降级方案：使用 date -r（macOS）或 stat 输出解析
-        if date -r "${file}" +%s >/dev/null 2>&1; then
-            mtime=$(date -r "${file}" +%s 2>/dev/null)
-        else
-            echo "0"
-            return
-        fi
-    fi
-    
-    # 最终校验
-    if [[ -z "${mtime}" ]] || [[ ! "${mtime}" =~ ^[0-9]+$ ]]; then
-        echo "0"
-    else
-        echo "${mtime}"
-    fi
-}
-
 # ==================== 跨平台反向读取文件函数 ====================
 # 兼容 Linux（tac）和 macOS（tail -r）
 reverse_read() {
@@ -464,52 +402,14 @@ else
     LOG_FILE="${LOG_DIR}/.tmp_cfst_$(date +%Y%m%d_%H%M%S).log"
 fi
 
-# 【安全配置】日志轮转：防止日志无限增长
-rotate_log() {
-    local log_file="$1"
-    local max_size=${2:-$((10 * 1024 * 1024))}  # 默认 10MB
-    
-    if [[ -f "$log_file" ]]; then
-        # 【跨平台】使用 get_file_size 替代 stat -c %s
-        local file_size
-        file_size=$(get_file_size "$log_file")
-        
-        if [[ "$file_size" -gt "$max_size" ]]; then
-            mv "$log_file" "${log_file}.old"
-            rm -f "${log_file}.old.old"
-            touch "$log_file"
-        fi
-    fi
-}
-
 # 【修复】在测速开始前轮转当前日志文件（而非 .old 文件）
 if [[ -n "${LOG_FILE:-}" ]] && [[ -f "${LOG_FILE}" ]]; then
     rotate_log "${LOG_FILE}" $((10 * 1024 * 1024))  # 10MB
 fi
 
 # ====================== 【统一结构化日志系统】 ======================
-# 格式: [2026-05-06 09:30:00] [INFO ] [cf-ip] message
-log() {
-    local level="$1"
-    shift
-    local timestamp
-    timestamp="$(date +"%Y-%m-%d %H:%M:%S")"
-    
-    # 【修复】防御性检查：确保 LOG_FILE 已定义，避免写入未定义路径
-    if [[ -z "${LOG_FILE:-}" ]]; then
-        # 如果 LOG_FILE 未定义，只输出到终端
-        printf "[%s] [%-5s] [cf-ip] %s\n" "$timestamp" "$level" "$*"
-    else
-        # 正常情况：同时输出到终端和文件
-        printf "[%s] [%-5s] [cf-ip] %s\n" "$timestamp" "$level" "$*" | tee -a "${LOG_FILE}"
-    fi
-}
-
-# 便捷函数
-log_info() { log "INFO" "$@"; }
-log_warn() { log "WARN" "$@"; }
-log_error() { log "ERROR" "$@"; }
-log_success() { log "OK" "$@"; }
+# 【修复】日志函数已移至 lib/common.sh，通过 _LOG_FILE 变量指定日志文件
+# log, log_info, log_warn, log_error, log_success 均由公共库提供
 
 # ====================== 【执行历史记录】 ======================
 # 记录测速结果到 history.jsonl
