@@ -56,6 +56,9 @@ declare -a TEMP_FILES=()
 
 # 注册清理函数
 cleanup_temp_files() {
+    # 【修复】Bash 4.3 及以下版本中，空数组在 set -u 下会报错
+    [[ ${#TEMP_FILES[@]} -eq 0 ]] && return 0
+    
     for temp_file in "${TEMP_FILES[@]}"; do
         # 【修复】排除 update.sh.new 和 cfopt.sh.new，这些是需要保留的文件
         if [[ "${temp_file}" != *".sh.new" ]]; then
