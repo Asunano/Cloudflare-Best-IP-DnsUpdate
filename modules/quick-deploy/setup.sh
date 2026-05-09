@@ -269,7 +269,8 @@ delete_domain_config() {
     
     # 从部署记录中删除
     local temp_file
-    temp_file=$(mktemp)
+    temp_file=$(mktemp /tmp/cfopt-quick-deploy.XXXXXX)
+    chmod 600 "${temp_file}"
     jq --arg d "$domain" '.domains = [.domains[] | select(.domain != $d)]' \
        "${DEPLOY_RECORD_FILE}" > "$temp_file"
     mv "$temp_file" "${DEPLOY_RECORD_FILE}"
@@ -465,7 +466,8 @@ generate_cf_ip_config() {
     
     local config_file="${ROOT_DIR}/conf/cf-ip.json"
     local temp_file
-    temp_file=$(mktemp)
+    temp_file=$(mktemp /tmp/cfopt-quick-deploy.XXXXXX)
+    chmod 600 "${temp_file}"
     
     if [[ "$mode" = "multi" ]]; then
         jq -n \
@@ -598,7 +600,8 @@ generate_dnspod_config() {
     
     local config_file="${config_dir}/${full_domain}.json"
     local temp_file
-    temp_file=$(mktemp)
+    temp_file=$(mktemp /tmp/cfopt-quick-deploy.XXXXXX)
+    chmod 600 "${temp_file}"
     
     if [[ "$mode" = "multi" ]]; then
         jq -n \
@@ -721,7 +724,8 @@ generate_cf_dns_config() {
     
     local config_file="${config_dir}/${full_domain}.json"
     local temp_file
-    temp_file=$(mktemp)
+    temp_file=$(mktemp /tmp/cfopt-quick-deploy.XXXXXX)
+    chmod 600 "${temp_file}"
     
     # 按域名独立存储 IP 列表和测速结果，避免多域名冲突
     # 【修复】统一使用 .iplist 格式（标准格式：IP|延迟|速度|地区码），与 cf-dns/core.sh 保持一致
