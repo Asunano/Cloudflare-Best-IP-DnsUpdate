@@ -595,7 +595,12 @@ echo -e "${CYAN}+------------------------------------------------------------+"
 echo -e " ${YELLOW}测速进行中...${NC}"
 echo -e "${CYAN}+------------------------------------------------------------+"
 echo ""
-echo -e "${GRAY}  第一阶段: 延迟测速 (TCP Ping)${NC}"
+# 【修复】根据配置动态显示测速模式
+if [[ "${CFST_HTTPING}" = "true" ]]; then
+    echo -e "${GRAY}  第一阶段: 延迟测速 (HTTP Ping)${NC}"
+else
+    echo -e "${GRAY}  第一阶段: 延迟测速 (TCP Ping)${NC}"
+fi
 
 # ==================== 进度条显示函数 ====================
 # 参数：$1=当前值, $2=总值
@@ -753,7 +758,7 @@ monitor_progress() {
                 last_displayed_size=0
             # 方法 2：检测格式是否为 "X / Y" 且 Y 较小（下载阶段通常是 10）
             # ping 阶段通常是 "X / 5955" 这样的大数字
-            elif echo "${log_content}" | grep -qE '^[[:space:]]*[0-9]+[[:space:]]*/[[:space:]]*([0-9]{1,2})[[:space:]]'; then
+            elif echo "${log_content}" | grep -qE '^[[:space:]]*[0-9]+[[:space:]]*/[[:space:]]*([0-9]{1,2})$'; then
                 stage="download"
                 printf "\r%-80s\n" ""
                 echo -e "${CYAN}  [进度] 延迟测速完成，正在进行下载测速...${NC}"
@@ -849,7 +854,12 @@ for ((retry=0; retry<=MAX_RETRY; retry++)); do
         fi
         echo -e "${CYAN}+------------------------------------------------------------+"
         echo ""
-        echo -e "${GRAY}  第一阶段: 延迟测速 (TCP Ping)${NC}"
+        # 【修复】根据配置动态显示测速模式
+        if [[ "${CFST_HTTPING}" = "true" ]]; then
+            echo -e "${GRAY}  第一阶段: 延迟测速 (HTTP Ping)${NC}"
+        else
+            echo -e "${GRAY}  第一阶段: 延迟测速 (TCP Ping)${NC}"
+        fi
         
         monitor_progress "${CFST_PID}" "${LOG_FILE}" "${progress_bar_width}" || true
         
