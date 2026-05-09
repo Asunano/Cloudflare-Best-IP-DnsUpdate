@@ -1196,7 +1196,12 @@ view_logs() {
     LOG_DIR="${ROOT_DIR}/logs/cf-ip"
     mkdir -p "${LOG_DIR}"
     # 【修复】跨平台查找最新的 cfst 日志文件（支持时间戳命名）
+    # 优先查找正式日志，如果不存在则查找临时日志
     LOG_FILE=$(find_latest_file "${LOG_DIR}" "cfst_*.log")
+    if [[ -z "${LOG_FILE}" ]]; then
+        # fallback：查找临时日志文件（ENABLE_LOG=false 时生成）
+        LOG_FILE=$(find_latest_file "${LOG_DIR}" ".tmp_cfst_*.log")
+    fi
     CRON_LOG="${LOG_DIR}/cron.log"
     
     echo -e "${CYAN}+------------------------------------------------------------+"

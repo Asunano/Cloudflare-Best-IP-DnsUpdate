@@ -703,9 +703,14 @@ monitor_progress() {
     local bar_width="${3:-40}"
     
     local stage="ping"
-    local last_displayed_size=0  # 【修复】移除未使用的 last_log_size，只保留 last_displayed_size
+    local last_displayed_size=0
     local max_empty_loops=20
     local empty_loop_count=0
+    
+    # 【修复】cfst 使用 \r 覆盖进度条，不会输出 \n
+    # 日志文件只有一行，文件大小可能不增长
+    # 改为固定时间间隔刷新，确保进度实时更新
+    local refresh_interval=0.5  # 每 0.5 秒刷新一次
     
     while kill -0 "${pid}" 2>/dev/null; do
         # 检查日志文件是否存在
@@ -718,38 +723,29 @@ monitor_progress() {
                 break
             fi
             
-            sleep 0.5
+            sleep "${refresh_interval}"
             continue
         fi
         
         empty_loop_count=0
         
-        # 检查日志文件是否有新内容
-        # 优化：使用 get_file_size 函数，兼容所有系统
-        local current_log_size
-        current_log_size=$(get_file_size "${log_file}")
-        
-        # 【修复】仅当日志大小真正变化时才刷新进度，避免闪烁
-        if [[ "${current_log_size}" -gt "${last_displayed_size}" ]]; then
-            
-            # 【修复】更新已显示大小，避免重复打印
-            last_displayed_size=${current_log_size}
-            
-            # 检测是否进入第二阶段（下载测速）
-            # 【修复】只匹配日志末尾最新的 10 行，避免匹配到历史日志或参数说明
-            if [[ "${stage}" = "ping" ]] && { tail -n 10 "${log_file}" 2>/dev/null | grep -q "开始下载测速" || true; }; then
-                stage="download"
-                # 【修复】阶段切换时先清空当前行，避免进度条残留
-                printf "\r%-80s\n" ""
-                echo -e "${CYAN}  [进度] 延迟测速完成，正在进行下载测速...${NC}"
-                echo -e "${GRAY}  第二阶段: 下载速度测试${NC}"
-            fi
-            
-            # 调用通用解析函数
-            parse_and_display_progress "${log_file}" "${stage}" "${bar_width}"
+        # 【修复】检测是否进入第二阶段（下载测速）
+        # 只匹配日志末尾最新的 10 行，避免匹配到历史日志或参数说明
+        if [[ "${stage}" = "ping" ]] && { tail -n 10 "${log_file}" 2>/dev/null | grep -q "开始下载测速" || true; }; then
+            stage="download"
+            # 【修复】阶段切换时先清空当前行，避免进度条残留
+            printf "\r%-80s\n" ""
+            echo -e "${CYAN}  [进度] 延迟测速完成，正在进行下载测速...${NC}"
+            echo -e "${GRAY}  第二阶段: 下载速度测试${NC}"
+            # 重置大小记录，强制重新解析
+            last_displayed_size=0
         fi
         
-        sleep 0.5
+        # 【修复】始终尝试解析最新内容，确保进度实时更新
+        # 不再依赖文件大小变化（cfst 使用 \r 覆盖，文件大小可能不增长）
+        parse_and_display_progress "${log_file}" "${stage}" "${bar_width}"
+        
+        sleep "${refresh_interval}"
     done
 }
 
