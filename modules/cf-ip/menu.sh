@@ -1211,19 +1211,31 @@ view_logs() {
     
     case ${LOG_CHOICE} in
         1)
-            if [[ -f "${LOG_FILE}" ]]; then
+            if [[ -n "${LOG_FILE}" ]] && [[ -f "${LOG_FILE}" ]]; then
                 echo ""
+                echo -e "${CYAN}日志文件: ${LOG_FILE}${NC}"
+                echo "--------------------------------------------------------"
                 tail -50 "${LOG_FILE}"
             else
-                echo -e "${YELLOW}[WARN] 日志文件不存在${NC}"
+                echo -e "${YELLOW}[WARN] 未找到 cfst 日志文件${NC}"
+                echo -e "${GRAY}提示: 请先执行一次测速以生成日志${NC}"
+                echo -e "${GRAY}日志目录: ${LOG_DIR}${NC}"
+                # 显示目录内容以便调试
+                if [[ -d "${LOG_DIR}" ]]; then
+                    echo -e "${GRAY}目录内容:$(ls -la "${LOG_DIR}" 2>/dev/null | head -10)${NC}"
+                fi
             fi
             ;;
         2)
             if [[ -f "${CRON_LOG}" ]]; then
                 echo ""
+                echo -e "${CYAN}日志文件: ${CRON_LOG}${NC}"
+                echo "--------------------------------------------------------"
                 tail -50 "${CRON_LOG}"
             else
-                echo -e "${YELLOW}[WARN] 日志文件不存在${NC}"
+                echo -e "${YELLOW}[WARN] 定时任务日志不存在${NC}"
+                echo -e "${GRAY}提示: 请先设置定时任务并等待执行${NC}"
+                echo -e "${GRAY}日志路径: ${CRON_LOG}${NC}"
             fi
             ;;
         *)

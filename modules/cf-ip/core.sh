@@ -259,9 +259,9 @@ validate_config_schema() {
     
     for check in "${range_checks[@]}"; do
         local field="${check%%:*}"
-        local min_max="${check##*:}"
-        local min_val="${min_max%%:*}"
-        local max_val="${min_max##*:}"
+        local range_part="${check#*:}"
+        local min_val="${range_part%%:*}"
+        local max_val="${range_part##*:}"
         
         # 检查字段是否存在
         if ! jq -e "${field}" "${config_file}" &>/dev/null; then
