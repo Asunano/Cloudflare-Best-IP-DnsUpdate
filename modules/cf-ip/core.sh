@@ -643,7 +643,7 @@ parse_and_display_progress() {
         # 【修复】cfst 使用 \r 覆盖同一行，所有进度更新挤在同一行
         # 使用 tr '\r' '\n' 将回车符转为换行符，再用 tail -1 取最新进度
         local latest_progress_line
-        latest_progress_line=$(cat "${log_file}" 2>/dev/null | tr '\r' '\n' | grep -E '^\s*[0-9]+\s*/\s*[0-9]+' | tail -1 || true)
+        latest_progress_line=$(cat "${log_file}" 2>/dev/null | tr '\r' '\n' | grep -E '^[[:space:]]*[0-9]+[[:space:]]*/[[:space:]]*[0-9]+' | tail -1 || true)
         
         if [[ -n "${latest_progress_line}" ]]; then
             # 提取行首的 "X / Y" 格式
@@ -670,7 +670,7 @@ parse_and_display_progress() {
         # 【修复】cfst 使用 \r 覆盖同一行，所有进度更新挤在同一行
         # 使用 tr '\r' '\n' 将回车符转为换行符，再用 tail -1 取最新进度
         local latest_progress_line
-        latest_progress_line=$(cat "${log_file}" 2>/dev/null | tr '\r' '\n' | grep -E '^\s*[0-9]+\s*/\s*[0-9]+' | tail -1 || true)
+        latest_progress_line=$(cat "${log_file}" 2>/dev/null | tr '\r' '\n' | grep -E '^[[:space:]]*[0-9]+[[:space:]]*/[[:space:]]*[0-9]+' | tail -1 || true)
         
         if [[ -n "${latest_progress_line}" ]]; then
             # 提取 "X / Y" 格式
