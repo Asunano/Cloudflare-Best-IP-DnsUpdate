@@ -364,11 +364,12 @@ if [[ "${CURRENT_SCRIPT_PATH}" != "${TARGET_SCRIPT_PATH}" ]]; then
             if bash -n "${TARGET_SCRIPT_PATH}" 2>/tmp/cfopt_syntax_check.log; then
                 echo -e "${CYAN}[INFO] 语法检查通过，正在启动...${NC}"
                 
-                # 使用 exec 替换当前进程
-                # exec 会用新进程完全替换当前进程，包括文件描述符
+                # 【修复】不使用 exec，避免信号处理器丢失
+                # 直接启动新进程，让当前进程正常退出
                 # 【关键修复】使用 ${array[@]+"${array[@]}"} 语法防止 set -u 下空数组报错
                 # 兼容 bash 4.2（CentOS 7 默认版本）
-                exec bash "${TARGET_SCRIPT_PATH}" ${ORIGINAL_ARGS[@]+"${ORIGINAL_ARGS[@]}"}
+                bash "${TARGET_SCRIPT_PATH}" ${ORIGINAL_ARGS[@]+"${ORIGINAL_ARGS[@]}"}
+                exit $?
             else
                 echo -e "${RED}[ERROR] 目标文件语法检查失败:${NC}"
                 cat /tmp/cfopt_syntax_check.log >&2
@@ -409,10 +410,12 @@ if [[ "${CURRENT_SCRIPT_PATH}" != "${TARGET_SCRIPT_PATH}" ]]; then
                     echo -e "${CYAN}[INFO] 文件权限: $(stat -c '%a' "${TARGET_SCRIPT_PATH}" 2>/dev/null || stat -f '%Lp' "${TARGET_SCRIPT_PATH}" 2>/dev/null)${NC}"
                     echo -e "${CYAN}[INFO] 文件头: $(head -1 "${TARGET_SCRIPT_PATH}")${NC}"
                     
-                    # 使用 exec 替换当前进程
+                    # 【修复】不使用 exec，避免信号处理器丢失
+                    # 直接启动新进程，让当前进程正常退出
                     # 【关键修复】使用 ${array[@]+"${array[@]}"} 语法防止 set -u 下空数组报错
                     # 兼容 bash 4.2（CentOS 7 默认版本）
-                    exec bash "${TARGET_SCRIPT_PATH}" ${ORIGINAL_ARGS[@]+"${ORIGINAL_ARGS[@]}"}
+                    bash "${TARGET_SCRIPT_PATH}" ${ORIGINAL_ARGS[@]+"${ORIGINAL_ARGS[@]}"}
+                    exit $?
                 else
                     echo -e "${RED}[ERROR] 无法将临时文件移动到目标位置${NC}"
                     echo -e "${RED}[ERROR] 请手动运行: ${TARGET_SCRIPT_PATH}${NC}"
@@ -1945,12 +1948,14 @@ check_and_update_components() {
         echo ""
         log_info "检测到主程序已更新，正在重启 (第 ${restart_count} 次)..."
         echo ""
-        # 使用 exec 替换当前进程，这是安全的，因为是在父进程中执行
-        exec bash "${INSTALL_DIR}/cfopt.sh"
+        # 【修复】不使用 exec，避免信号处理器丢失
+        # 直接启动新进程，让当前进程正常退出
+        bash "${INSTALL_DIR}/cfopt.sh"
+        exit_code=$?
         # 【关键修复】exec 失败才会执行到这里
         log_error "主程序重启失败，请手动运行: bash ${INSTALL_DIR}/cfopt.sh"
         read -r -p "按回车键继续..."
-        return
+        return $exit_code
     fi
     
     # 【安全修复】删除 show_main_menu 的递归调用
@@ -2002,8 +2007,10 @@ init_cfopt() {
             echo ""
             echo -e "${CYAN}[INFO] 正在重新启动以加载新版本...${NC}"
             echo ""
-            # 使用 exec 替换当前进程，自动进入主菜单
-            exec bash "${INSTALL_DIR}/cfopt.sh"
+            # 【修复】不使用 exec，避免信号处理器丢失
+            # 直接启动新进程，让当前进程正常退出
+            bash "${INSTALL_DIR}/cfopt.sh"
+            exit $?
         else
             echo -e "${RED}[ERROR] 应用新版本失败，请手动执行: mv ${INSTALL_DIR}/cfopt.sh.new ${INSTALL_DIR}/cfopt.sh${NC}"
             echo ""
