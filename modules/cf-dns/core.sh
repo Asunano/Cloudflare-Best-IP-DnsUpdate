@@ -358,25 +358,28 @@ rotate_logs() {
         log "  ${YELLOW}[INFO]${NC} 日志文件过多 (${file_count} 个)，删除最旧的 ${excess} 个..."
         
         # 【修复】跨平台按修改时间排序，删除最旧的文件
-        local oldest_files
         if stat -c '%Y' /dev/null >/dev/null 2>&1; then
-            # Linux
-            oldest_files=$(find "$LOG_DIR" -name "cfdns_*.log" -type f -exec stat -c '%Y %n' {} \; 2>/dev/null | \
+            # Linux: 使用 find -print0 + xargs -0 安全处理特殊字符
+            find "$LOG_DIR" -name "cfdns_*.log" -type f -exec stat -c '%Y %n' {} \; 2>/dev/null | \
                 sort -n | \
                 head -n "$excess" | \
-                awk '{print $2}')
+                awk '{print $2}' | \
+                tr '\n' '\0' | \
+                xargs -0 rm -f 2>/dev/null || true
         elif stat -f '%m' /dev/null >/dev/null 2>&1; then
-            # macOS/BSD
-            oldest_files=$(find "$LOG_DIR" -name "cfdns_*.log" -type f -exec stat -f '%m %N' {} \; 2>/dev/null | \
+            # macOS/BSD: 使用 find -print0 + xargs -0 安全处理特殊字符
+            find "$LOG_DIR" -name "cfdns_*.log" -type f -exec stat -f '%m %N' {} \; 2>/dev/null | \
                 sort -n | \
                 head -n "$excess" | \
-                awk '{print $2}')
+                awk '{print $2}' | \
+                tr '\n' '\0' | \
+                xargs -0 rm -f 2>/dev/null || true
         else
-            # 备用方案：使用 ls -t
-            oldest_files=$(ls -t "$LOG_DIR"/cfdns_*.log 2>/dev/null | tail -n "$excess")
+            # 备用方案：使用 ls -t（假设文件名不含空格）
+            ls -t "$LOG_DIR"/cfdns_*.log 2>/dev/null | tail -n "$excess" | \
+                tr '\n' '\0' | \
+                xargs -0 rm -f 2>/dev/null || true
         fi
-        
-        echo "$oldest_files" | xargs rm -f 2>/dev/null || true
     fi
 }
 
