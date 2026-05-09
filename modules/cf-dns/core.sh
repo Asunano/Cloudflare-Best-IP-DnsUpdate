@@ -366,7 +366,7 @@ _http_request() {
     local retry=0
     
     while [ "$retry" -lt "$max_retries" ]; do
-        if [ $retry -gt 0 ] && [ "$method" = "GET" ]; then
+        if [[ "${retry}" -gt 0 ]] && [ "$method" = "GET" ]; then
             log_msg "WARN" "正在重试第 $retry/$max_retries 次..."
             sleep 2
         fi
@@ -790,7 +790,7 @@ main() {
     done
     
     # 如果有无效 IP，发出警告
-    if [ ${#invalid_ips[@]} -gt 0 ]; then
+    if [[ "${#invalid_ips[@]}" -gt 0 ]]; then
         log "${YELLOW}[WARN]: 发现 ${#invalid_ips[@]} 个无效的 IP 地址，已自动忽略"
         log ""
         log "无效的 IP:"
@@ -821,7 +821,7 @@ main() {
         done
         
         # 如果有重复，提示用户
-        if [ ${#duplicate_ips[@]} -gt 0 ]; then
+        if [[ "${#duplicate_ips[@]}" -gt 0 ]]; then
             log "[WARN]: IP 文件中存在 ${#duplicate_ips[@]} 个重复的 IP，已自动忽略"
             log ""
             log "重复的 IP:"
@@ -837,7 +837,7 @@ main() {
         ip_addresses=("${unique_ips[@]}")
     fi
     
-    if [ ${#ip_addresses[@]} -eq 0 ]; then
+    if [[ "${#ip_addresses[@]}" -eq 0 ]]; then
         log "${RED}[ERROR]: 未解析到有效 IP，请检查文件: ${IP_FILE}"
         exit 1
     fi
@@ -851,8 +851,8 @@ main() {
         last_count=$(cat "$count_file")
         local count_diff=$((${#ip_addresses[@]} - last_count))
         
-        if [ $count_diff -ne 0 ]; then
-            if [ $count_diff -gt 0 ]; then
+        if [[ "${count_diff}" -ne 0 ]]; then
+            if [[ "${count_diff}" -gt 0 ]]; then
                 log "  ${CYAN}[INFO]${NC} IP 数量增加 ${count_diff} 个 (${last_count} → ${#ip_addresses[@]})"
             else
                 log "  ${YELLOW}[WARN]${NC} IP 数量减少 $((0 - count_diff)) 个 (${last_count} → ${#ip_addresses[@]})"
@@ -861,7 +861,7 @@ main() {
             # 如果变化超过 50%，发出严重警告
             if [ "$last_count" -gt 0 ]; then
                 local change_percent=$(( (count_diff < 0 ? -count_diff : count_diff) * 100 / last_count ))
-                if [ $change_percent -gt 50 ]; then
+                if [[ "${change_percent}" -gt 50 ]]; then
                     log "  ${RED}[WARN] 严重警告${NC}: IP 数量变化超过 50%，请检查测速软件"
                 fi
             fi
@@ -904,7 +904,7 @@ main() {
     if [ "$record_count" -gt 0 ]; then
         local idx=0
         while IFS= read -r line; do
-            if [ $idx -gt 0 ]; then
+            if [[ "${idx}" -gt 0 ]]; then
                 local rid
                 rid=$(echo "$line" | cut -d'|' -f1)
                 local rval
@@ -957,7 +957,7 @@ main() {
         # 需要删除的记录（现有中有但目标中没有）
         to_remove=$((record_count - same_count))
         
-        if [ $same_count -gt 0 ] || [ $to_add -gt 0 ] || [ $to_remove -gt 0 ]; then
+        if [[ "${same_count}" -gt 0 ]] || [[ "${to_add}" -gt 0 ]] || [[ "${to_remove}" -gt 0 ]]; then
             log "  ${CYAN}变化分析:${NC} 相同 ${same_count} | 需新建 ${to_add} | 需删除 ${to_remove}"
         fi
     fi
@@ -999,7 +999,7 @@ main() {
     fi
     
     # 2. 先删除多余的记录
-    if [ ${#records_to_delete_ids[@]} -gt 0 ]; then
+    if [[ "${#records_to_delete_ids[@]}" -gt 0 ]]; then
         log "  ${YELLOW}⟳${NC} 删除 ${#records_to_delete_ids[@]} 条多余记录..."
         
         for ((i=0; i<${#records_to_delete_ids[@]}; i++)); do
@@ -1032,7 +1032,7 @@ main() {
         log "  ${CYAN}[INFO]${NC} 检测到 IP 变化，开始更新..."
             
         # 情况 1：有现有记录且有待同步的 IP → 执行智能匹配更新
-        if [ "$record_count" -gt 0 ] && [ ${#ip_addresses[@]} -gt 0 ]; then
+        if [[ "${record_count}" -gt 0 ]] && [[ "${#ip_addresses[@]}" -gt 0 ]]; then
             # 【修复】使用集合差异算法，避免位置依赖导致的遗漏
             # 找出可以直接保留的记录（IP 相同）
             local -a matched_indices=()
@@ -1102,7 +1102,7 @@ main() {
         fi
             
         # 执行更新
-        if [ ${#ips_to_update[@]} -gt 0 ]; then
+        if [[ "${#ips_to_update[@]}" -gt 0 ]]; then
             log "  ${CYAN}⟳${NC} 更新 ${#ips_to_update[@]} 条记录..."
                 
             # 构建完整域名用于 API 调用
@@ -1129,7 +1129,7 @@ main() {
             done
             echo ""  # 换行
             log "  [OK] 已更新 ${updated_count} 条记录"
-        elif [ "$record_count" -gt 0 ] && [ ${#ip_addresses[@]} -gt 0 ]; then
+        elif [[ "${record_count}" -gt 0 ]] && [[ "${#ip_addresses[@]}" -gt 0 ]]; then
             # 【修复】无需更新，所有 IP 已存在且相同
             log_success "所有 IP 已存在且相同，无需更新"
             skipped_count=${#ip_addresses[@]}
