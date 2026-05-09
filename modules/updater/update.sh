@@ -124,7 +124,7 @@ while IFS= read -r script_file; do
     
     # 添加到组件列表
     COMPONENTS+=("${key}:${script_file}:${script_file}:${display_name}")
-done < <(find "${ROOT_DIR}/modules" -name "*.sh" -type f | sort)
+done < <(cd "${ROOT_DIR}" && find modules -name "*.sh" -type f | sort)
 
 # 4. 添加 updater 自身（最后更新，确保安全）
 COMPONENTS+=("UPDATER:modules/updater/update.sh:modules/updater/update.sh:自动更新组件")
