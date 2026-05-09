@@ -1236,7 +1236,7 @@ view_logs() {
 
 # ====================== 【主程序入口】 ======================
 # 检查配置文件状态
-local config_status=0
+config_status=0
 if ! check_config; then
     config_status=$?
 fi
