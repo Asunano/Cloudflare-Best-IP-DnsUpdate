@@ -742,6 +742,12 @@ monitor_progress() {
     local max_empty_loops=20
     local empty_loop_count=0
     
+    # 【新增】进度停滞检测：如果 60 秒内进度没有变化，认为 cfst 卡住了
+    local stuck_timeout=60  # 60 秒
+    local last_progress=""
+    local stuck_start_time=0
+    local stuck_warned=false
+    
     # 【修复】cfst 使用 \r 覆盖进度条，不会输出 \n
     # 日志文件只有一行，文件大小可能不增长
     # 改为固定时间间隔刷新，确保进度实时更新
@@ -799,6 +805,45 @@ monitor_progress() {
         # 【修复】始终尝试解析最新内容，确保进度实时更新
         # 不再依赖文件大小变化（cfst 使用 \r 覆盖，文件大小可能不增长）
         parse_and_display_progress "${log_file}" "${stage}" "${bar_width}"
+        
+        # 【新增】进度停滞检测：如果 60 秒内进度没有变化，认为 cfst 卡住了
+        local current_progress
+        current_progress=$(cat "${log_file}" 2>/dev/null | tr '\r' '\n' | grep -E '^[[:space:]]*[0-9]+[[:space:]]*/[[:space:]]*[0-9]+' | tail -1 || true)
+        
+        if [[ -n "${current_progress}" ]]; then
+            if [[ "${current_progress}" != "${last_progress}" ]]; then
+                # 进度有变化，重置停滞计时器
+                last_progress="${current_progress}"
+                stuck_start_time=$(date +%s)
+                stuck_warned=false
+            else
+                # 进度没有变化，检查是否超过停滞超时
+                if [[ ${stuck_start_time} -eq 0 ]]; then
+                    # 第一次检测到进度，记录时间
+                    stuck_start_time=$(date +%s)
+                else
+                    local current_time
+                    current_time=$(date +%s)
+                    local elapsed=$((current_time - stuck_start_time))
+                    
+                    if [[ ${elapsed} -ge ${stuck_timeout} ]] && [[ "${stuck_warned}" = false ]]; then
+                        # 进度停滞超过 60 秒，发出警告
+                        echo ""
+                        echo -e "${YELLOW}[WARN] 检测到进度停滞（${current_progress}），已持续 ${elapsed} 秒${NC}"
+                        echo -e "${YELLOW}[WARN] cfst 可能卡住了，将在 30 秒后终止并自动重试...${NC}"
+                        stuck_warned=true
+                    elif [[ ${elapsed} -ge $((stuck_timeout + 30)) ]]; then
+                        # 超过 90 秒，强制终止进程
+                        echo ""
+                        echo -e "${RED}[ERROR] 进度停滞超过 90 秒，终止测速进程（PID: ${pid}）${NC}"
+                        kill -TERM "${pid}" 2>/dev/null || true
+                        sleep 2
+                        kill -9 "${pid}" 2>/dev/null || true
+                        return 1
+                    fi
+                fi
+            fi
+        fi
         
         sleep "${refresh_interval}"
     done
