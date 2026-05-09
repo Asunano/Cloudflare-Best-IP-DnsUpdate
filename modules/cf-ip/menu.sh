@@ -168,33 +168,6 @@ safe_read() {
 }
 
 # ====================== 【函数：带重试的下载与校验】 ======================
-download_with_retry() {
-    local url="$1"
-    local output="$2"
-    local expected_hash="${3:-}" # 可选参数，默认为空
-    local max_retries=3
-    local retry_count=0
-    
-    while [[ "${retry_count}" -lt "${max_retries}" ]]; do
-        if curl -sL --connect-timeout 15 -o "${output}" "${url}" 2>/dev/null; then
-            if [[ -s "${output}" ]]; then
-                if [[ -n "${expected_hash}" ]]; then
-                    local actual_hash
-                    actual_hash="$(sha256sum "${output}" | awk '{print $1}')"
-                    if [[ "${actual_hash}" = "${expected_hash}" ]]; then return 0; fi
-                else
-                    return 0
-                fi
-            fi
-        fi
-        retry_count=$((retry_count + 1))
-        echo -e "${YELLOW}[WARN] 下载失败 (尝试 ${retry_count}/${max_retries})，正在重试...${NC}"
-        sleep 2
-    done
-    return 1
-}
-
-
 # ====================== 【函数：检查配置文件】 ======================
 check_config() {
     if [[ ! -f "${CONFIG_FILE}" ]]; then
