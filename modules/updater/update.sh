@@ -287,7 +287,16 @@ download_with_retry() {
     local retry_count=0
     
     while [[ ${retry_count} -lt ${max_retries} ]]; do
-        if curl -sLf --max-time 30 -o "${output_file}" "${url}" 2>/dev/null; then
+        # 【新增】记录每次尝试的详细信息
+        if [[ ${retry_count} -gt 0 ]]; then
+            echo -e "    ${GRAY}[重试] 第 ${retry_count}/${max_retries} 次尝试...${NC}" >&2
+        fi
+        
+        # 【修复】捕获 curl 的错误码和 HTTP 状态码
+        local http_code
+        http_code=$(curl -sLf --max-time 30 -w "%{http_code}" -o "${output_file}" "${url}" 2>/dev/null || echo "000")
+        
+        if [[ "${http_code}" == "200" ]] || [[ "${http_code}" == "304" ]]; then
             # 验证下载的文件非空且有效
             if [[ -s "${output_file}" ]]; then
                 # 先检查是否为有效的 Shell 脚本
@@ -307,15 +316,21 @@ download_with_retry() {
                     file_size=$(wc -c < "${output_file}")
                     if [[ ${file_size} -lt 100 ]]; then
                         # 文件太小，可能是错误响应
+                        echo -e "    ${YELLOW}[WARN] 文件过小 (${file_size} bytes)，可能是错误响应${NC}" >&2
                         : # 继续重试
                     elif grep -qi "^<html\|^<!DOCTYPE" "${output_file}" 2>/dev/null; then
                         # 明确的 HTML 文件
+                        echo -e "    ${YELLOW}[WARN] 下载到 HTML 页面而非脚本文件${NC}" >&2
                         : # 继续重试
                     else
                         return 0
                     fi
                 fi
+            else
+                echo -e "    ${YELLOW}[WARN] 下载的文件为空${NC}" >&2
             fi
+        else
+            echo -e "    ${YELLOW}[WARN] HTTP 状态码: ${http_code}${NC}" >&2
         fi
         
         retry_count=$((retry_count + 1))
@@ -324,6 +339,7 @@ download_with_retry() {
         fi
     done
     
+    echo -e "    ${RED}[ERROR] 下载失败，已重试 ${max_retries} 次${NC}" >&2
     return 1
 }
 
