@@ -6,9 +6,6 @@
 # Description: 提供交互式界面用于配置测速参数、管理定时任务及查看运行状态
 # Usage: bash modules/cf-ip/menu.sh
 # ==============================================================================
-# 【安全修复】启用严格模式，防止错误传播
-set -euo pipefail
-IFS=$'\n\t'
 # shellcheck disable=SC2034
 SCRIPT_VERSION="0.1"
 
@@ -21,6 +18,11 @@ if [[ -f "${ROOT_DIR}/lib/common.sh" ]]; then
     # shellcheck source=../../lib/common.sh
     source "${ROOT_DIR}/lib/common.sh"
 fi
+
+# 【关键修复】在 common.sh 加载后再启用严格模式
+# 原因：common.sh 定义了所有颜色变量和工具函数
+# 如果先启用 set -u，会导致未定义变量报错
+set -euo pipefail
 
 # ==================== 信号捕获与资源清理 ====================
 # shellcheck disable=SC2329
