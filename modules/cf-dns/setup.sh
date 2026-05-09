@@ -689,7 +689,11 @@ full_config_wizard() {
             }
         }' > "$temp_file"
     
-    mv "$temp_file" "$CONFIG_FILE"
+    if ! mv "$temp_file" "$CONFIG_FILE"; then
+        echo -e "${RED}[ERROR] 配置文件更新失败${NC}" >&2
+        rm -f "$temp_file" 2>/dev/null
+        return 1
+    fi
     chmod 600 "$CONFIG_FILE"
     
     echo -e "${GREEN}[OK] Cloudflare DNS 配置已生成: ${CONFIG_FILE}${NC}"
@@ -854,7 +858,11 @@ EOF
                 }
             }' > "$temp_file"
             
-            mv "$temp_file" "$cf_ip_config"
+            if ! mv "$temp_file" "$cf_ip_config"; then
+                echo -e "${RED}[ERROR] CF-IP 配置文件更新失败${NC}" >&2
+                rm -f "$temp_file" 2>/dev/null
+                return 1
+            fi
             chmod 600 "$cf_ip_config"
             echo -e "${GREEN}[OK] CF-IP 基础配置已创建${NC}"
             echo ""
@@ -997,7 +1005,16 @@ modify_ip_limit() {
         local temp_file
         temp_file=$(mktemp /tmp/cfopt-cf-dns.XXXXXX)
         chmod 600 "${temp_file}"
-        jq --argjson limit "$new_limit" '.dns.max_ips_per_record = $limit' "$CONFIG_FILE" > "$temp_file" && mv "$temp_file" "$CONFIG_FILE"
+        if ! jq --argjson limit "$new_limit" '.dns.max_ips_per_record = $limit' "$CONFIG_FILE" > "$temp_file"; then
+            echo -e "${RED}[ERROR] JSON 更新失败${NC}" >&2
+            rm -f "$temp_file" 2>/dev/null
+            return 1
+        fi
+        if ! mv "$temp_file" "$CONFIG_FILE"; then
+            echo -e "${RED}[ERROR] 配置文件更新失败${NC}" >&2
+            rm -f "$temp_file" 2>/dev/null
+            return 1
+        fi
         chmod 600 "$CONFIG_FILE"
         echo -e "${GREEN}[OK] IP 数量限制已更新为: ${new_limit}${NC}"
     else
@@ -1039,7 +1056,16 @@ toggle_module_status() {
             local temp_file
             temp_file=$(mktemp /tmp/cfopt-cf-dns.XXXXXX)
             chmod 600 "${temp_file}"
-            jq '.enabled = false' "$CONFIG_FILE" > "$temp_file" && mv "$temp_file" "$CONFIG_FILE"
+            if ! jq '.enabled = false' "$CONFIG_FILE" > "$temp_file"; then
+                echo -e "${RED}[ERROR] JSON 更新失败${NC}" >&2
+                rm -f "$temp_file" 2>/dev/null
+                return 1
+            fi
+            if ! mv "$temp_file" "$CONFIG_FILE"; then
+                echo -e "${RED}[ERROR] 配置文件更新失败${NC}" >&2
+                rm -f "$temp_file" 2>/dev/null
+                return 1
+            fi
             chmod 600 "$CONFIG_FILE"
             echo -e "${GREEN}[OK] 模块已禁用${NC}"
             echo -e "${CYAN}提示:${NC} IP 同步和 DNS 更新将跳过此模块"
@@ -1056,7 +1082,16 @@ toggle_module_status() {
             local temp_file
             temp_file=$(mktemp /tmp/cfopt-cf-dns.XXXXXX)
             chmod 600 "${temp_file}"
-            jq '.enabled = true' "$CONFIG_FILE" > "$temp_file" && mv "$temp_file" "$CONFIG_FILE"
+            if ! jq '.enabled = true' "$CONFIG_FILE" > "$temp_file"; then
+                echo -e "${RED}[ERROR] JSON 更新失败${NC}" >&2
+                rm -f "$temp_file" 2>/dev/null
+                return 1
+            fi
+            if ! mv "$temp_file" "$CONFIG_FILE"; then
+                echo -e "${RED}[ERROR] 配置文件更新失败${NC}" >&2
+                rm -f "$temp_file" 2>/dev/null
+                return 1
+            fi
             chmod 600 "$CONFIG_FILE"
             echo -e "${GREEN}[OK] 模块已启用${NC}"
             echo -e "${CYAN}提示:${NC} 下次测速后将自动同步 IP 并支持 DNS 更新"
@@ -1557,7 +1592,11 @@ delete_config() {
         chmod 600 "${temp_file}"
         if jq --arg d "$domain_name" '.domains = [.domains[] | select(.domain != $d)]' \
            "$deploy_record_file" > "$temp_file" 2>/dev/null; then
-            mv "$temp_file" "$deploy_record_file"
+            if ! mv "$temp_file" "$deploy_record_file"; then
+                echo -e "${RED}[ERROR] 部署记录更新失败${NC}" >&2
+                rm -f "$temp_file" 2>/dev/null
+                return 1
+            fi
             chmod 600 "$deploy_record_file"
             echo -e "  ${GREEN}[OK]${NC} 已从部署记录中移除: ${domain_name}"
         else
@@ -1613,7 +1652,16 @@ modify_config_menu() {
                     local temp_file
                     temp_file=$(mktemp /tmp/cfopt-cf-dns.XXXXXX)
                     chmod 600 "${temp_file}"
-                    jq --arg token "$new_token" '.api.token = $token' "$CONFIG_FILE" > "$temp_file" && mv "$temp_file" "$CONFIG_FILE"
+                    if ! jq --arg token "$new_token" '.api.token = $token' "$CONFIG_FILE" > "$temp_file"; then
+                        echo -e "${RED}[ERROR] JSON 更新失败${NC}" >&2
+                        rm -f "$temp_file" 2>/dev/null
+                        return 1
+                    fi
+                    if ! mv "$temp_file" "$CONFIG_FILE"; then
+                        echo -e "${RED}[ERROR] 配置文件更新失败${NC}" >&2
+                        rm -f "$temp_file" 2>/dev/null
+                        return 1
+                    fi
                     chmod 600 "$CONFIG_FILE"
                     echo -e "${GREEN}[OK] CF_API_TOKEN 已更新${NC}"
                     cf_api_token="$new_token"
@@ -1625,7 +1673,16 @@ modify_config_menu() {
                     local temp_file
                     temp_file=$(mktemp /tmp/cfopt-cf-dns.XXXXXX)
                     chmod 600 "${temp_file}"
-                    jq --arg zone_id "$new_zone" '.api.zone_id = $zone_id' "$CONFIG_FILE" > "$temp_file" && mv "$temp_file" "$CONFIG_FILE"
+                    if ! jq --arg zone_id "$new_zone" '.api.zone_id = $zone_id' "$CONFIG_FILE" > "$temp_file"; then
+                        echo -e "${RED}[ERROR] JSON 更新失败${NC}" >&2
+                        rm -f "$temp_file" 2>/dev/null
+                        return 1
+                    fi
+                    if ! mv "$temp_file" "$CONFIG_FILE"; then
+                        echo -e "${RED}[ERROR] 配置文件更新失败${NC}" >&2
+                        rm -f "$temp_file" 2>/dev/null
+                        return 1
+                    fi
                     chmod 600 "$CONFIG_FILE"
                     echo -e "${GREEN}[OK] CF_ZONE_ID 已更新${NC}"
                     cf_zone_id="$new_zone"
@@ -1645,7 +1702,16 @@ modify_config_menu() {
                             local temp_file
                             temp_file=$(mktemp /tmp/cfopt-cf-dns.XXXXXX)
                             chmod 600 "${temp_file}"
-                            jq --arg domain "$zone_name" '.dns.domain = $domain' "$CONFIG_FILE" > "$temp_file" && mv "$temp_file" "$CONFIG_FILE"
+                            if ! jq --arg domain "$zone_name" '.dns.domain = $domain' "$CONFIG_FILE" > "$temp_file"; then
+                                echo -e "${RED}[ERROR] JSON 更新失败${NC}" >&2
+                                rm -f "$temp_file" 2>/dev/null
+                                return 1
+                            fi
+                            if ! mv "$temp_file" "$CONFIG_FILE"; then
+                                echo -e "${RED}[ERROR] 配置文件更新失败${NC}" >&2
+                                rm -f "$temp_file" 2>/dev/null
+                                return 1
+                            fi
                             chmod 600 "$CONFIG_FILE"
                             echo -e "${GREEN}[OK] 已更新域名: ${zone_name}${NC}"
                         else
@@ -1687,7 +1753,16 @@ modify_config_menu() {
                         local temp_file
                         temp_file=$(mktemp /tmp/cfopt-cf-dns.XXXXXX)
                         chmod 600 "${temp_file}"
-                        jq --arg dns_name "$new_dns" '.dns.record_name = $dns_name' "$CONFIG_FILE" > "$temp_file" && mv "$temp_file" "$CONFIG_FILE"
+                        if ! jq --arg dns_name "$new_dns" '.dns.record_name = $dns_name' "$CONFIG_FILE" > "$temp_file"; then
+                            echo -e "${RED}[ERROR] JSON 更新失败${NC}" >&2
+                            rm -f "$temp_file" 2>/dev/null
+                            return 1
+                        fi
+                        if ! mv "$temp_file" "$CONFIG_FILE"; then
+                            echo -e "${RED}[ERROR] 配置文件更新失败${NC}" >&2
+                            rm -f "$temp_file" 2>/dev/null
+                            return 1
+                        fi
                         chmod 600 "$CONFIG_FILE"
                         echo -e "${GREEN}[OK] CF_DNS_NAME 已更新为: ${new_dns}${NC}"
                         if [ "$new_dns" = "@" ]; then
@@ -1722,7 +1797,16 @@ modify_config_menu() {
                     local temp_file
                     temp_file=$(mktemp /tmp/cfopt-cf-dns.XXXXXX)
                     chmod 600 "${temp_file}"
-                    jq --arg ip_file "$new_ip_file" '.ip_source.file_path = $ip_file' "$CONFIG_FILE" > "$temp_file" && mv "$temp_file" "$CONFIG_FILE"
+                    if ! jq --arg ip_file "$new_ip_file" '.ip_source.file_path = $ip_file' "$CONFIG_FILE" > "$temp_file"; then
+                        echo -e "${RED}[ERROR] JSON 更新失败${NC}" >&2
+                        rm -f "$temp_file" 2>/dev/null
+                        return 1
+                    fi
+                    if ! mv "$temp_file" "$CONFIG_FILE"; then
+                        echo -e "${RED}[ERROR] 配置文件更新失败${NC}" >&2
+                        rm -f "$temp_file" 2>/dev/null
+                        return 1
+                    fi
                     chmod 600 "$CONFIG_FILE"
                     mkdir -p "$(dirname "$new_ip_file")"
                     echo -e "${GREEN}[OK] IP_FILE 已更新${NC}"
@@ -1758,7 +1842,16 @@ modify_config_menu() {
                     local temp_file
                     temp_file=$(mktemp /tmp/cfopt-cf-dns.XXXXXX)
                     chmod 600 "${temp_file}"
-                    jq --argjson timeout "$new_timeout" '.api.timeout = $timeout' "$CONFIG_FILE" > "$temp_file" && mv "$temp_file" "$CONFIG_FILE"
+                    if ! jq --argjson timeout "$new_timeout" '.api.timeout = $timeout' "$CONFIG_FILE" > "$temp_file"; then
+                        echo -e "${RED}[ERROR] JSON 更新失败${NC}" >&2
+                        rm -f "$temp_file" 2>/dev/null
+                        return 1
+                    fi
+                    if ! mv "$temp_file" "$CONFIG_FILE"; then
+                        echo -e "${RED}[ERROR] 配置文件更新失败${NC}" >&2
+                        rm -f "$temp_file" 2>/dev/null
+                        return 1
+                    fi
                     chmod 600 "$CONFIG_FILE"
                     echo -e "${GREEN}[OK] 请求超时已更新为 ${new_timeout} 秒${NC}"
                 fi
@@ -1773,7 +1866,16 @@ modify_config_menu() {
                     local temp_file
                     temp_file=$(mktemp /tmp/cfopt-cf-dns.XXXXXX)
                     chmod 600 "${temp_file}"
-                    jq --argjson retries "$new_retries" '.api.max_retries = $retries' "$CONFIG_FILE" > "$temp_file" && mv "$temp_file" "$CONFIG_FILE"
+                    if ! jq --argjson retries "$new_retries" '.api.max_retries = $retries' "$CONFIG_FILE" > "$temp_file"; then
+                        echo -e "${RED}[ERROR] JSON 更新失败${NC}" >&2
+                        rm -f "$temp_file" 2>/dev/null
+                        return 1
+                    fi
+                    if ! mv "$temp_file" "$CONFIG_FILE"; then
+                        echo -e "${RED}[ERROR] 配置文件更新失败${NC}" >&2
+                        rm -f "$temp_file" 2>/dev/null
+                        return 1
+                    fi
                     chmod 600 "$CONFIG_FILE"
                     echo -e "${GREEN}[OK] 重试次数已更新为 ${new_retries} 次${NC}"
                 fi
