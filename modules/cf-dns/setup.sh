@@ -377,9 +377,11 @@ full_config_wizard() {
     # 验证 API Token 并获取域名列表
     echo -e "${CYAN}正在验证 API Token...${NC}"
     local zones_response
-    zones_response=$(curl -s -X GET "https://api.cloudflare.com/client/v4/zones?per_page=50" \
-        -H "Authorization: Bearer ${cf_api_token}" \
-        -H "Content-Type: application/json")
+    # 【修复】使用 http_request 函数，支持重试和统一错误处理
+    zones_response=$(http_request "GET" "https://api.cloudflare.com/client/v4/zones?per_page=50" "${cf_api_token}" "" 3)
+    local http_code
+    http_code=$(echo "$zones_response" | tail -n1)
+    zones_response=$(echo "$zones_response" | sed '$d')
     
     clear
     echo -e "${CYAN}+------------------------------------------------------------+${NC}"
