@@ -1221,8 +1221,53 @@ if ! check_config; then
     config_status=$?
 fi
 
-if [[ "${config_status}" -ne 0 ]]; then
-    echo -e "${YELLOW}[INFO] 检测到尚未配置 CF 优选参数。${NC}"
+# 【修复】如果配置文件不存在，自动创建默认配置
+if [[ "${config_status}" -eq 1 ]]; then
+    echo -e "${CYAN}[INFO] 检测到配置文件不存在，正在创建默认配置...${NC}"
+    
+    # 创建 conf 目录
+    mkdir -p "$(dirname "${CONFIG_FILE}")" 2>/dev/null || true
+    
+    # 使用 jq 创建最小化配置
+    if command -v jq &>/dev/null; then
+        jq -n '{
+            "enabled": true,
+            "speed_test": {
+                "take_ip_num": 5,
+                "output_html": true,
+                "max_retry": 3,
+                "enable_log": true
+            },
+            "cfst": {
+                "threads": 200,
+                "colo": "HKG,NRT",
+                "ping_times": 4,
+                "download_count": 10,
+                "download_time": 10,
+                "port": 443,
+                "url": "",
+                "httping": false,
+                "latency_max": 9999,
+                "packet_loss_max": 100,
+                "speed_min": 0,
+                "show_count": 20,
+                "ip_file": "",
+                "disable_download": false,
+                "all_ip": false
+            }
+        }' > "${CONFIG_FILE}"
+        chmod 600 "${CONFIG_FILE}"
+        echo -e "${GREEN}[OK] 已创建默认配置文件: ${CONFIG_FILE}${NC}"
+        echo -e "${YELLOW}[WARN] 建议通过 '1. 修改测速配置' 调整参数以适配您的网络环境${NC}"
+    else
+        echo -e "${RED}[ERROR] jq 未安装，无法创建配置文件${NC}"
+        echo -e "${CYAN}提示: 请安装 jq (apt install jq 或 yum install jq)${NC}"
+        exit 1
+    fi
+    echo ""
+elif [[ "${config_status}" -ne 0 ]]; then
+    # 其他错误情况（JSON 格式错误或配置不完整）
+    echo -e "${YELLOW}[INFO] 检测到配置存在问题。${NC}"
     echo ""
     read -r -p "是否现在运行配置向导？[Y/n] (默认 Y): " confirm
     confirm=${confirm:-Y}
@@ -1234,9 +1279,9 @@ if [[ "${config_status}" -ne 0 ]]; then
         }
     else
         echo -e "${CYAN}[INFO] 已取消配置${NC}"
-        echo -e "${YELLOW}[WARN] 未配置无法使用 CF-IP 功能，请重新进入菜单进行配置${NC}"
-        # 不退出，继续显示主菜单，让用户可以稍后配置
+        echo -e "${YELLOW}[WARN] 配置异常可能影响功能，请重新进入菜单进行配置${NC}"
     fi
+    echo ""
 fi
 
 # 主循环
