@@ -121,7 +121,15 @@ while IFS= read -r script_file; do
     
     # 生成唯一 KEY（大写 + 下划线）
     key=$(echo "$(basename "$module_dir")_${filename%.sh}" | tr '[:lower:]' '[:upper:]' | tr '-' '_')
-    
+
+    # 【新增】修正自动生成的 KEY 与 version.txt 不匹配的问题
+    case "${key}" in
+        DNSPOD_DNS_CORE)    key="DNSPOD_CORE" ;;
+        DNSPOD_DNS_SETUP)   key="DNSPOD_SETUP" ;;
+        IP_SYNC_SYNC)       key="IP_SYNC" ;;
+        QUICK_DEPLOY_SETUP) key="QUICK_DEPLOY" ;;
+    esac
+
     # 添加到组件列表
     COMPONENTS+=("${key}:${script_file}:${script_file}:${display_name}")
 done < <(cd "${ROOT_DIR}" && find modules -name "*.sh" -type f | sort)
