@@ -558,15 +558,34 @@ echo -e "   • 输出文件: ${OUTPUT_CSV}"
 # 【新增】下载测速前 URL 连通性检查
 if [[ "${CFST_DISABLE_DOWNLOAD}" != "true" ]] && [[ -n "${CFST_URL}" ]]; then
     echo -e "${CYAN}[INFO] 正在检查下载 URL 连通性...${NC}"
+    
+    # 第一步：检查 HTTP 状态码
     url_check_result=$(curl -sLf --max-time 10 -o /dev/null -w "%{http_code}" "${CFST_URL}" 2>/dev/null || true)
     
-    if [[ "${url_check_result}" =~ ^[23] ]]; then
-        echo -e "${GREEN}[OK] 下载 URL 连通性正常 (HTTP ${url_check_result})${NC}"
-    else
+    if [[ ! "${url_check_result}" =~ ^[23] ]]; then
         echo -e "${YELLOW}[WARN] 下载 URL 不可达 (HTTP ${url_check_result:-000})，跳过下载测速${NC}"
         echo -e "${YELLOW}[WARN] 建议检查网络或修改配置文件中的 cfst.url 字段${NC}"
         echo -e "${CYAN}[INFO] 将仅执行延迟测速，不进行下载速度测试${NC}"
         export CFST_DISABLE_DOWNLOAD="true"
+    else
+        # 第二步：实际测试下载（只下载前 1KB，验证是否真的能下载）
+        echo -e "${CYAN}[INFO] 正在测试实际下载能力...${NC}"
+        test_download_result=$(curl -sLf --max-time 15 --range 0-1023 -o /tmp/cfst_url_test_$$ "${CFST_URL}" 2>&1 || true)
+        download_exit_code=$?
+        
+        if [[ ${download_exit_code} -eq 0 ]] && [[ -s "/tmp/cfst_url_test_$$" ]]; then
+            file_size=$(wc -c < "/tmp/cfst_url_test_$$")
+            echo -e "${GREEN}[OK] 下载 URL 连通性正常 (HTTP ${url_check_result}, 测试下载 ${file_size} 字节)${NC}"
+            rm -f "/tmp/cfst_url_test_$$"
+        else
+            echo -e "${YELLOW}[WARN] 下载 URL 虽然可达，但实际下载失败 (Exit: ${download_exit_code})${NC}"
+            if [[ -n "${test_download_result}" ]]; then
+                echo -e "${YELLOW}[WARN] 错误信息: ${test_download_result}${NC}"
+            fi
+            echo -e "${YELLOW}[WARN] 跳过下载测速，仅执行延迟测速${NC}"
+            export CFST_DISABLE_DOWNLOAD="true"
+            rm -f "/tmp/cfst_url_test_$$" 2>/dev/null || true
+        fi
     fi
     echo ""
 fi
