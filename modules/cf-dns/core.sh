@@ -62,12 +62,32 @@ acquire_lock() {
     
     # 【安全修复】使用 flock 避免 TOCTOU 竞态条件
     exec 9>"$LOCK_FILE"
-    if ! flock -n 9; then
-        echo "[ERROR] 无法获取锁，另一个 CF-DNS 更新进程正在运行 (Domain: ${DOMAIN_NAME:-default})"
-        exit 1
+    if ! flock -n 9 2>/dev/null; then
+        # 【修复】NFS fallback: 如果 flock 不可用（如 NFS 文件系统），使用 mkdir 原子操作
+        local lock_dir="${LOCK_FILE}.dir"
+        if ! mkdir "$lock_dir" 2>/dev/null; then
+            echo "[ERROR] 无法获取文件锁，另一个 CF-DNS 更新进程正在运行 (Domain: ${DOMAIN_NAME:-default})"
+            exit 1
+        fi
+        # 记录使用了 fallback 机制
+        echo "$$" > "${lock_dir}/pid"
     fi
-    # 锁会在脚本退出时自动释放（fd 9 关闭）
+    # 锁会在脚本退出时自动释放（fd 9 关闭或 rmdir）
 }
+
+# 【新增】清理函数：释放锁资源
+cleanup() {
+    # 如果使用了 mkdir fallback，清理锁目录
+    local lock_dir="${LOCK_FILE}.dir"
+    if [[ -d "$lock_dir" ]]; then
+        rmdir "$lock_dir" 2>/dev/null || true
+    fi
+    # 关闭文件描述符（flock 方式）
+    exec 9>&- 2>/dev/null || true
+}
+
+# 注册清理函数，确保脚本退出时释放锁
+trap cleanup EXIT
 
 acquire_lock
 
