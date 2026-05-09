@@ -555,6 +555,22 @@ echo -e "   • 目标地区: ${TARGET_COLO}"
 echo -e "   • 提取数量: ${TAKE_IP_NUM}"
 echo -e "   • 输出文件: ${OUTPUT_CSV}"
 
+# 【新增】下载测速前 URL 连通性检查
+if [[ "${CFST_DISABLE_DOWNLOAD}" != "true" ]] && [[ -n "${CFST_URL}" ]]; then
+    echo -e "${CYAN}[INFO] 正在检查下载 URL 连通性...${NC}"
+    url_check_result=$(curl -sLf --max-time 10 -o /dev/null -w "%{http_code}" "${CFST_URL}" 2>/dev/null || true)
+    
+    if [[ "${url_check_result}" =~ ^[23] ]]; then
+        echo -e "${GREEN}[OK] 下载 URL 连通性正常 (HTTP ${url_check_result})${NC}"
+    else
+        echo -e "${YELLOW}[WARN] 下载 URL 不可达 (HTTP ${url_check_result:-000})，跳过下载测速${NC}"
+        echo -e "${YELLOW}[WARN] 建议检查网络或修改配置文件中的 cfst.url 字段${NC}"
+        echo -e "${CYAN}[INFO] 将仅执行延迟测速，不进行下载速度测试${NC}"
+        export CFST_DISABLE_DOWNLOAD="true"
+    fi
+    echo ""
+fi
+
 # 【重构】使用函数构建 cfst 命令，消除代码重复
 build_cfst_cmd "${TARGET_COLO}" "${OUTPUT_CSV}" "${IP_DATA_FILE}"
 
