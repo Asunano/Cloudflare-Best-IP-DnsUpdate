@@ -173,7 +173,7 @@ if [[ ! -f "${CONFIG_FILE}" ]]; then
     if [[ -t 0 ]]; then
         echo -e "${YELLOW}[WARN] 请先通过 cfopt 主菜单进入 CF-IP 模块进行配置${NC}"
         echo -e "${CYAN}提示: 运行 'cfopt' 命令，然后选择 '2. CF IP 优选管理'${NC}"
-        exit 1
+        return 1
     else
         # 非交互式环境（定时任务等），直接退出
         echo -e "${YELLOW}[WARN] 请先运行配置向导创建配置文件${NC}"
