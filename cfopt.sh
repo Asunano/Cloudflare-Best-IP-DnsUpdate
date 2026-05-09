@@ -1272,15 +1272,21 @@ show_main_menu() {
         2)
             export CF_OPT_ENTRY="main_menu"
             export CFOPT_ROOT="${INSTALL_DIR}"
-            bash "${INSTALL_DIR}/modules/cf-ip/menu.sh" || true
+            if ! bash "${INSTALL_DIR}/modules/cf-ip/menu.sh"; then
+                echo -e "${RED}[ERROR] CF-IP 模块执行失败${NC}"
+            fi
             ;;
         3)
             export CF_OPT_ENTRY="main_menu"
-            bash "${INSTALL_DIR}/modules/cf-dns/setup.sh" || true
+            if ! bash "${INSTALL_DIR}/modules/cf-dns/setup.sh"; then
+                echo -e "${RED}[ERROR] CF-DNS 模块执行失败${NC}"
+            fi
             ;;
         4)
             export CF_OPT_ENTRY="main_menu"
-            bash "${INSTALL_DIR}/modules/dnspod-dns/setup.sh" || true
+            if ! bash "${INSTALL_DIR}/modules/dnspod-dns/setup.sh"; then
+                echo -e "${RED}[ERROR] DNSPod 模块执行失败${NC}"
+            fi
             ;;
         5)
             # 【安全修复】检查调度模块是否存在

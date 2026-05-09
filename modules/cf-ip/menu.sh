@@ -1154,7 +1154,11 @@ run_test() {
     echo "--------------------------------------------------------"
     # 切换到 ROOT_DIR 以确保相对路径正确
     cd "${ROOT_DIR}" || return 1
-    CF_OPT_ENTRY=1 bash "${IP_AUTO_SCRIPT}" || true
+    if ! CF_OPT_ENTRY=1 bash "${IP_AUTO_SCRIPT}"; then
+        echo -e "${RED}[ERROR] 测速执行失败，请检查日志${NC}"
+        read -r -p "按回车键返回..."
+        return 1
+    fi
     echo ""
     read -r -p "按回车键返回..."
 }
