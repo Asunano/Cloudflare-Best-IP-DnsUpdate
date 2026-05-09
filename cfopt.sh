@@ -1835,10 +1835,10 @@ if [[ -d "${INSTALL_DIR}" ]]; then
     
     # 验证删除结果
     if [[ ! -d "${INSTALL_DIR}" ]]; then
-        echo "[$(date)] [OK] cfopt 目录已完全删除" >> "${LOG_FILE}"
+        printf '[%s] [OK] cfopt 目录已完全删除\n' "$(date)" >> "${LOG_FILE}"
     else
-        echo "[$(date)] [ERROR] 目录仍然存在: $(ls -la ${INSTALL_DIR} 2>/dev/null)" >> "${LOG_FILE}"
-        echo "[$(date)] [WARN] 请手动执行: sudo rm -rf ${INSTALL_DIR}" >> "${LOG_FILE}"
+        printf '[%s] [ERROR] 目录仍然存在\n' "$(date)" >> "${LOG_FILE}"
+        printf '[%s] [WARN] 请手动执行: sudo rm -rf %s\n' "$(date)" "${INSTALL_DIR}" >> "${LOG_FILE}"
     fi
 else
     echo "[$(date)] [INFO] 目录不存在，无需清理" >> "${LOG_FILE}"
