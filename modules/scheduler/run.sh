@@ -62,6 +62,13 @@ start_watchdog() {
 
     (
         sleep "$timeout"
+        
+        # 【修复】检查父进程是否存活，防止成为僵尸进程
+        if ! kill -0 "$PPID" 2>/dev/null; then
+            # 父进程已退出，看门狗自行退出
+            exit 0
+        fi
+        
         # 【修复】从文件读取 PID（子 shell 创建时变量尚未赋值）
         local task_pid
         task_pid=$(cat "${pid_file}" 2>/dev/null | tr -d '[:space:]')
