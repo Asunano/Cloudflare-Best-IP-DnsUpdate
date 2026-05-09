@@ -1019,7 +1019,8 @@ main() {
             local current_value="${records_to_delete_values[$i]}"
             
             local delete_result
-            delete_result=$(delete_dns_record "$record_id")
+            # 【修复】在 set -e 模式下，API 调用失败不应导致脚本退出
+            delete_result=$(delete_dns_record "$record_id") || true
             
             if [[ "$delete_result" == success* ]]; then
                 deleted_count=$((deleted_count + 1))
@@ -1130,7 +1131,8 @@ main() {
                 printf "\r  [%d/%d] 正在更新 %s..." "$((i+1))" "$total" "$target_ip"
                     
                 local update_result
-                update_result=$(update_dns_record "$record_id" "$full_dns_name" "$target_ip")
+                # 【修复】在 set -e 模式下，API 调用失败不应导致脚本退出
+                update_result=$(update_dns_record "$record_id" "$full_dns_name" "$target_ip") || true
                     
                 if [[ "$update_result" == success* ]]; then
                     updated_count=$((updated_count + 1))
@@ -1175,7 +1177,8 @@ main() {
             printf "\r  [%d/%d] 正在创建 %s..." "$((i+1-record_count))" "$remaining_ips" "$target_ip"
                 
             local create_result
-            create_result=$(create_dns_record "$full_dns_name" "$target_ip")
+            # 【修复】在 set -e 模式下，API 调用失败不应导致脚本退出
+            create_result=$(create_dns_record "$full_dns_name" "$target_ip") || true
                 
             if [[ "$create_result" == success* ]]; then
                 created_count=$((created_count + 1))
