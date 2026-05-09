@@ -175,18 +175,24 @@ safe_read() {
 # ====================== 【函数：带重试的下载与校验】 ======================
 # ====================== 【函数：检查配置文件】 ======================
 # 返回值说明：
-#   0 = 配置正常
-#   1 = 配置文件不存在
-#   2 = JSON 格式错误
-#   3 = 配置文件存在但未完成配置（缺少关键字段）
+#   0 = CONFIG_OK - 配置正常
+#   1 = CONFIG_NOT_FOUND - 配置文件不存在
+#   2 = CONFIG_INVALID_JSON - JSON 格式错误
+#   3 = CONFIG_INCOMPLETE - 配置文件存在但未完成配置（缺少关键字段）
 check_config() {
+    # 定义返回值常量，提高可读性
+    local CONFIG_OK=0
+    local CONFIG_NOT_FOUND=1
+    local CONFIG_INVALID_JSON=2
+    local CONFIG_INCOMPLETE=3
+    
     if [[ ! -f "${CONFIG_FILE}" ]]; then
-        return 1
+        return ${CONFIG_NOT_FOUND}
     fi
     
     # 检查是否为有效的 JSON 格式
     if ! jq empty "${CONFIG_FILE}" 2>/dev/null; then
-        return 2
+        return ${CONFIG_INVALID_JSON}
     fi
     
     # 检查是否包含关键配置字段（验证是否真正完成了用户配置）
@@ -194,10 +200,10 @@ check_config() {
     has_colo=$(jq -r '.cfst.colo // empty' "${CONFIG_FILE}" 2>/dev/null)
     if [[ -z "${has_colo}" ]]; then
         # 配置文件存在但缺少关键配置，视为未配置
-        return 3
+        return ${CONFIG_INCOMPLETE}
     fi
     
-    return 0
+    return ${CONFIG_OK}
 }
 
 # ====================== 【函数：显示帮助信息】 ======================
