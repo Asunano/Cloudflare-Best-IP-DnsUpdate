@@ -254,11 +254,44 @@ safe_remove_dir() {
     local dir_path="$1"
     local description="${2:-目录删除}"
     
-    # 安全检查：防止误删重要目录
-    if [[ -z "${dir_path}" ]] || [[ "${dir_path}" = "/" ]] || [[ "${dir_path}" = "/root" ]] || [[ "${dir_path}" = "/home" ]]; then
-        log_error "${description}: 拒绝删除危险路径 (${dir_path})"
+    # 【安全修复】扩展安全检查：防止误删重要目录和路径遍历攻击
+    # 1. 检查空路径
+    if [[ -z "${dir_path}" ]]; then
+        log_error "${description}: 拒绝删除空路径"
         return 1
     fi
+    
+    # 2. 检查危险系统路径（包含前缀匹配）
+    local dangerous_paths=("/" "/root" "/home" "/tmp" "/var" "/etc" "/usr" "/sys" "/proc" "/dev" "/boot" "/lib" "/bin" "/sbin")
+    for dangerous in "${dangerous_paths[@]}"; do
+        if [[ "${dir_path}" == "${dangerous}" ]] || [[ "${dir_path}" == "${dangerous}/"* ]]; then
+            log_error "${description}: 拒绝删除危险路径 (${dir_path})"
+            return 1
+        fi
+    done
+    
+    # 3. 检查路径遍历攻击 (..)
+    if [[ "${dir_path}" == *".."* ]]; then
+        log_error "${description}: 拒绝包含路径遍历序列 (${dir_path})"
+        return 1
+    fi
+    
+    # 4. 检查通配符和特殊字符（防止 rm -rf 产生意外行为）
+    if [[ "${dir_path}" == *"*"* ]] || [[ "${dir_path}" == *"?"* ]] || [[ "${dir_path}" == *"["* ]]; then
+        log_error "${description}: 拒绝包含通配符的路径 (${dir_path})"
+        return 1
+    fi
+    
+    # 5. 规范化路径（移除尾部斜杠）
+    dir_path="${dir_path%/}"
+    
+    # 6. 二次检查：规范化后的路径是否仍然危险
+    for dangerous in "${dangerous_paths[@]}"; do
+        if [[ "${dir_path}" == "${dangerous}" ]]; then
+            log_error "${description}: 拒绝删除危险路径 (${dir_path})"
+            return 1
+        fi
+    done
     
     if [[ -d "${dir_path}" ]]; then
         if rm -rf "${dir_path}" 2>/dev/null; then
