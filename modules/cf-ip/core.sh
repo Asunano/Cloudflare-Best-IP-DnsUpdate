@@ -852,7 +852,10 @@ monitor_progress() {
                 last_displayed_size=0
             # 方法 2：检测格式是否为 "X / Y" 且 Y 较小（下载阶段通常是 10）
             # ping 阶段通常是 "X / 5955" 这样的大数字
-            elif echo "${log_content}" | grep -qE '^[[:space:]]*[0-9]+[[:space:]]*/[[:space:]]*([0-9]{1,2})$'; then
+            # 【修复】cfst 下载阶段输出格式是 "2 / 10 [====] 3.24 MB/s"
+            # 原 regex 要求行尾 $ 结束于小数字，但实际行在数字后还有 [====] 3.24 MB/s
+            # 改为匹配数字后跟空格即可正确识别下载阶段
+            elif echo "${log_content}" | grep -qE '^[[:space:]]*[0-9]+[[:space:]]*/[[:space:]]*([0-9]{1,2})[[:space:]]'; then
                 stage="download"
                 printf "\r%-80s\n" ""
                 echo -e "${CYAN}  [进度] 延迟测速完成，正在进行下载测速...${NC}"
