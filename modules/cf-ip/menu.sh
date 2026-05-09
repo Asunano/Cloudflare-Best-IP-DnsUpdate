@@ -11,7 +11,8 @@ SCRIPT_VERSION="0.1"
 
 # ==================== 路径初始化 ====================
 SCRIPT_DIR="$( cd -P "$( dirname "${BASH_SOURCE[0]}" )" >/dev/null 2>&1 && pwd )"
-ROOT_DIR="$(cd "$SCRIPT_DIR/../.." && pwd)"
+# 【关键修复】优先使用 CFOPT_ROOT 环境变量，防止路径计算错误
+ROOT_DIR="${CFOPT_ROOT:-$(cd "$SCRIPT_DIR/../.." && pwd)}"
 
 # ==================== 加载公共函数库 ====================
 if [[ -f "${ROOT_DIR}/lib/common.sh" ]]; then

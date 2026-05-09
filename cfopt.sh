@@ -1247,6 +1247,7 @@ show_main_menu() {
             ;;
         2)
             export CF_OPT_ENTRY="main_menu"
+            export CFOPT_ROOT="${INSTALL_DIR}"
             bash "${INSTALL_DIR}/modules/cf-ip/menu.sh" || true
             ;;
         3)
