@@ -654,8 +654,12 @@ update_dns_record() {
     data=$(jq -n --arg name "$name" --arg ip "$cf_ip" '{"type":"A","name":$name,"content":$ip,"proxied":false}')
     
     local response
-    # 【安全修复】在 set -e 模式下，API 调用失败会导致脚本退出
-    response=$(http_put "$url" "$data" || true)
+    # 【修复】分离 curl 错误和 API 错误，避免 || true 掩盖网络故障
+    response=$(http_put "$url" "$data") || {
+        log_error "API 调用失败 (网络错误): PUT $url"
+        echo '{"success":false,"errors":[{"message":"Network error"}]}'
+        return 1
+    }
     
     if echo "$response" | jq -r '.success' 2>/dev/null | grep -q 'true'; then
         # 【修复】验证 API 返回的 IP 是否与预期一致
@@ -682,8 +686,12 @@ create_dns_record() {
     data=$(jq -n --arg name "$name" --arg ip "$cf_ip" '{"type":"A","name":$name,"content":$ip,"ttl":1,"proxied":false}')
     
     local response
-    # 【安全修复】在 set -e 模式下，API 调用失败会导致脚本退出
-    response=$(http_post "$url" "$data" || true)
+    # 【修复】分离 curl 错误和 API 错误，避免 || true 掩盖网络故障
+    response=$(http_post "$url" "$data") || {
+        log_error "API 调用失败 (网络错误): POST $url"
+        echo '{"success":false,"errors":[{"message":"Network error"}]}'
+        return 1
+    }
     
     if echo "$response" | jq -r '.success' 2>/dev/null | grep -q 'true'; then
         # 【修复】验证 API 返回的 IP 是否与预期一致
@@ -707,8 +715,12 @@ delete_dns_record() {
     
     # 【修复】使用 http_delete 替代直接调用 curl，支持重试和统一错误处理
     local response
-    # 【安全修复】在 set -e 模式下，API 调用失败会导致脚本退出
-    response=$(http_delete "$url" || true)
+    # 【修复】分离 curl 错误和 API 错误，避免 || true 掩盖网络故障
+    response=$(http_delete "$url") || {
+        log_error "API 调用失败 (网络错误): DELETE $url"
+        echo '{"success":false,"errors":[{"message":"Network error"}]}'
+        return 1
+    }
     
     if echo "$response" | jq -r '.success' 2>/dev/null | grep -q 'true'; then
         echo "success"
