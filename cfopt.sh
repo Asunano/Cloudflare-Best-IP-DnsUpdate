@@ -2212,32 +2212,7 @@ init_cfopt() {
         
     # 【安全修复】无论下载是否成功，都继续执行后续步骤
     # 避免因单个模块下载失败导致整个安装流程中断
-    
-    # 4.2 下载 cfst 测速程序（CF-IP 核心依赖）
-    echo -e "${CYAN}[INFO] 正在下载 cfst 测速程序...${NC}"
-    local cfst_url="https://github.com/XIU2/CloudflareSpeedTest/releases/latest/download/CloudflareST_linux_amd64.tar.gz"
-    local cfst_temp="/tmp/cfst_download.tar.gz"
-    
-    # 【安全修复】cfst 下载失败不应阻止安装流程继续
-    if curl -sfL --connect-timeout 10 --max-time 60 -o "${cfst_temp}" "${cfst_url}" 2>/dev/null; then
-        # 解压并移动到目标位置
-        if tar -xzf "${cfst_temp}" -C "${INSTALL_DIR}/assets/cfst/" 2>/dev/null; then
-            # 找到解压后的 cfst 文件
-            local cfst_file
-            cfst_file=$(find "${INSTALL_DIR}/assets/cfst/" -name "cfst" -type f 2>/dev/null | head -1 || true)
-            if [[ -n "${cfst_file}" ]] && [[ -f "${cfst_file}" ]]; then
-                chmod +x "${cfst_file}"
-                echo -e "${GREEN}[OK] cfst 测速程序已安装: ${cfst_file}${NC}"
-            else
-                echo -e "${YELLOW}[WARN] cfst 解压后未找到可执行文件${NC}"
-            fi
-        else
-            echo -e "${YELLOW}[WARN] cfst 解压失败${NC}"
-        fi
-        rm -f "${cfst_temp}"
-    else
-        echo -e "${YELLOW}[WARN] cfst 下载失败，请手动运行 CF-IP 测速以自动安装${NC}"
-    fi
+    # 注意：cfst 测速程序已在菜单加载时自动检测并下载（第 1187-1220 行），此处不再重复下载
 
     # 初始化状态配置文件 (如果不存在)
     STATUS_CONF="${INSTALL_DIR}/conf/status.conf"
