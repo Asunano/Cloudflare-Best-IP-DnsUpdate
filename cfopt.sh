@@ -668,15 +668,17 @@ download_with_retry() {
         fi
         
         # 使用 curl 进行下载，仅显示进度条
-        # 【安全修复】先保存退出码，避免 local 声明重置 $?
+        # 【安全修复】直接获取退出码和 HTTP 状态码，避免 || 链的问题
         local curl_output
-        curl_output=$(curl -sfL --connect-timeout 10 --max-time 60 --create-dirs -o "${output}" -w "%{http_code}" "${current_url}" 2>/dev/null) && {
+        local curl_exit
+        curl_output=$(curl -sfL --connect-timeout 10 --max-time 60 --create-dirs -o "${output}" -w "%{http_code}" "${current_url}" 2>/dev/null)
+        curl_exit=$?
+        
+        if [[ ${curl_exit} -eq 0 ]]; then
             http_code="${curl_output}"
-            curl_exit=0
-        } || {
+        else
             http_code="${curl_output:-000}"
-            curl_exit=$?
-        }
+        fi
         
         if [[ ${curl_exit} -eq 0 ]] && [[ "${http_code}" = "200" ]]; then
             # 【增强】多重完整性校验
