@@ -588,7 +588,7 @@ batch_update_cf_dns() {
     fi
     
     # 收集所有配置文件
-    declare -a CONFIG_FILES=()
+    local -a CONFIG_FILES=()
     while IFS= read -r -d '' config_file; do
         CONFIG_FILES+=("$config_file")
     done < <(find "$config_dir" -name "*.json" -type f -print0 2>/dev/null)
@@ -674,7 +674,7 @@ batch_update_dnspod_dns() {
     fi
     
     # 收集所有配置文件
-    declare -a CONFIG_FILES=()
+    local -a CONFIG_FILES=()
     while IFS= read -r -d '' config_file; do
         CONFIG_FILES+=("$config_file")
     done < <(find "$config_dir" -name "*.json" -type f -print0 2>/dev/null)
