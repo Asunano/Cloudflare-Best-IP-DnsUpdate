@@ -192,7 +192,7 @@ get_component_hash() {
     # 【优化】使用精确匹配，避免重复过滤
     # 格式: KEY=VERSION:HASH 或 KEY=HASH
     local hash_line
-    hash_line=$(echo "${version_content}" | grep -F "${component_key}=" | head -1)
+    hash_line=$(echo "${version_content}" | grep -F "${component_key}=" | head -1 || true)
     
     if [[ -n "${hash_line}" ]]; then
         # 确保是精确匹配（行首）
@@ -228,7 +228,7 @@ get_component_version() {
     # 【优化】使用精确匹配，避免重复过滤
     # 格式: KEY=VERSION:HASH 或 KEY=HASH
     local version_line
-    version_line=$(echo "${version_content}" | grep -F "${component_key}=" | head -1)
+    version_line=$(echo "${version_content}" | grep -F "${component_key}=" | head -1 || true)
     
     if [[ -n "${version_line}" ]]; then
         # 确保是精确匹配（行首）
