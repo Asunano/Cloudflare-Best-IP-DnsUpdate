@@ -295,14 +295,35 @@ download_with_retry() {
             echo -e "    ${GRAY}[重试] 第 ${retry_count}/${max_retries} 次尝试...${NC}" >&2
         fi
         
-        # 【修复】捕获 curl 的 HTTP 状态码
-        # 使用命令替换直接捕获 -w 的输出，避免临时文件
+        # 【修复】分别捕获 HTTP 状态码和 curl 退出码
+        # -w 输出到 stdout，响应体用 -o 写文件，两者互不干扰
         local http_code
-        http_code=$(curl -sLf --max-time 30 -w '%{http_code}' -o "${output_file}" "${url}" 2>/dev/null) || http_code="000"
+        local curl_exit=0
         
-        # 【修复】确保 http_code 不为空
+        http_code=$(curl -sLf --max-time 30 \
+            -w '%{http_code}' \
+            -o "${output_file}" \
+            "${url}" 2>/dev/null) || curl_exit=$?
+        
+        # 【修复】http_code 为空时才设为 000，不要覆盖 curl 返回的真实状态码
         http_code="${http_code:-000}"
         
+        # 【修复】4xx/5xx 等明确的 HTTP 错误不值得重试，直接报错返回
+        if [[ "${http_code}" =~ ^[45] ]]; then
+            echo -e "    ${RED}[ERROR] HTTP ${http_code} — 文件不存在或服务器错误，无需重试${NC}" >&2
+            rm -f "${output_file}"
+            return 1
+        fi
+        
+        # 网络层错误（000 = 连接失败/超时/DNS 解析失败）才值得重试
+        if [[ "${http_code}" == "000" ]]; then
+            echo -e "    ${YELLOW}[WARN] 连接失败 (DNS/超时/网络不通)${NC}" >&2
+            retry_count=$((retry_count + 1))
+            [[ ${retry_count} -lt ${max_retries} ]] && sleep 2
+            continue
+        fi
+        
+        # HTTP 200/304 — 下载成功，验证文件有效性
         if [[ "${http_code}" == "200" ]] || [[ "${http_code}" == "304" ]]; then
             # 验证下载的文件非空且有效
             if [[ -s "${output_file}" ]]; then
@@ -324,11 +345,9 @@ download_with_retry() {
                     if [[ ${file_size} -lt 100 ]]; then
                         # 文件太小，可能是错误响应
                         echo -e "    ${YELLOW}[WARN] 文件过小 (${file_size} bytes)，可能是错误响应${NC}" >&2
-                        : # 继续重试
                     elif grep -qi "^<html\|^<!DOCTYPE" "${output_file}" 2>/dev/null; then
                         # 明确的 HTML 文件
                         echo -e "    ${YELLOW}[WARN] 下载到 HTML 页面而非脚本文件${NC}" >&2
-                        : # 继续重试
                     else
                         return 0
                     fi
@@ -336,8 +355,6 @@ download_with_retry() {
             else
                 echo -e "    ${YELLOW}[WARN] 下载的文件为空${NC}" >&2
             fi
-        else
-            echo -e "    ${YELLOW}[WARN] HTTP 状态码: ${http_code}${NC}" >&2
         fi
         
         retry_count=$((retry_count + 1))
