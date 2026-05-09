@@ -449,8 +449,9 @@ csv_to_iplist() {
     echo "#" >> "$iplist_file"
     echo "# IP地址|延迟(ms)|下载速度(MB/s)|地区码" >> "$iplist_file"
     
+    # 【修复】使用进程替换避免子 shell 变量丢失
     # 跳过 CSV 标题行，提取需要的字段（只读取使用的列）
-    tail -n +2 "$csv_file" | while IFS=',' read -r ip _ _ _ delay speed region; do
+    while IFS=',' read -r ip _ _ _ delay speed region; do
         # 清理 Windows 换行符
         region=$(echo "$region" | tr -d '\r' | xargs)
         
@@ -458,7 +459,7 @@ csv_to_iplist() {
         if [[ "$speed" =~ ^[0-9.]+$ ]] && [[ "$speed" != "0" ]] && [[ "$speed" != "0.0" ]] && [[ "$speed" != "0.00" ]]; then
             echo "${ip}|${delay}|${speed}|${region}" >> "$iplist_file"
         fi
-    done
+    done < <(tail -n +2 "$csv_file")
     
     local count
     count=$(grep -v '^#' "$iplist_file" | wc -l)
