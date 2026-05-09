@@ -1348,7 +1348,16 @@ manage_scheduler() {
         echo ""
         echo -e " ${RED}➤${NC} 0. 返回主菜单"
         echo -e "${CYAN}+------------------------------------------------------------+${NC}"
-        read -r -p "请选择功能 [0-4]: " sched_choice
+        
+        # 【安全修复】从终端读取输入，防止 stdin 被关闭导致的问题
+        local input_device="/dev/tty"
+        if [[ -e "${input_device}" ]]; then
+            read -r -p "请选择功能 [0-4]: " sched_choice < "${input_device}" || sched_choice=""
+        else
+            # 非交互式环境，直接返回
+            echo -e "${YELLOW}[INFO] 非交互式环境，返回主菜单${NC}"
+            return
+        fi
         
         case "${sched_choice}" in
             1)
@@ -1381,6 +1390,10 @@ manage_scheduler() {
                 ;;
             0)
                 break
+                ;;
+            *)
+                echo -e "${RED}无效选择，请重试。${NC}"
+                sleep 1
                 ;;
         esac
     done
