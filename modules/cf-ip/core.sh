@@ -228,7 +228,7 @@ validate_config_schema() {
     local required_fields=(
         ".cfst"
         ".speed_test"
-        ".paths"
+        # .paths 不是必需字段，因为有默认值
     )
     
     for field in "${required_fields[@]}"; do
