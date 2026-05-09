@@ -729,16 +729,35 @@ monitor_progress() {
         
         empty_loop_count=0
         
-        # 【修复】检测是否进入第二阶段（下载测速）
-        # 只匹配日志末尾最新的 10 行，避免匹配到历史日志或参数说明
-        if [[ "${stage}" = "ping" ]] && { tail -n 10 "${log_file}" 2>/dev/null | grep -q "开始下载测速" || true; }; then
-            stage="download"
-            # 【修复】阶段切换时先清空当前行，避免进度条残留
-            printf "\r%-80s\n" ""
-            echo -e "${CYAN}  [进度] 延迟测速完成，正在进行下载测速...${NC}"
-            echo -e "${GRAY}  第二阶段: 下载速度测试${NC}"
-            # 重置大小记录，强制重新解析
-            last_displayed_size=0
+        # 【修复】cfst 使用 \r 覆盖同一行，日志文件只有一行
+        # "开始下载测速" 可能被进度条覆盖，无法用于阶段切换检测
+        # 改为根据日志内容格式自动判断阶段：
+        # - ping 阶段：包含 "可用:" 字样，或格式为 "大数字 / 大数字"
+        # - download 阶段：格式为 "小数字 / 小数字" 或包含 "下载速度" 或 "MB/s"
+        if [[ "${stage}" = "ping" ]]; then
+            # 尝试检测是否进入下载阶段
+            # 检查日志中是否包含下载阶段的特征
+            local log_content
+            log_content=$(tail -n 20 "${log_file}" 2>/dev/null || true)
+            
+            # 方法 1：检测 "下载测速" 或 "下载速度" 或 "MB/s" 字样
+            if echo "${log_content}" | grep -q "下载测速\|下载速度\|MB/s"; then
+                stage="download"
+                # 【修复】阶段切换时先清空当前行，避免进度条残留
+                printf "\r%-80s\n" ""
+                echo -e "${CYAN}  [进度] 延迟测速完成，正在进行下载测速...${NC}"
+                echo -e "${GRAY}  第二阶段: 下载速度测试${NC}"
+                # 重置大小记录，强制重新解析
+                last_displayed_size=0
+            # 方法 2：检测格式是否为 "X / Y" 且 Y 较小（下载阶段通常是 10）
+            # ping 阶段通常是 "X / 5955" 这样的大数字
+            elif echo "${log_content}" | grep -qE '^[[:space:]]*[0-9]+[[:space:]]*/[[:space:]]*([0-9]{1,2})[[:space:]]'; then
+                stage="download"
+                printf "\r%-80s\n" ""
+                echo -e "${CYAN}  [进度] 延迟测速完成，正在进行下载测速...${NC}"
+                echo -e "${GRAY}  第二阶段: 下载速度测试${NC}"
+                last_displayed_size=0
+            fi
         fi
         
         # 【修复】始终尝试解析最新内容，确保进度实时更新
