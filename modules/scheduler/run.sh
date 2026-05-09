@@ -45,10 +45,68 @@ rotate_log "${ROOT_DIR}/logs/error.log"
 
 # ==================== 【安全配置】测速超时保护 ====================
 # 防止 cfst 进程挂起导致 scheduler 无限等待
-SCHEDULER_TIMEOUT=${SCHEDULER_TIMEOUT:-600}  # 默认 10 分钟，可通过环境变量覆盖
+# 【修复】动态计算超时时间，根据 IP 数量和线程数调整
+SCHEDULER_TIMEOUT=${SCHEDULER_TIMEOUT:-0}  # 0 表示自动计算
 TASK_PID=""  # 记录当前任务的 PID
 # 【修复】使用文件传递 PID，解决子 shell 无法获取父 shell 后续变量的问题
 WATCHDOG_PID_FILE=$(mktemp /tmp/cfopt_watchdog.XXXXXX)
+
+# 动态计算超时时间
+# 公式: 基础时间 + (IP 数量 / 线程数) * 每个 IP 的平均时间
+calculate_timeout() {
+    local config_file="${ROOT_DIR}/conf/cf-ip.json"
+    
+    if [[ ! -f "$config_file" ]]; then
+        echo 600  # 默认 10 分钟
+        return
+    fi
+    
+    # 读取配置
+    local threads
+    threads=$(jq -r '.cfst.threads // 200' "$config_file" 2>/dev/null || echo 200)
+    
+    local show_count
+    show_count=$(jq -r '.cfst.show_count // 20' "$config_file" 2>/dev/null || echo 20)
+    
+    local ip_file
+    ip_file=$(jq -r '.cfst.ip_file // ""' "$config_file" 2>/dev/null)
+    
+    # 估算 IP 数量
+    local ip_count=0
+    if [[ -n "$ip_file" && -f "$ip_file" ]]; then
+        ip_count=$(wc -l < "$ip_file" 2>/dev/null || echo 0)
+    fi
+    
+    # 如果没有 IP 文件，使用 show_count 作为估算
+    if [[ $ip_count -eq 0 ]]; then
+        ip_count=$show_count
+    fi
+    
+    # 计算超时时间（秒）
+    # 基础时间: 60 秒（启动、初始化等）
+    # 每个 IP 平均时间: 3 秒（ping + 下载测速）
+    # 并行度: threads
+    local base_time=60
+    local time_per_ip=3
+    local calculated_timeout=$((base_time + (ip_count * time_per_ip / threads)))
+    
+    # 设置最小值和最大值
+    local min_timeout=300   # 最少 5 分钟
+    local max_timeout=3600  # 最多 60 分钟
+    
+    if [[ $calculated_timeout -lt $min_timeout ]]; then
+        calculated_timeout=$min_timeout
+    elif [[ $calculated_timeout -gt $max_timeout ]]; then
+        calculated_timeout=$max_timeout
+    fi
+    
+    echo $calculated_timeout
+}
+
+# 如果未手动设置超时，则自动计算
+if [[ "$SCHEDULER_TIMEOUT" -eq 0 ]]; then
+    SCHEDULER_TIMEOUT=$(calculate_timeout)
+fi
 
 # 启动看门狗定时器
 # 【修复】看门狗通过文件获取任务 PID，而非依赖子 shell 变量继承
@@ -173,6 +231,12 @@ run_task() {
 }
 
 # ==================== 自动化任务链 ====================
+
+# 【新增】显示超时配置信息
+echo -e "\n${CYAN}[INFO] 测速超时保护: ${SCHEDULER_TIMEOUT} 秒 ($(awk "BEGIN {printf \"%.1f\", $SCHEDULER_TIMEOUT/60}") 分钟)${NC}"
+if [[ "${SCHEDULER_TIMEOUT:-0}" != "0" ]]; then
+    echo -e "${GRAY}      提示: 可通过 SCHEDULER_TIMEOUT 环境变量自定义超时时间${NC}"
+fi
 
 # 第一阶段：IP 优选测速（根据 CF-IP 模块配置决定是单线路还是多线路测速）
 echo -e "\n${CYAN}[TASK] 正在执行: IP 优选测速${NC}"
