@@ -252,33 +252,13 @@ sanitize_log() {
 }
 
 # 结构化日志输出函数
-log_message() {
-    local level="$1"
-    local message="$2"
-    local timestamp
-    timestamp=$(date '+%Y-%m-%d %H:%M:%S')
-    
-    # 脱敏消息
-    local sanitized_msg
-    sanitized_msg=$(sanitize_log "$message")
-    
-    case "$level" in
-        "INFO")
-            echo -e "${GREEN}[${timestamp}] [INFO] ${sanitized_msg}${NC}"
-            ;;
-        "WARN")
-            echo -e "${YELLOW}[${timestamp}] [WARN] ${sanitized_msg}${NC}"
-            ;;
-        "ERROR")
-            echo -e "${RED}[${timestamp}] [ERROR] ${sanitized_msg}${NC}"
-            ;;
-        "DEBUG")
-            if [ "${DEBUG_MODE:-0}" = "1" ]; then
-                echo -e "${CYAN}[${timestamp}] [DEBUG] ${sanitized_msg}${NC}"
-            fi
-            ;;
-    esac
-}
+# 【已移除】log_message() 函数已移至 lib/common.sh，使用统一的 log_info/log_warn/log_error/log_success
+# common.sh 提供：
+# - log_info: 信息日志
+# - log_warn: 警告日志
+# - log_error: 错误日志
+# - log_success: 成功日志
+# - sanitize_log: 日志脱敏函数
 
 # 通过 API 获取 Zone 的域名名称
 get_zone_name() {
