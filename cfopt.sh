@@ -1113,8 +1113,29 @@ show_main_menu() {
     # 加载状态配置
     STATUS_CONF="${INSTALL_DIR}/conf/status.conf"
     if [[ -f "${STATUS_CONF}" ]]; then
-        # shellcheck disable=SC1090
-        source "${STATUS_CONF}"
+        # 【安全修复】使用安全的解析方式，避免 source 注入风险
+        # 只允许读取预定义的变量，防止执行任意命令
+        while IFS='=' read -r key value; do
+            # 跳过注释和空行
+            [[ -z "${key}" || "${key}" =~ ^[[:space:]]*# ]] && continue
+            
+            # 去除首尾空格
+            key="$(echo "${key}" | xargs)"
+            value="$(echo "${value}" | xargs)"
+            
+            # 只允许预定义的变量
+            case "${key}" in
+                CF_IP_ENABLED|CF_DNS_ENABLED|DNSPOD_ENABLED|SCHEDULER_ENABLED|LAST_UPDATE_TIME|INSTALL_CHECKED)
+                    # 去除值两边的引号
+                    value="${value#\"}"
+                    value="${value%\"}"
+                    declare "${key}=${value}"
+                    ;;
+                *)
+                    # 忽略未知变量，防止注入
+                    ;;
+            esac
+        done < "${STATUS_CONF}"
     fi
     
     # 【修复】确保所有从 status.conf 加载的变量都有默认值，避免 set -u 报错
