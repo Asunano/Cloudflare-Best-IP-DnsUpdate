@@ -182,6 +182,118 @@ if [[ ! -f "${CONFIG_FILE}" ]]; then
     fi
 fi
 
+# ==================== 【新增】配置文件 Schema 验证 ====================
+# 验证 JSON 格式和必需字段，提前发现配置错误
+validate_config_schema() {
+    local config_file="$1"
+    local errors=()
+    
+    # 1. 验证 JSON 格式
+    if ! jq empty "${config_file}" 2>/dev/null; then
+        echo -e "${RED}[ERROR] 配置文件 JSON 格式错误: ${config_file}${NC}"
+        echo -e "${YELLOW}[提示] 请使用 jq . ${config_file} 检查语法${NC}"
+        exit 1
+    fi
+    
+    # 2. 验证必需字段存在性
+    local required_fields=(
+        ".cfst"
+        ".speed_test"
+        ".paths"
+    )
+    
+    for field in "${required_fields[@]}"; do
+        if ! jq -e "${field}" "${config_file}" &>/dev/null; then
+            errors+=("缺少必需字段: ${field}")
+        fi
+    done
+    
+    # 3. 验证字段类型
+    local type_checks=(
+        ".cfst.threads:number"
+        ".cfst.ping_times:number"
+        ".cfst.download_count:number"
+        ".cfst.download_time:number"
+        ".cfst.port:number"
+        ".cfst.latency_max:number"
+        ".cfst.packet_loss_max:number"
+        ".cfst.speed_min:number"
+        ".cfst.show_count:number"
+        ".speed_test.take_ip_num:number"
+        ".speed_test.max_retry:number"
+        ".cfst.httping:boolean"
+        ".cfst.disable_download:boolean"
+        ".cfst.all_ip:boolean"
+        ".speed_test.output_html:boolean"
+        ".speed_test.enable_log:boolean"
+    )
+    
+    for check in "${type_checks[@]}"; do
+        local field="${check%%:*}"
+        local expected_type="${check##*:}"
+        
+        # 检查字段是否存在
+        if ! jq -e "${field}" "${config_file}" &>/dev/null; then
+            continue  # 字段不存在，使用默认值
+        fi
+        
+        # 检查类型
+        local actual_type
+        actual_type=$(jq -r "${field} | type" "${config_file}" 2>/dev/null)
+        
+        if [[ "${actual_type}" != "${expected_type}" ]]; then
+            errors+=("字段类型错误: ${field} 应为 ${expected_type}，实际为 ${actual_type}")
+        fi
+    done
+    
+    # 4. 验证数值范围
+    local range_checks=(
+        ".cfst.threads:1:1000"
+        ".cfst.ping_times:1:100"
+        ".cfst.download_count:1:100"
+        ".cfst.download_time:1:60"
+        ".cfst.port:1:65535"
+        ".speed_test.take_ip_num:1:100"
+        ".speed_test.max_retry:1:10"
+    )
+    
+    for check in "${range_checks[@]}"; do
+        local field="${check%%:*}"
+        local min_max="${check##*:}"
+        local min_val="${min_max%%:*}"
+        local max_val="${min_max##*:}"
+        
+        # 检查字段是否存在
+        if ! jq -e "${field}" "${config_file}" &>/dev/null; then
+            continue  # 字段不存在，使用默认值
+        fi
+        
+        # 检查范围
+        local value
+        value=$(jq -r "${field}" "${config_file}" 2>/dev/null)
+        
+        if [[ "${value}" -lt "${min_val}" ]] || [[ "${value}" -gt "${max_val}" ]]; then
+            errors+=("字段值超出范围: ${field}=${value} (应在 ${min_val}-${max_val} 之间)")
+        fi
+    done
+    
+    # 5. 报告错误
+    if [[ ${#errors[@]} -gt 0 ]]; then
+        echo -e "${RED}[ERROR] 配置文件验证失败:${NC}"
+        for error in "${errors[@]}"; do
+            echo -e "  ${RED}• ${error}${NC}"
+        done
+        echo ""
+        echo -e "${YELLOW}[提示] 请参考配置文件模板: ${ROOT_DIR}/conf/templates/cf-ip.json.example${NC}"
+        exit 1
+    fi
+}
+
+# 执行配置验证（仅在从文件读取时执行）
+if [[ "${CF_IP_CFG_LOADED:-}" != "true" ]]; then
+    validate_config_schema "${CONFIG_FILE}"
+fi
+
 # ==================== 【性能优化】一次性读取配置文件 ====================
 # 从 JSON 读取配置（【优化】只调用 1 次 jq，避免 20 次 fork + 文件 I/O）
 # 【优化】如果 scheduler 已通过环境变量传递配置，则跳过文件读取
