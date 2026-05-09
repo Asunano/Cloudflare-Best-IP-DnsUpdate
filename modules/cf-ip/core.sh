@@ -682,6 +682,14 @@ else
     echo -e "${GRAY}  第一阶段: 延迟测速 (TCP Ping)${NC}"
 fi
 
+# ==================== 日志内容清理函数 ====================
+# 从日志文件读取内容，剥离 ANSI 转义码，将 \r 转换为 \n
+# 用于 script 命令产生的带 PTY 控制字符的日志文件
+read_log_clean() {
+    local log_file="$1"
+    cat "${log_file}" 2>/dev/null | sed 's/\x1b\[[0-9;]*[a-zA-Z]//g' | tr '\r' '\n' || true
+}
+
 # ==================== 进度条显示函数 ====================
 # 参数：$1=当前值, $2=总值
 display_progress() {
@@ -726,9 +734,9 @@ parse_and_display_progress() {
         # 延迟阶段：提取 "X / Y [...] 可用: X" 格式
         # cfst 实际格式: "26 / 5955 [____________] 可用: 26"
         # 【修复】cfst 使用 \r 覆盖同一行，所有进度更新挤在同一行
-        # 使用 tr '\r' '\n' 将回车符转为换行符，再用 tail -1 取最新进度
+        # 使用 read_log_clean 清理 ANSI 转义码和回车符
         local latest_progress_line
-        latest_progress_line=$(cat "${log_file}" 2>/dev/null | tr '\r' '\n' | grep -E '^[[:space:]]*[0-9]+[[:space:]]*/[[:space:]]*[0-9]+' | tail -1 || true)
+        latest_progress_line=$(read_log_clean "${log_file}" | grep -E '^[[:space:]]*[0-9]+[[:space:]]*/[[:space:]]*[0-9]+' | tail -1 || true)
         
         if [[ -n "${latest_progress_line}" ]]; then
             # 提取行首的 "X / Y" 格式
@@ -753,9 +761,9 @@ parse_and_display_progress() {
         # 下载阶段：提取 "X / Y" 格式的进度
         # cfst 下载格式: "2 / 10 [====] 100%" 或类似
         # 【修复】cfst 使用 \r 覆盖同一行，所有进度更新挤在同一行
-        # 使用 tr '\r' '\n' 将回车符转为换行符，再用 tail -1 取最新进度
+        # 使用 read_log_clean 清理 ANSI 转义码和回车符
         local latest_progress_line
-        latest_progress_line=$(cat "${log_file}" 2>/dev/null | tr '\r' '\n' | grep -E '^[[:space:]]*[0-9]+[[:space:]]*/[[:space:]]*[0-9]+' | tail -1 || true)
+        latest_progress_line=$(read_log_clean "${log_file}" | grep -E '^[[:space:]]*[0-9]+[[:space:]]*/[[:space:]]*[0-9]+' | tail -1 || true)
         
         if [[ -n "${latest_progress_line}" ]]; then
             # 提取 "X / Y" 格式
@@ -829,9 +837,9 @@ monitor_progress() {
         if [[ "${stage}" = "ping" ]]; then
             # 尝试检测是否进入下载阶段
             # 【修复】cfst 使用 \r 覆盖同一行，tail -n 20 对单行文件无效
-            # 使用 tr '\r' '\n' 将回车符转为换行符后再分析
+            # 使用 read_log_clean 清理 ANSI 转义码和回车符后再分析
             local log_content
-            log_content=$(cat "${log_file}" 2>/dev/null | tr '\r' '\n' || true)
+            log_content=$(read_log_clean "${log_file}")
             
             # 方法 1：检测 "下载测速" 或 "下载速度" 或 "MB/s" 字样
             if echo "${log_content}" | grep -q "下载测速\|下载速度\|MB/s"; then
@@ -859,7 +867,7 @@ monitor_progress() {
         
         # 【新增】进度停滞检测：如果 60 秒内进度没有变化，认为 cfst 卡住了
         local current_progress
-        current_progress=$(cat "${log_file}" 2>/dev/null | tr '\r' '\n' | grep -E '^[[:space:]]*[0-9]+[[:space:]]*/[[:space:]]*[0-9]+' | tail -1 || true)
+        current_progress=$(read_log_clean "${log_file}" | grep -E '^[[:space:]]*[0-9]+[[:space:]]*/[[:space:]]*[0-9]+' | tail -1 || true)
         
         if [[ -n "${current_progress}" ]]; then
             if [[ "${current_progress}" != "${last_progress}" ]]; then
