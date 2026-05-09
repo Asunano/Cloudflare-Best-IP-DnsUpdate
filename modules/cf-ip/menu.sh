@@ -268,7 +268,9 @@ show_main_menu() {
     
     # 检查配置状态
     local config_status=0
-    check_config || config_status=$?
+    if ! check_config; then
+        config_status=$?
+    fi
     
     if [[ "${config_status}" -eq 0 ]]; then
         echo -e " ${GREEN}[OK] 配置文件: 已就绪"
@@ -1226,7 +1228,9 @@ view_logs() {
 # ====================== 【主程序入口】 ======================
 # 检查配置文件状态
 local config_status=0
-check_config || config_status=$?
+if ! check_config; then
+    config_status=$?
+fi
 
 if [[ "${config_status}" -ne 0 ]]; then
     echo -e "${YELLOW}[INFO] 检测到尚未配置 CF 优选参数。${NC}"
