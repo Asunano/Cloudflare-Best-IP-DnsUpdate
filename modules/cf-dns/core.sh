@@ -133,8 +133,12 @@ record_dns_update_history() {
     
     # 【修复】使用 flock 保护并发写入，防止多进程同时写入导致数据损坏
     # 【安全修复】子 shell 内用 exit 代替 return，外层用 || true 防止 set -e 中断
+    # 【修复】锁获取失败时记录警告，但不影响主流程
     (
-        flock -n 200 || { log_warn "无法获取历史记录写入锁"; exit 1; }
+        if ! flock -n 200; then
+            log_warn "无法获取历史记录写入锁，跳过本次记录"
+            exit 0
+        fi
         printf '{"time":"%s","action":"dns_update","domain":"%s","records_updated":%d,"records_created":%d,"records_deleted":%d}\n' \
             "$timestamp" "$domain" "$records_updated" "$records_created" "$records_deleted" >> "$history_file"
     ) 200>"${history_file}.lock" || true
