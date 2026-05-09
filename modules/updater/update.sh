@@ -296,50 +296,42 @@ download_with_retry() {
         fi
 
         local http_code=""
-
-        # 【修复核心】不使用临时文件，直接捕获 -w 输出
-        # -o 把响应体写入文件，-w 把状态码输出到 stdout，两者互不干扰
         http_code=$(curl -sLf --max-time 30 \
             -w '%{http_code}' \
             -o "${output_file}" \
             "${url}" 2>/dev/null) || true
-
-        # 【修复】为空时才设为 000，不再覆盖真实状态码
         http_code="${http_code:-000}"
 
-        # 【新增】4xx/5xx 是明确的服务端错误，重试无意义
+        # 4xx/5xx 不重试
         if [[ "${http_code}" =~ ^[45] ]]; then
             echo -e "    ${RED}[ERROR] HTTP ${http_code} — 服务端拒绝${NC}" >&2
             rm -f "${output_file}"
             return 1
         fi
 
-        # 网络层错误（000 = 连接失败/超时/DNS 失败）才值得重试
+        # 000 = 网络层失败，重试
         if [[ "${http_code}" == "000" ]]; then
-            echo -e "    ${YELLOW}[WARN] 连接失败 (网络层错误)${NC}" >&2
+            echo -e "    ${YELLOW}[WARN] 连接失败 (网络层)${NC}" >&2
             retry_count=$((retry_count + 1))
             continue
         fi
 
-        # HTTP 200/304 — 下载成功，验证文件有效性
+        # 200/304 — 验证文件
         if [[ -s "${output_file}" ]]; then
             local first_line
             first_line="$(head -1 "${output_file}" 2>/dev/null | sed '1s/^\xEF\xBB\xBF//')"
             if [[ "${first_line}" == "#!"* ]]; then
                 return 0
             fi
-            # 非脚本文件才检查是否为 HTML 错误页
             local file_size
             file_size=$(wc -c < "${output_file}")
             if [[ ${file_size} -lt 100 ]]; then
                 echo -e "    ${YELLOW}[WARN] 文件过小 (${file_size} bytes)${NC}" >&2
             elif grep -qi "^<html\|^<!DOCTYPE" "${output_file}" 2>/dev/null; then
-                echo -e "    ${YELLOW}[WARN] 下载到 HTML 页面而非脚本${NC}" >&2
+                echo -e "    ${YELLOW}[WARN] 下载到 HTML 页面${NC}" >&2
             else
                 return 0
             fi
-        else
-            echo -e "    ${YELLOW}[WARN] 文件为空 (HTTP ${http_code})${NC}" >&2
         fi
 
         retry_count=$((retry_count + 1))
