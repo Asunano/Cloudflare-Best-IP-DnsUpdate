@@ -231,46 +231,6 @@ check_config() {
     return ${CONFIG_OK}
 }
 
-# ====================== 【函数：显示帮助信息】 ======================
-# shellcheck disable=SC2329
-show_help() {
-    clear 2>/dev/null || true
-    show_welcome
-    echo "=== 使用指南 ==="
-    show_separator
-    echo ""
-    echo "【这是什么？】"
-    echo "  Cloudflare IP 优选工具可以自动测试 Cloudflare CDN 的 IP 地址，"
-    echo "  找出速度最快、延迟最低的优质 IP，并自动更新到您的网站配置中。"
-    echo ""
-    echo "【主要功能】"
-    echo "  - 自动测速: 批量测试 Cloudflare IP 的延迟和下载速度"
-    echo "  - 智能筛选: 自动选择质量最好的 IP 地址"
-    echo "  - 定时更新: 可设置定时任务，定期自动更新 IP"
-    echo "  - 可视化界面: 友好的菜单操作，无需记忆命令"
-    echo ""
-    echo "【快速开始】"
-    echo "  1. 日常维护 -> 通过主菜单管理配置和定时任务"
-    echo "  2. 手动测试 -> 选择 '3) 立即执行测速' 立即运行"
-    echo ""
-    echo "【配置文件说明】"
-    echo "  cf-ip.json - 存储所有配置参数 (JSON 格式)"
-    echo "     位置：${CONFIG_FILE}"
-    echo "     说明：修改后下次执行自动生效，无需重启"
-    echo ""
-    echo "【常见问题】"
-    echo "  Q: 如何修改测速地区？"
-    echo "  A: 主菜单 -> 2) 修改配置 -> 重新配置地区参数"
-    echo ""
-    echo "  Q: 定时任务不执行怎么办？"
-    echo "  A: 主菜单 -> 4) 管理定时任务 -> 检查状态或重新设置"
-    echo ""
-    echo "  Q: 如何查看执行日志？"
-    echo "  A: 主菜单 -> 6) 查看日志 -> 选择要查看的日志类型"
-    echo ""
-    show_separator
-    pause_and_continue "按回车键返回主菜单..."
-}
 
 # ====================== 【函数：显示主菜单】 ======================
 show_main_menu() {
