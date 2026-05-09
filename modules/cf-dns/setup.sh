@@ -45,7 +45,8 @@ acquire_lock() {
 }
 
 # ==================== 路径初始化 ====================
-if [ -z "$ROOT_DIR" ]; then
+# 【关键修复】使用 ${ROOT_DIR:-} 安全引用，防止 set -u 报错
+if [[ -z "${ROOT_DIR:-}" ]]; then
     SCRIPT_DIR="$( cd -P "$( dirname "${BASH_SOURCE[0]}" )" >/dev/null 2>&1 && pwd )"
     ROOT_DIR="$(cd "$SCRIPT_DIR/../.." && pwd)"
 fi
