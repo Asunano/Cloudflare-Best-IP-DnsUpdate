@@ -105,7 +105,8 @@ find_latest_file() {
             sort -rn | head -n 1 | awk '{print $2}'
     else
         # fallback: ls -t
-        # shellcheck disable=SC2012
+        # 【修复】使用双引号保护 search_dir，pattern 保持不加引号以支持 glob 展开
+        # shellcheck disable=SC2086,SC2012
         ls -t "${search_dir}"/${pattern} 2>/dev/null | head -n 1
     fi
 }
