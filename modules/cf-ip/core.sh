@@ -638,18 +638,21 @@ parse_and_display_progress() {
     local bar_width="${3:-40}"  # 【修复】接收进度条宽度参数
     
     if [[ "${current_stage}" = "ping" ]]; then
-        # 延迟阶段：提取 "可用: XXXX / YYYY" 格式
+        # 延迟阶段：提取 "X / Y [...] 可用: X" 格式
+        # cfst 实际格式: "26 / 5955 [____________] 可用: 26"
+        # 使用行首的 "X / Y" 作为进度（已测试/总数）
         # 【修复】使用 tac + grep -m 1 从后向前匹配，减少读写竞态窗口（使用 || true 防止无匹配时退出）
         local ping_line
-        ping_line=$(reverse_read "${log_file}" 2>/dev/null | grep -m 1 '可用:' || true)
+        ping_line=$(reverse_read "${log_file}" 2>/dev/null | grep -m 1 '/ ' || true)
         
         if [[ -n "${ping_line}" ]]; then
-            # 【修复】使用更精确的正则提取 "可用: X / Y" 中的数字
+            # 提取行首的 "X / Y" 格式
             local available_count
             local total_count
-            # 【跨平台】使用 sed 替代 grep -oP（macOS 不支持 -P）
-            available_count=$(echo "${ping_line}" | sed -n 's/.*可用:[[:space:]]*\([0-9]*\).*/\1/p')
-            total_count=$(echo "${ping_line}" | sed -n 's/.*可用:[[:space:]]*[0-9]*[[:space:]]*\/[[:space:]]*\([0-9]*\).*/\1/p')
+            # cfst 格式: "26 / 5955 [↖____________] 可用: 26"
+            # 提取行首的 X 和 Y
+            available_count=$(echo "${ping_line}" | sed -n 's/^[[:space:]]*\([0-9][0-9]*\)[[:space:]]*\/.*/\1/p')
+            total_count=$(echo "${ping_line}" | sed -n 's/^[[:space:]]*[0-9][0-9]*[[:space:]]*\/[[:space:]]*\([0-9][0-9]*\).*/\1/p')
             
             # 【修复】严格校验：非空 + 纯数字 + 总数大于 0
             if [[ -n "${available_count}" ]] && [[ -n "${total_count}" ]] && \
@@ -662,18 +665,20 @@ parse_and_display_progress() {
         # 修复：默认提示也固定长度，防止字符残留
         printf "\r%-80b" "${CYAN}  [进度] 正在测速中...${NC}   "
     else
-        # 下载阶段：提取 "X / 10" 格式的进度
+        # 下载阶段：提取 "X / Y" 格式的进度
+        # cfst 下载格式: "2 / 10 [====] 100%" 或类似
         # 【修复】使用 tac + grep -m 1 从后向前匹配，减少读写竞态窗口（使用 || true 防止无匹配时退出）
         local download_line
-        download_line=$(reverse_read "${log_file}" 2>/dev/null | grep -m 1 -E '[0-9]+\s*/\s*[0-9]+' || true)
+        download_line=$(reverse_read "${log_file}" 2>/dev/null | grep -m 1 -E '^[[:space:]]*[0-9]+[[:space:]]*/' || true)
         
         if [[ -n "${download_line}" ]]; then
-            # 【修复】使用更精确的正则提取 "X / Y" 中的数字（使用 || true 防止 grep 无匹配时退出）
+            # 提取 "X / Y" 格式
             local download_current
             local download_total
-            # 【跨平台】使用 sed 替代 grep -oP（macOS 不支持 -P）
-            download_current=$(echo "${download_line}" | sed -n 's/^[[:space:]]*\([0-9]*\)[[:space:]]*\/.*/\1/p')
-            download_total=$(echo "${download_line}" | sed -n 's/.*[0-9][[:space:]]*\/[[:space:]]*\([0-9]*\).*/\1/p')
+            # cfst 下载格式: "2 / 10 [====] 100%"
+            # 提取行首的 X 和 Y
+            download_current=$(echo "${download_line}" | sed -n 's/^[[:space:]]*\([0-9][0-9]*\)[[:space:]]*\/.*/\1/p')
+            download_total=$(echo "${download_line}" | sed -n 's/^[[:space:]]*[0-9][0-9]*[[:space:]]*\/[[:space:]]*\([0-9][0-9]*\).*/\1/p')
             
             # 【修复】严格校验：非空 + 纯数字 + 总数大于 0
             if [[ -n "${download_current}" ]] && [[ -n "${download_total}" ]] && \
