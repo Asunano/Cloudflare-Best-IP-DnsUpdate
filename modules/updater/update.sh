@@ -293,26 +293,12 @@ download_with_retry() {
         fi
         
         # 【修复】捕获 curl 的 HTTP 状态码
-        local http_code="000"
+        # 使用命令替换直接捕获 -w 的输出，避免临时文件
+        local http_code
+        http_code=$(curl -sLf --max-time 30 -w '%{http_code}' -o "${output_file}" "${url}" 2>/dev/null) || http_code="000"
         
-        # 【正确做法】使用临时文件捕获 -w 的输出
-        local status_file
-        status_file=$(mktemp /tmp/cfopt-curl-status.XXXXXX)
-        
-        # 执行 curl，将 -w 输出的状态码写入临时文件
-        curl -sLf --max-time 30 -w "%{http_code}" -o "${output_file}" "${url}" 2>/dev/null > "${status_file}"
-        local curl_exit=$?
-        
-        if [[ -s "${status_file}" ]]; then
-            http_code=$(cat "${status_file}")
-        fi
-        
-        rm -f "${status_file}"
-        
-        # 如果 curl 退出码非 0，标记为失败
-        if [[ ${curl_exit} -ne 0 ]]; then
-            http_code="000"
-        fi
+        # 【修复】确保 http_code 不为空
+        http_code="${http_code:-000}"
         
         if [[ "${http_code}" == "200" ]] || [[ "${http_code}" == "304" ]]; then
             # 验证下载的文件非空且有效
