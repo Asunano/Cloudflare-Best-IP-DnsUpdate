@@ -471,7 +471,18 @@ check_updates() {
         local local_file="${ROOT_DIR}/${local_path}"
         local local_hash=""
         if [[ -f "${local_file}" ]]; then
-            local_hash=$(sha256sum "${local_file}" | awk '{print $1}')
+            # 【修复】兼容嵌入式系统：优先使用 sha256sum，备用 shasum -a 256
+            if command -v sha256sum &>/dev/null; then
+                local_hash=$(sha256sum "${local_file}" | awk '{print $1}')
+            elif command -v shasum &>/dev/null; then
+                local_hash=$(shasum -a 256 "${local_file}" | awk '{print $1}')
+            else
+                echo -e "  ${RED}[FAIL]${NC} ${display_name} (缺少哈希校验工具)"
+                echo -e "    ${YELLOW}提示: 请安装 coreutils 或 perl-digest-sha${NC}"
+                needs_update=true
+                update_list+=("${display_name}")
+                continue
+            fi
         else
             echo -e "  ${YELLOW}[MISS]${NC} ${display_name} (文件不存在)"
             needs_update=true
@@ -607,7 +618,16 @@ perform_update() {
         local local_file="${ROOT_DIR}/${local_path}"
         local local_hash=""
         if [[ -f "${local_file}" ]]; then
-            local_hash=$(sha256sum "${local_file}" | awk '{print $1}')
+            # 【修复】兼容嵌入式系统：优先使用 sha256sum，备用 shasum -a 256
+            if command -v sha256sum &>/dev/null; then
+                local_hash=$(sha256sum "${local_file}" | awk '{print $1}')
+            elif command -v shasum &>/dev/null; then
+                local_hash=$(shasum -a 256 "${local_file}" | awk '{print $1}')
+            else
+                echo -e "  ${RED}[FAIL]${NC} ${display_name} (缺少哈希校验工具)"
+                echo -e "    ${YELLOW}提示: 请安装 coreutils 或 perl-digest-sha${NC}"
+                return ${EXIT_MISSING_TOOL}
+            fi
         fi
         
         # 对比哈希值，相同则跳过
