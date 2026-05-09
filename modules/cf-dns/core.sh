@@ -266,7 +266,7 @@ CURRENT_TIME=$(date +%s)
 FILE_MOD_TIME=$(stat_file_mtime "$IP_FILE")
 if [ -n "$FILE_MOD_TIME" ] && [ "$FILE_MOD_TIME" != "0" ]; then
     AGE_HOURS=$(( (CURRENT_TIME - FILE_MOD_TIME) / 3600 ))
-    if [ $AGE_HOURS -ge 48 ]; then # 超过 48 小时视为过期
+    if [[ "${AGE_HOURS}" -ge 48 ]]; then # 超过 48 小时视为过期
         log "${YELLOW}[WARN] IP 数据已过期 (${AGE_HOURS} 小时前更新)。${NC}"
         log "${YELLOW}[WARN] 建议重新测速以获取最优节点，当前将尝试继续执行...${NC}"
     fi
