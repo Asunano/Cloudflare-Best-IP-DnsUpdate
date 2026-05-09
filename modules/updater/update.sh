@@ -355,15 +355,12 @@ download_file() {
     temp_file=$(mktemp /tmp/cfopt-updater.XXXXXX)
     chmod 600 "${temp_file}"
 
-    # updater.sh 特殊处理：保存原始临时文件路径用于后续清理
-    local original_temp="${temp_file}"
-
+    # 【特殊处理】updater.sh 自身：下载到 .new 文件，避免覆盖正在运行的脚本
     if [[ "${remote_path}" = "modules/updater/update.sh" ]]; then
+        rm -f "${temp_file}"  # 清理原始临时文件，不再需要它
         temp_file="${ROOT_DIR}/modules/updater/update.sh.new"
-        # 不再把原始临时文件注册到 TEMP_FILES（它会被立即删除）
-        rm -f "${original_temp}"
     else
-        TEMP_FILES+=("${temp_file}")
+        TEMP_FILES+=("${temp_file}")  # 只有非 updater 才注册到清理列表
     fi
     
     local download_success=false
