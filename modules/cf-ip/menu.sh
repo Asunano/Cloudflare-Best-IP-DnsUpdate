@@ -1143,7 +1143,6 @@ run_test() {
     cd "${ROOT_DIR}" || return 1
     if ! CF_OPT_ENTRY=1 bash "${IP_AUTO_SCRIPT}"; then
         echo -e "${RED}[ERROR] 测速执行失败，请检查日志${NC}"
-        read -r -p "按回车键返回..."
         return 1
     fi
     echo ""
