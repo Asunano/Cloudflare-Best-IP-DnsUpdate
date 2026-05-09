@@ -24,6 +24,18 @@ fi
 # 如果先启用 set -u，会导致未定义变量报错
 set -euo pipefail
 
+# 【关键修复】检查 common.sh 是否成功加载
+if ! declare -f log_info >/dev/null 2>&1; then
+    # common.sh 未加载，定义临时的日志函数
+    RED='\033[0;31m'
+    YELLOW='\033[1;33m'
+    CYAN='\033[0;36m'
+    NC='\033[0m'
+    echo -e "${RED}[ERROR] 无法加载公共函数库: ${ROOT_DIR}/lib/common.sh${NC}" >&2
+    echo -e "${YELLOW}[INFO] 请检查文件是否存在且可读${NC}" >&2
+    exit 1
+fi
+
 # ==================== 信号捕获与资源清理 ====================
 # shellcheck disable=SC2329
 cleanup() {
