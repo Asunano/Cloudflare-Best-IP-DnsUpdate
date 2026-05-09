@@ -262,7 +262,24 @@ log_error() { _cfopt_log "${_LOG_MODULE:-cfopt}" "${_LOG_FILE:-}" "ERROR" "$@"; 
 log_success() { _cfopt_log "${_LOG_MODULE:-cfopt}" "${_LOG_FILE:-}" "OK" "$@"; }
 
 # 向后兼容别名（dnspod-dns 使用 log_msg）
-log_msg() { _cfopt_log "${_LOG_MODULE:-cfopt}" "${_LOG_FILE:-}" "$@"; }
+# 【修复】添加智能级别判断，与 log() 函数保持一致
+log_msg() {
+    # 如果没有参数，直接返回
+    [[ $# -eq 0 ]] && return 0
+
+    local first_arg="$1"
+    case "${first_arg}" in
+        INFO|WARN|ERROR|OK)
+            # 标准调用: log_msg "INFO" "message..."
+            _cfopt_log "${_LOG_MODULE:-cfopt}" "${_LOG_FILE:-}" "$@"
+            ;;
+        *)
+            # 简化调用: log_msg "some message"
+            # 整个内容作为消息，级别设为 INFO
+            _cfopt_log "${_LOG_MODULE:-cfopt}" "${_LOG_FILE:-}" "INFO" "$@"
+            ;;
+    esac
+}
 
 # 通用日志函数（智能级别判断）
 # 支持两种调用方式：
