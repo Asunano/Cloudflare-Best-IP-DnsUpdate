@@ -698,7 +698,14 @@ call_api() {
         curl_args+=("--data" "@-")
         
         # 执行请求（通过管道传递 payload）
-        result=$(printf '%s' "${payload}" | curl "${curl_args[@]}")
+        result=$(printf '%s' "${payload}" | curl "${curl_args[@]}") || true
+        
+        # 【修复】检查空响应，防止后续 jq 解析失败
+        if [[ -z "${result}" ]]; then
+            log_error "API 响应为空（网络错误或超时）"
+            echo '{"status":{"code":"-1","message":"Empty response"}}'
+            return 1
+        fi
         
         # 【安全修复】严格验证 API 响应，区分成功和错误
         if echo "${result}" | grep -q "Response"; then
