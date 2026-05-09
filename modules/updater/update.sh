@@ -362,22 +362,16 @@ download_file() {
     local temp_file
     temp_file=$(mktemp /tmp/cfopt-updater.XXXXXX)
     chmod 600 "${temp_file}"
-    TEMP_FILES+=("${temp_file}")  # 【修复】注册临时文件
-    
-    # 【特殊处理】updater.sh 自身：下载到 .new 文件，避免覆盖正在运行的脚本
+
+    # updater.sh 特殊处理：保存原始临时文件路径用于后续清理
+    local original_temp="${temp_file}"
+
     if [[ "${remote_path}" = "modules/updater/update.sh" ]]; then
-        local original_temp="${temp_file}"  # 【修复】记住原始临时文件路径
         temp_file="${ROOT_DIR}/modules/updater/update.sh.new"
-        
-        # 【修复】从 TEMP_FILES 中移除原始临时文件（它不再需要被跟踪）
-        local -a filtered=()
-        for f in "${TEMP_FILES[@]}"; do
-            [[ "${f}" != "${original_temp}" ]] && filtered+=("${f}")
-        done
-        TEMP_FILES=("${filtered[@]}")
-        
-        # 【修复】立即清理原始临时文件
+        # 不再把原始临时文件注册到 TEMP_FILES（它会被立即删除）
         rm -f "${original_temp}"
+    else
+        TEMP_FILES+=("${temp_file}")
     fi
     
     local download_success=false
@@ -417,10 +411,8 @@ download_file() {
     if [[ "${download_success}" = false ]]; then
         echo -e "  ${YELLOW}[WARN]${NC} 镜像源失败，尝试官方源..."
         local full_url="${RAW_BASE_URL}/${remote_path}"
-        rm -f "${temp_file}"
         
-        # 【安全修复】从 TEMP_FILES 数组中移除旧的临时文件路径
-        # 使用索引遍历而非模式替换，避免通配符注入风险
+        # 【修复】从 TEMP_FILES 数组中移除旧的临时文件路径
         local -a new_temp_files=()
         for existing_file in "${TEMP_FILES[@]}"; do
             if [[ "${existing_file}" != "${temp_file}" ]]; then
@@ -429,11 +421,12 @@ download_file() {
         done
         TEMP_FILES=("${new_temp_files[@]}")
         
+        rm -f "${temp_file}"
+
         temp_file=$(mktemp /tmp/cfopt-updater.XXXXXX)
         chmod 600 "${temp_file}"
-        TEMP_FILES+=("${temp_file}")  # 重新注册
-        
-        # 【优化】复用统一的重试函数
+        TEMP_FILES+=("${temp_file}")
+
         if download_with_retry "${full_url}" "${temp_file}"; then
             download_success=true
         fi
