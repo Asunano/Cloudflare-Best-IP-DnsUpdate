@@ -165,19 +165,48 @@ if ! command -v jq &>/dev/null; then
     exit 1
 fi
 
+# ==================== 【新增】自动创建默认配置 ====================
 if [[ ! -f "${CONFIG_FILE}" ]]; then
-    echo -e "${RED}[ERROR] 配置文件不存在: ${CONFIG_FILE}${NC}"
-    echo ""
+    echo -e "${CYAN}[INFO] 检测到配置文件不存在，正在创建默认配置...${NC}"
     
-    # 检测是否为交互式环境（有终端输入）
-    if [[ -t 0 ]]; then
-        echo -e "${YELLOW}[WARN] 请先通过 cfopt 主菜单进入 CF-IP 模块进行配置${NC}"
-        echo -e "${CYAN}提示: 运行 'cfopt' 命令，然后选择 '2. CF IP 优选管理'${NC}"
-        exit 0
+    # 创建 conf 目录
+    mkdir -p "$(dirname "${CONFIG_FILE}")" 2>/dev/null || true
+    
+    # 使用 jq 创建最小化配置（所有 cfst 参数设为 null，使用 cfst 内置默认值）
+    if command -v jq &>/dev/null; then
+        jq -n '{
+            "enabled": true,
+            "speed_test": {
+                "take_ip_num": 5,
+                "output_html": true,
+                "max_retry": 3,
+                "enable_log": true
+            },
+            "cfst": {
+                "threads": null,
+                "colo": null,
+                "ping_times": null,
+                "download_count": null,
+                "download_time": null,
+                "port": null,
+                "url": null,
+                "httping": null,
+                "latency_max": null,
+                "packet_loss_max": null,
+                "speed_min": null,
+                "show_count": null,
+                "ip_file": null,
+                "disable_download": null,
+                "all_ip": null
+            }
+        }' > "${CONFIG_FILE}"
+        chmod 600 "${CONFIG_FILE}"
+        echo -e "${GREEN}[OK] 已创建默认配置文件: ${CONFIG_FILE}${NC}"
+        echo -e "${YELLOW}[WARN] 建议通过 cfopt -> 2. CF IP 优选管理 -> 1. 修改测速配置 调整参数${NC}"
+        echo ""
     else
-        # 非交互式环境（定时任务等），直接退出
-        echo -e "${YELLOW}[WARN] 请先运行配置向导创建配置文件${NC}"
-        echo -e "${YELLOW}[WARN] 命令: cfopt -> 2. CF IP 优选管理 -> 1. 管理配置${NC}"
+        echo -e "${RED}[ERROR] jq 未安装，无法创建配置文件${NC}"
+        echo -e "${YELLOW}[WARN] 请安装 jq (apt install jq 或 yum install jq)${NC}"
         exit 1
     fi
 fi
