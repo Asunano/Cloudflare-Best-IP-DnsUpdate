@@ -939,23 +939,24 @@ for ((retry=0; retry<=MAX_RETRY; retry++)); do
         cd "$(dirname "${CFST_BIN}")" || exit 1
         
         # 3. 【修复】启动测速程序（后台运行），添加超时保护
-        # 【关键修复】使用 stdbuf 禁用输出缓冲，确保进度实时更新
+        # 【关键修复】cfst 是 Go 编译的二进制，stdbuf 通过 LD_PRELOAD 修改 glibc 缓冲区对 Go 无效
+        # 【关键修复】使用 script 创建伪终端(PTY)，让 cfst 认为连接了真实终端，强制实时刷新进度输出
+        
+        # 构建命令字符串（用于 script -c 参数）
+        local cfst_cmd_str="${CFST_CMD_ARRAY[*]}"
+        
         if command -v timeout >/dev/null 2>&1; then
-            # 使用 timeout 命令限制执行时间（推荐方式）
-            if command -v stdbuf >/dev/null 2>&1; then
-                stdbuf -oL -eL timeout "${cfst_timeout}" "${CFST_CMD_ARRAY[@]}" > "${LOG_FILE}" 2>&1 &
-            else
-                timeout "${cfst_timeout}" "${CFST_CMD_ARRAY[@]}" > "${LOG_FILE}" 2>&1 &
-            fi
+            # 使用 timeout + script 组合：timeout 控制超时，script 提供 PTY
+            # -q: 安静模式，不输出 "Script started/done" 提示
+            # -e: 返回子进程的退出码（而非 script 自身的）
+            # -f: 每次写入后 flush，确保实时输出
+            # exec: 让 cfst 替换 shell 进程以正确接收信号
+            timeout "${cfst_timeout}" script -qefc "exec ${cfst_cmd_str}" /dev/null > "${LOG_FILE}" 2>&1 &
             CFST_PID=$!
         else
             # 【安全增强】fallback：使用 Bash 内置功能实现超时保护
             # 避免在没有 timeout 命令的系统上进程无限挂起
-            if command -v stdbuf >/dev/null 2>&1; then
-                stdbuf -oL -eL "${CFST_CMD_ARRAY[@]}" > "${LOG_FILE}" 2>&1 &
-            else
-                "${CFST_CMD_ARRAY[@]}" > "${LOG_FILE}" 2>&1 &
-            fi
+            script -qefc "exec ${cfst_cmd_str}" /dev/null > "${LOG_FILE}" 2>&1 &
             CFST_PID=$!
             
             # 启动超时监控子进程
