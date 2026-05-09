@@ -801,14 +801,23 @@ for ((retry=0; retry<=MAX_RETRY; retry++)); do
         cd "$(dirname "${CFST_BIN}")" || exit 1
         
         # 3. 【修复】启动测速程序（后台运行），添加超时保护
+        # 【关键修复】使用 stdbuf 禁用输出缓冲，确保进度实时更新
         if command -v timeout >/dev/null 2>&1; then
             # 使用 timeout 命令限制执行时间（推荐方式）
-            timeout "${cfst_timeout}" "${CFST_CMD_ARRAY[@]}" > "${LOG_FILE}" 2>&1 &
+            if command -v stdbuf >/dev/null 2>&1; then
+                stdbuf -oL -eL timeout "${cfst_timeout}" "${CFST_CMD_ARRAY[@]}" > "${LOG_FILE}" 2>&1 &
+            else
+                timeout "${cfst_timeout}" "${CFST_CMD_ARRAY[@]}" > "${LOG_FILE}" 2>&1 &
+            fi
             CFST_PID=$!
         else
             # 【安全增强】fallback：使用 Bash 内置功能实现超时保护
             # 避免在没有 timeout 命令的系统上进程无限挂起
-            "${CFST_CMD_ARRAY[@]}" > "${LOG_FILE}" 2>&1 &
+            if command -v stdbuf >/dev/null 2>&1; then
+                stdbuf -oL -eL "${CFST_CMD_ARRAY[@]}" > "${LOG_FILE}" 2>&1 &
+            else
+                "${CFST_CMD_ARRAY[@]}" > "${LOG_FILE}" 2>&1 &
+            fi
             CFST_PID=$!
             
             # 启动超时监控子进程
