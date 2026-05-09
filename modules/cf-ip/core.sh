@@ -640,19 +640,19 @@ parse_and_display_progress() {
     if [[ "${current_stage}" = "ping" ]]; then
         # 延迟阶段：提取 "X / Y [...] 可用: X" 格式
         # cfst 实际格式: "26 / 5955 [____________] 可用: 26"
-        # 使用行首的 "X / Y" 作为进度（已测试/总数）
-        # 【修复】使用 tac + grep -m 1 从后向前匹配，减少读写竞态窗口（使用 || true 防止无匹配时退出）
-        local ping_line
-        ping_line=$(reverse_read "${log_file}" 2>/dev/null | grep -m 1 '/ ' || true)
+        # 【修复】cfst 使用 \r 覆盖同一行，所有进度更新挤在同一行
+        # 使用 tr '\r' '\n' 将回车符转为换行符，再用 tail -1 取最新进度
+        local latest_progress_line
+        latest_progress_line=$(cat "${log_file}" 2>/dev/null | tr '\r' '\n' | grep -E '^\s*[0-9]+\s*/\s*[0-9]+' | tail -1 || true)
         
-        if [[ -n "${ping_line}" ]]; then
+        if [[ -n "${latest_progress_line}" ]]; then
             # 提取行首的 "X / Y" 格式
             local available_count
             local total_count
             # cfst 格式: "26 / 5955 [↖____________] 可用: 26"
             # 提取行首的 X 和 Y
-            available_count=$(echo "${ping_line}" | sed -n 's/^[[:space:]]*\([0-9][0-9]*\)[[:space:]]*\/.*/\1/p')
-            total_count=$(echo "${ping_line}" | sed -n 's/^[[:space:]]*[0-9][0-9]*[[:space:]]*\/[[:space:]]*\([0-9][0-9]*\).*/\1/p')
+            available_count=$(echo "${latest_progress_line}" | sed -n 's/^[[:space:]]*\([0-9][0-9]*\)[[:space:]]*\/.*/\1/p')
+            total_count=$(echo "${latest_progress_line}" | sed -n 's/^[[:space:]]*[0-9][0-9]*[[:space:]]*\/[[:space:]]*\([0-9][0-9]*\).*/\1/p')
             
             # 【修复】严格校验：非空 + 纯数字 + 总数大于 0
             if [[ -n "${available_count}" ]] && [[ -n "${total_count}" ]] && \
@@ -667,18 +667,19 @@ parse_and_display_progress() {
     else
         # 下载阶段：提取 "X / Y" 格式的进度
         # cfst 下载格式: "2 / 10 [====] 100%" 或类似
-        # 【修复】使用 tac + grep -m 1 从后向前匹配，减少读写竞态窗口（使用 || true 防止无匹配时退出）
-        local download_line
-        download_line=$(reverse_read "${log_file}" 2>/dev/null | grep -m 1 -E '^[[:space:]]*[0-9]+[[:space:]]*/' || true)
+        # 【修复】cfst 使用 \r 覆盖同一行，所有进度更新挤在同一行
+        # 使用 tr '\r' '\n' 将回车符转为换行符，再用 tail -1 取最新进度
+        local latest_progress_line
+        latest_progress_line=$(cat "${log_file}" 2>/dev/null | tr '\r' '\n' | grep -E '^\s*[0-9]+\s*/\s*[0-9]+' | tail -1 || true)
         
-        if [[ -n "${download_line}" ]]; then
+        if [[ -n "${latest_progress_line}" ]]; then
             # 提取 "X / Y" 格式
             local download_current
             local download_total
             # cfst 下载格式: "2 / 10 [====] 100%"
             # 提取行首的 X 和 Y
-            download_current=$(echo "${download_line}" | sed -n 's/^[[:space:]]*\([0-9][0-9]*\)[[:space:]]*\/.*/\1/p')
-            download_total=$(echo "${download_line}" | sed -n 's/^[[:space:]]*[0-9][0-9]*[[:space:]]*\/[[:space:]]*\([0-9][0-9]*\).*/\1/p')
+            download_current=$(echo "${latest_progress_line}" | sed -n 's/^[[:space:]]*\([0-9][0-9]*\)[[:space:]]*\/.*/\1/p')
+            download_total=$(echo "${latest_progress_line}" | sed -n 's/^[[:space:]]*[0-9][0-9]*[[:space:]]*\/[[:space:]]*\([0-9][0-9]*\).*/\1/p')
             
             # 【修复】严格校验：非空 + 纯数字 + 总数大于 0
             if [[ -n "${download_current}" ]] && [[ -n "${download_total}" ]] && \
@@ -736,9 +737,10 @@ monitor_progress() {
         # - download 阶段：格式为 "小数字 / 小数字" 或包含 "下载速度" 或 "MB/s"
         if [[ "${stage}" = "ping" ]]; then
             # 尝试检测是否进入下载阶段
-            # 检查日志中是否包含下载阶段的特征
+            # 【修复】cfst 使用 \r 覆盖同一行，tail -n 20 对单行文件无效
+            # 使用 tr '\r' '\n' 将回车符转为换行符后再分析
             local log_content
-            log_content=$(tail -n 20 "${log_file}" 2>/dev/null || true)
+            log_content=$(cat "${log_file}" 2>/dev/null | tr '\r' '\n' || true)
             
             # 方法 1：检测 "下载测速" 或 "下载速度" 或 "MB/s" 字样
             if echo "${log_content}" | grep -q "下载测速\|下载速度\|MB/s"; then
