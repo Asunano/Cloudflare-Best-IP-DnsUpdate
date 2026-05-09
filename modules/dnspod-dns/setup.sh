@@ -1768,7 +1768,8 @@ manage_ip_content() {
                 echo ""
                 
                 local temp_file
-                temp_file=$(mktemp)
+                temp_file=$(mktemp /tmp/cfopt-dnspod.XXXXXX)
+                chmod 600 "${temp_file}"
                 # shellcheck disable=SC2034
                 local invalid_count=0
                 

@@ -402,7 +402,8 @@ if [[ "${MODE}" = "multi" ]]; then
             isp_lines_str="${ISP_LINES[*]}"
             
             # 更新配置文件（使用 jq）
-            temp_file=$(mktemp)
+            temp_file=$(mktemp /tmp/cfopt-dnspod.XXXXXX)
+            chmod 600 "${temp_file}"
             if jq --arg lines "$isp_lines_str" '.dns.isp_lines = $lines' "$CONFIG_FILE" > "$temp_file" 2>/dev/null; then
                 mv "$temp_file" "$CONFIG_FILE"
                 chmod 600 "$CONFIG_FILE"
@@ -1715,7 +1716,8 @@ update_config_field() {
     fi
     
     local temp_file
-    temp_file=$(mktemp)
+    temp_file=$(mktemp /tmp/cfopt-dnspod.XXXXXX)
+    chmod 600 "${temp_file}"
     
     # 【修复】自动判断值类型：纯数字用 --argjson，其他用 --arg
     local jq_arg="--arg"

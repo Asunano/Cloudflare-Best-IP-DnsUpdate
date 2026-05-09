@@ -616,7 +616,8 @@ generate_config_simple() {
     
     # 使用 jq 创建 JSON 配置文件
     local temp_file
-    temp_file=$(mktemp)
+    temp_file=$(mktemp /tmp/cfopt-cf-ip.XXXXXX)
+    chmod 600 "${temp_file}"
     
     if ! jq -n \
         --arg cfst_dir "${CFST_DIR}" \
@@ -716,7 +717,8 @@ generate_config_advanced() {
     
     # 使用 jq 创建完整的 JSON 配置文件
     local temp_file
-    temp_file=$(mktemp)
+    temp_file=$(mktemp /tmp/cfopt-cf-ip.XXXXXX)
+    chmod 600 "${temp_file}"
     
     if ! jq -n \
         --arg cfst_dir "${CFST_DIR}" \

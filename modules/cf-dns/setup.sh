@@ -655,7 +655,8 @@ full_config_wizard() {
     
     # 使用 jq 直接生成配置
     local temp_file
-    temp_file=$(mktemp)
+    temp_file=$(mktemp /tmp/cfopt-cf-dns.XXXXXX)
+    chmod 600 "${temp_file}"
     
     jq -n \
         --arg domain "$cf_domain" \
@@ -815,7 +816,8 @@ EOF
             mkdir -p "${ROOT_DIR}/conf"
             
             # 【修复】复用已声明的 temp_file 变量，避免重复 local 声明
-            temp_file=$(mktemp)
+            temp_file=$(mktemp /tmp/cfopt-cf-dns.XXXXXX)
+            chmod 600 "${temp_file}"
             
             jq -n '{
                 "_comment": "CF-IP 优选程序配置",
@@ -993,7 +995,8 @@ modify_ip_limit() {
     
     if [ -n "$new_limit" ] && [[ "$new_limit" =~ ^[0-9]+$ ]]; then
         local temp_file
-        temp_file=$(mktemp)
+        temp_file=$(mktemp /tmp/cfopt-cf-dns.XXXXXX)
+        chmod 600 "${temp_file}"
         jq --argjson limit "$new_limit" '.dns.max_ips_per_record = $limit' "$CONFIG_FILE" > "$temp_file" && mv "$temp_file" "$CONFIG_FILE"
         chmod 600 "$CONFIG_FILE"
         echo -e "${GREEN}[OK] IP 数量限制已更新为: ${new_limit}${NC}"
@@ -1034,7 +1037,8 @@ toggle_module_status() {
         read -r -p "是否禁用此模块? (y/n): " confirm
         if [ "$confirm" = "y" ] || [ "$confirm" = "Y" ]; then
             local temp_file
-            temp_file=$(mktemp)
+            temp_file=$(mktemp /tmp/cfopt-cf-dns.XXXXXX)
+            chmod 600 "${temp_file}"
             jq '.enabled = false' "$CONFIG_FILE" > "$temp_file" && mv "$temp_file" "$CONFIG_FILE"
             chmod 600 "$CONFIG_FILE"
             echo -e "${GREEN}[OK] 模块已禁用${NC}"
@@ -1050,7 +1054,8 @@ toggle_module_status() {
         read -r -p "是否启用此模块? (y/n): " confirm
         if [ "$confirm" = "y" ] || [ "$confirm" = "Y" ]; then
             local temp_file
-            temp_file=$(mktemp)
+            temp_file=$(mktemp /tmp/cfopt-cf-dns.XXXXXX)
+            chmod 600 "${temp_file}"
             jq '.enabled = true' "$CONFIG_FILE" > "$temp_file" && mv "$temp_file" "$CONFIG_FILE"
             chmod 600 "$CONFIG_FILE"
             echo -e "${GREEN}[OK] 模块已启用${NC}"
@@ -1167,7 +1172,8 @@ manage_ip_content() {
             echo ""
             
             local temp_file
-            temp_file=$(mktemp)
+            temp_file=$(mktemp /tmp/cfopt-cf-dns.XXXXXX)
+            chmod 600 "${temp_file}"
             
             # 【优化】使用进程替换 + awk 单次处理，避免多管道 fork 开销
             while IFS= read -r line; do
@@ -1547,7 +1553,8 @@ delete_config() {
     local deploy_record_file="${ROOT_DIR}/modules/quick-deploy/deploy_record.json"
     if [[ -f "$deploy_record_file" ]] && command -v jq &>/dev/null; then
         local temp_file
-        temp_file=$(mktemp)
+        temp_file=$(mktemp /tmp/cfopt-cf-dns.XXXXXX)
+        chmod 600 "${temp_file}"
         if jq --arg d "$domain_name" '.domains = [.domains[] | select(.domain != $d)]' \
            "$deploy_record_file" > "$temp_file" 2>/dev/null; then
             mv "$temp_file" "$deploy_record_file"
@@ -1604,7 +1611,8 @@ modify_config_menu() {
                 echo ""
                 if [ -n "$new_token" ]; then
                     local temp_file
-                    temp_file=$(mktemp)
+                    temp_file=$(mktemp /tmp/cfopt-cf-dns.XXXXXX)
+                    chmod 600 "${temp_file}"
                     jq --arg token "$new_token" '.api.token = $token' "$CONFIG_FILE" > "$temp_file" && mv "$temp_file" "$CONFIG_FILE"
                     chmod 600 "$CONFIG_FILE"
                     echo -e "${GREEN}[OK] CF_API_TOKEN 已更新${NC}"
@@ -1615,7 +1623,8 @@ modify_config_menu() {
                 read -r -p "请输入新的 CF_ZONE_ID (留空保持不变): " new_zone
                 if [ -n "$new_zone" ]; then
                     local temp_file
-                    temp_file=$(mktemp)
+                    temp_file=$(mktemp /tmp/cfopt-cf-dns.XXXXXX)
+                    chmod 600 "${temp_file}"
                     jq --arg zone_id "$new_zone" '.api.zone_id = $zone_id' "$CONFIG_FILE" > "$temp_file" && mv "$temp_file" "$CONFIG_FILE"
                     chmod 600 "$CONFIG_FILE"
                     echo -e "${GREEN}[OK] CF_ZONE_ID 已更新${NC}"
@@ -1634,7 +1643,8 @@ modify_config_menu() {
                         zone_name=$(get_zone_name "$zone_id" "$api_token")
                         if [ -n "$zone_name" ]; then
                             local temp_file
-                            temp_file=$(mktemp)
+                            temp_file=$(mktemp /tmp/cfopt-cf-dns.XXXXXX)
+                            chmod 600 "${temp_file}"
                             jq --arg domain "$zone_name" '.dns.domain = $domain' "$CONFIG_FILE" > "$temp_file" && mv "$temp_file" "$CONFIG_FILE"
                             chmod 600 "$CONFIG_FILE"
                             echo -e "${GREEN}[OK] 已更新域名: ${zone_name}${NC}"
@@ -1675,7 +1685,8 @@ modify_config_menu() {
                     # 验证输入
                     if [ "$new_dns" = "@" ] || [[ "$new_dns" =~ ^[a-zA-Z0-9][a-zA-Z0-9_-]*$ ]]; then
                         local temp_file
-                        temp_file=$(mktemp)
+                        temp_file=$(mktemp /tmp/cfopt-cf-dns.XXXXXX)
+                        chmod 600 "${temp_file}"
                         jq --arg dns_name "$new_dns" '.dns.record_name = $dns_name' "$CONFIG_FILE" > "$temp_file" && mv "$temp_file" "$CONFIG_FILE"
                         chmod 600 "$CONFIG_FILE"
                         echo -e "${GREEN}[OK] CF_DNS_NAME 已更新为: ${new_dns}${NC}"
@@ -1709,7 +1720,8 @@ modify_config_menu() {
                 read -r -p "请输入新的 IP_FILE (留空保持不变): " new_ip_file
                 if [ -n "$new_ip_file" ]; then
                     local temp_file
-                    temp_file=$(mktemp)
+                    temp_file=$(mktemp /tmp/cfopt-cf-dns.XXXXXX)
+                    chmod 600 "${temp_file}"
                     jq --arg ip_file "$new_ip_file" '.ip_source.file_path = $ip_file' "$CONFIG_FILE" > "$temp_file" && mv "$temp_file" "$CONFIG_FILE"
                     chmod 600 "$CONFIG_FILE"
                     mkdir -p "$(dirname "$new_ip_file")"
@@ -1744,7 +1756,8 @@ modify_config_menu() {
                 read -r -p "请输入新的超时时间 (留空保持 ${request_timeout}): " new_timeout
                 if [ -n "$new_timeout" ] && [[ "$new_timeout" =~ ^[0-9]+$ ]]; then
                     local temp_file
-                    temp_file=$(mktemp)
+                    temp_file=$(mktemp /tmp/cfopt-cf-dns.XXXXXX)
+                    chmod 600 "${temp_file}"
                     jq --argjson timeout "$new_timeout" '.api.timeout = $timeout' "$CONFIG_FILE" > "$temp_file" && mv "$temp_file" "$CONFIG_FILE"
                     chmod 600 "$CONFIG_FILE"
                     echo -e "${GREEN}[OK] 请求超时已更新为 ${new_timeout} 秒${NC}"
@@ -1758,7 +1771,8 @@ modify_config_menu() {
                 read -r -p "请输入新的重试次数 (留空保持 ${max_retries}): " new_retries
                 if [ -n "$new_retries" ] && [[ "$new_retries" =~ ^[0-9]+$ ]]; then
                     local temp_file
-                    temp_file=$(mktemp)
+                    temp_file=$(mktemp /tmp/cfopt-cf-dns.XXXXXX)
+                    chmod 600 "${temp_file}"
                     jq --argjson retries "$new_retries" '.api.max_retries = $retries' "$CONFIG_FILE" > "$temp_file" && mv "$temp_file" "$CONFIG_FILE"
                     chmod 600 "$CONFIG_FILE"
                     echo -e "${GREEN}[OK] 重试次数已更新为 ${new_retries} 次${NC}"

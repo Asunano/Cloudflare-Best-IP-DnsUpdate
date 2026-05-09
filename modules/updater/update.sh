@@ -93,7 +93,7 @@ declare -a COMPONENTS=(
 get_remote_version() {
     local remote_version
     local temp_version_file
-    temp_version_file=$(mktemp)
+    temp_version_file=$(mktemp /tmp/cfopt-updater.XXXXXX)
     # 【修复】设置严格的文件权限（仅所有者可读写），防止版本信息泄露
     chmod 600 "${temp_version_file}" 2>/dev/null || true
     TEMP_FILES+=("${temp_version_file}")  # 【修复】注册临时文件
@@ -298,7 +298,8 @@ download_file() {
     
     local target_file="${ROOT_DIR}/${local_path}"
     local temp_file
-    temp_file=$(mktemp)
+    temp_file=$(mktemp /tmp/cfopt-updater.XXXXXX)
+    chmod 600 "${temp_file}"
     TEMP_FILES+=("${temp_file}")  # 【修复】注册临时文件
     
     # 【特殊处理】updater.sh 自身：下载到 .new 文件，避免覆盖正在运行的脚本
@@ -355,7 +356,8 @@ download_file() {
         done
         TEMP_FILES=("${new_temp_files[@]}")
         
-        temp_file=$(mktemp)
+        temp_file=$(mktemp /tmp/cfopt-updater.XXXXXX)
+        chmod 600 "${temp_file}"
         TEMP_FILES+=("${temp_file}")  # 重新注册
         
         # 【优化】复用统一的重试函数
