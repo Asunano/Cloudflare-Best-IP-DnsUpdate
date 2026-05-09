@@ -819,9 +819,8 @@ perform_update() {
         # 这样避免了在子shell中exec导致的进程套娃问题
         touch "${ROOT_DIR}/.restart_needed"
         
-        # 【修复】同时清理旧的 .new 文件，避免被错误覆盖
+        # 【修复】清理 updater.sh 的 .new 文件（cfopt.sh.new 已被 mv 移走，无需清理）
         rm -f "${ROOT_DIR}/modules/updater/update.sh.new" 2>/dev/null || true
-        rm -f "${ROOT_DIR}/cfopt.sh.new" 2>/dev/null || true
         
         # 【修复】非交互式环境跳过 read，防止 set -e 触发退出
         if [[ -t 0 ]]; then
