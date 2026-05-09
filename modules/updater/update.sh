@@ -84,20 +84,47 @@ EXIT_MISSING_TOOL=4   # 缺少必要工具
 
 # 定义需要更新的组件映射
 # 格式: "KEY:本地路径:远程相对路径:显示名称"
-declare -a COMPONENTS=(
-    "COMMON_LIB:lib/common.sh:lib/common.sh:公共函数库"
-    "UPDATER:modules/updater/update.sh:modules/updater/update.sh:自动更新组件"
-    "QUICK_DEPLOY:modules/quick-deploy/setup.sh:modules/quick-deploy/setup.sh:快速部署向导"
-    "CF_IP_MENU:modules/cf-ip/menu.sh:modules/cf-ip/menu.sh:CF-IP 测速管理"
-    "CF_IP_CORE:modules/cf-ip/core.sh:modules/cf-ip/core.sh:CF-IP 核心引擎"
-    "CF_DNS_CORE:modules/cf-dns/core.sh:modules/cf-dns/core.sh:CF DNS 核心"
-    "CF_DNS_SETUP:modules/cf-dns/setup.sh:modules/cf-dns/setup.sh:CF DNS 配置向导"
-    "DNSPOD_CORE:modules/dnspod-dns/core.sh:modules/dnspod-dns/core.sh:DNSPod 核心"
-    "DNSPOD_SETUP:modules/dnspod-dns/setup.sh:modules/dnspod-dns/setup.sh:DNSPod 配置向导"
-    "SCHEDULER_RUN:modules/scheduler/run.sh:modules/scheduler/run.sh:自动化调度器"
-    "IP_SYNC:modules/ip-sync/sync.sh:modules/ip-sync/sync.sh:IP 同步工具"
-    "CFOPT:cfopt.sh:cfopt.sh:主程序入口"
-)
+# 【修复】动态发现所有组件，避免硬编码
+declare -a COMPONENTS=()
+
+# 1. 添加主程序入口
+COMPONENTS+=("CFOPT:cfopt.sh:cfopt.sh:主程序入口")
+
+# 2. 添加公共函数库
+if [[ -f "${ROOT_DIR}/lib/common.sh" ]]; then
+    COMPONENTS+=("COMMON_LIB:lib/common.sh:lib/common.sh:公共函数库")
+fi
+
+# 3. 动态扫描 modules 目录下的所有 .sh 文件
+while IFS= read -r script_file; do
+    # 跳过 updater 自身（已经在前面单独处理）
+    if [[ "$script_file" == "modules/updater/update.sh" ]]; then
+        continue
+    fi
+    
+    # 提取模块名和文件名
+    module_dir=$(dirname "$script_file")
+    filename=$(basename "$script_file")
+    
+    # 生成显示名称（根据文件类型）
+    case "$filename" in
+        core.sh)      display_name="$(basename "$module_dir") 核心" ;;
+        setup.sh)     display_name="$(basename "$module_dir") 配置向导" ;;
+        menu.sh)      display_name="$(basename "$module_dir") 管理菜单" ;;
+        run.sh)       display_name="$(basename "$module_dir") 调度器" ;;
+        sync.sh)      display_name="$(basename "$module_dir") 同步工具" ;;
+        *)            display_name="$filename" ;;
+    esac
+    
+    # 生成唯一 KEY（大写 + 下划线）
+    key=$(echo "$(basename "$module_dir")_${filename%.sh}" | tr '[:lower:]' '[:upper:]' | tr '-' '_')
+    
+    # 添加到组件列表
+    COMPONENTS+=("${key}:${script_file}:${script_file}:${display_name}")
+done < <(find "${ROOT_DIR}/modules" -name "*.sh" -type f | sort)
+
+# 4. 添加 updater 自身（最后更新，确保安全）
+COMPONENTS+=("UPDATER:modules/updater/update.sh:modules/updater/update.sh:自动更新组件")
 
 # ==================== 核心函数 ====================
 
