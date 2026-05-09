@@ -167,17 +167,27 @@ add_deploy_record() {
     init_deploy_record
     
     local temp_file
-    temp_file=$(mktemp)
+    temp_file=$(mktemp /tmp/cfopt-quick-deploy.XXXXXX)
+    chmod 600 "${temp_file}"
+    # 【修复】注册清理函数，防止 jq 失败时临时文件泄露
+    trap "rm -f '${temp_file}'" RETURN
     
-    jq --arg d "$domain" \
+    if ! jq --arg d "$domain" \
        --arg t "$dns_type" \
        --arg m "$mode" \
        --arg r "$record_name" \
        --arg time "$deploy_time" \
        '.domains += [{"domain": $d, "dns_type": $t, "mode": $m, "record_name": $r, "deploy_time": $time}]' \
-       "${DEPLOY_RECORD_FILE}" > "$temp_file"
+       "${DEPLOY_RECORD_FILE}" > "$temp_file"; then
+        echo -e "${RED}[ERROR] 部署记录更新失败${NC}" >&2
+        return 1
+    fi
     
-    mv "$temp_file" "${DEPLOY_RECORD_FILE}"
+    if ! mv "$temp_file" "${DEPLOY_RECORD_FILE}"; then
+        echo -e "${RED}[ERROR] 配置文件更新失败${NC}" >&2
+        rm -f "$temp_file" 2>/dev/null
+        return 1
+    fi
     chmod 600 "${DEPLOY_RECORD_FILE}"
 }
 
@@ -271,9 +281,20 @@ delete_domain_config() {
     local temp_file
     temp_file=$(mktemp /tmp/cfopt-quick-deploy.XXXXXX)
     chmod 600 "${temp_file}"
-    jq --arg d "$domain" '.domains = [.domains[] | select(.domain != $d)]' \
-       "${DEPLOY_RECORD_FILE}" > "$temp_file"
-    mv "$temp_file" "${DEPLOY_RECORD_FILE}"
+    # 【修复】注册清理函数，防止 jq 失败时临时文件泄露
+    trap "rm -f '${temp_file}'" RETURN
+    
+    if ! jq --arg d "$domain" '.domains = [.domains[] | select(.domain != $d)]' \
+       "${DEPLOY_RECORD_FILE}" > "$temp_file"; then
+        echo -e "${RED}[ERROR] 部署记录更新失败${NC}" >&2
+        return 1
+    fi
+    
+    if ! mv "$temp_file" "${DEPLOY_RECORD_FILE}"; then
+        echo -e "${RED}[ERROR] 配置文件更新失败${NC}" >&2
+        rm -f "$temp_file" 2>/dev/null
+        return 1
+    fi
     chmod 600 "${DEPLOY_RECORD_FILE}"
     echo -e "  [OK] 已删除部署记录"
 }
@@ -468,9 +489,11 @@ generate_cf_ip_config() {
     local temp_file
     temp_file=$(mktemp /tmp/cfopt-quick-deploy.XXXXXX)
     chmod 600 "${temp_file}"
+    # 【修复】注册清理函数，防止 jq 失败时临时文件泄露
+    trap "rm -f '${temp_file}'" RETURN
     
     if [[ "$mode" = "multi" ]]; then
-        jq -n \
+        if ! jq -n \
             --arg cfst_dir "${ROOT_DIR}/assets/cfst" \
             --argjson threads 200 \
             --arg colo "$colo_default" \
@@ -520,9 +543,12 @@ generate_cf_ip_config() {
                     "output_dir": $output_dir,
                     "log_dir": $log_dir
                 }
-            }' > "$temp_file"
+            }' > "$temp_file"; then
+            echo -e "${RED}[ERROR] CF-IP 配置文件生成失败${NC}" >&2
+            return 1
+        fi
     else
-        jq -n \
+        if ! jq -n \
             --arg cfst_dir "${ROOT_DIR}/assets/cfst" \
             --argjson threads 200 \
             --arg colo "$colo_default" \
@@ -568,10 +594,17 @@ generate_cf_ip_config() {
                     "output_dir": $output_dir,
                     "log_dir": $log_dir
                 }
-            }' > "$temp_file"
+            }' > "$temp_file"; then
+            echo -e "${RED}[ERROR] CF-IP 配置文件生成失败${NC}" >&2
+            return 1
+        fi
     fi
     
-    mv "$temp_file" "$config_file"
+    if ! mv "$temp_file" "$config_file"; then
+        echo -e "${RED}[ERROR] 配置文件更新失败${NC}" >&2
+        rm -f "$temp_file" 2>/dev/null
+        return 1
+    fi
     chmod 600 "$config_file"
 }
 
@@ -602,9 +635,11 @@ generate_dnspod_config() {
     local temp_file
     temp_file=$(mktemp /tmp/cfopt-quick-deploy.XXXXXX)
     chmod 600 "${temp_file}"
+    # 【修复】注册清理函数，防止 jq 失败时临时文件泄露
+    trap "rm -f '${temp_file}'" RETURN
     
     if [[ "$mode" = "multi" ]]; then
-        jq -n \
+        if ! jq -n \
             --arg domain "$domain" \
             --arg id "$dnspod_id" \
             --arg token "$dnspod_token" \
@@ -653,13 +688,16 @@ generate_dnspod_config() {
                     "log_rotation_days": 7,
                     "verbose": false
                 }
-            }' > "$temp_file"
+            }' > "$temp_file"; then
+            echo -e "${RED}[ERROR] DNSPod 配置文件生成失败${NC}" >&2
+            return 1
+        fi
     else
         # 按域名独立存储 IP 列表，避免多域名冲突
         # 【修复】统一使用 .iplist 格式（标准格式：IP|延迟|速度|地区码），与 dnspod-dns/core.sh 保持一致
         local ip_file="${ROOT_DIR}/assets/data/dnspod-dns/${full_domain}.iplist"
             
-        jq -n \
+        if ! jq -n \
             --arg domain "$domain" \
             --arg id "$dnspod_id" \
             --arg token "$dnspod_token" \
@@ -692,10 +730,17 @@ generate_dnspod_config() {
                     "log_rotation_days": 7,
                     "verbose": false
                 }
-            }' > "$temp_file"
+            }' > "$temp_file"; then
+            echo -e "${RED}[ERROR] DNSPod 配置文件生成失败${NC}" >&2
+            return 1
+        fi
     fi
     
-    mv "$temp_file" "$config_file"
+    if ! mv "$temp_file" "$config_file"; then
+        echo -e "${RED}[ERROR] 配置文件更新失败${NC}" >&2
+        rm -f "$temp_file" 2>/dev/null
+        return 1
+    fi
     chmod 600 "$config_file"
     
     echo -e "${GREEN}[OK] DNSPod 配置已生成: ${config_file}${NC}"
@@ -726,13 +771,15 @@ generate_cf_dns_config() {
     local temp_file
     temp_file=$(mktemp /tmp/cfopt-quick-deploy.XXXXXX)
     chmod 600 "${temp_file}"
+    # 【修复】注册清理函数，防止 jq 失败时临时文件泄露
+    trap "rm -f '${temp_file}'" RETURN
     
     # 按域名独立存储 IP 列表和测速结果，避免多域名冲突
     # 【修复】统一使用 .iplist 格式（标准格式：IP|延迟|速度|地区码），与 cf-dns/core.sh 保持一致
     local ip_file="${ROOT_DIR}/assets/data/cf-dns/${full_domain}.iplist"
     local result_file="${ROOT_DIR}/assets/data/cf-ip/result_${full_domain}.csv"
     
-    jq -n \
+    if ! jq -n \
         --arg domain "$domain" \
         --arg token "$cf_token" \
         --arg zone_id "$cf_zone_id" \
@@ -760,9 +807,16 @@ generate_cf_dns_config() {
                 "result_file": $result_file,
                 "colo_nodes": $colo_nodes
             }
-        }' > "$temp_file"
+        }' > "$temp_file"; then
+        echo -e "${RED}[ERROR] Cloudflare DNS 配置文件生成失败${NC}" >&2
+        return 1
+    fi
     
-    mv "$temp_file" "$config_file"
+    if ! mv "$temp_file" "$config_file"; then
+        echo -e "${RED}[ERROR] 配置文件更新失败${NC}" >&2
+        rm -f "$temp_file" 2>/dev/null
+        return 1
+    fi
     chmod 600 "$config_file"
     
     echo -e "${GREEN}[OK] Cloudflare DNS 配置已生成: ${config_file}${NC}"
