@@ -5,6 +5,40 @@
 # Version: 0.1
 # Description: 负责调用 cfst 程序进行 Cloudflare IP 测速并生成 result.csv
 # Usage: bash modules/cf-ip/core.sh [COLO] [OUTPUT_CSV] [LINE_TAG]
+#
+# ==================== 环境变量契约 ====================
+# 本模块依赖以下环境变量（由调用者设置）：
+#
+# 1. CFOPT_ROOT (可选)
+#    - 来源：cfopt.sh 或 scheduler/run.sh
+#    - 用途：指定项目根目录，优先于自动检测
+#    - 默认：$(cd "$SCRIPT_DIR/../.." && pwd)
+#    - 示例：export CFOPT_ROOT="/opt/cfopt"
+#
+# 2. CF_IP_CFG_LOADED (可选)
+#    - 来源：scheduler/run.sh
+#    - 用途：标识配置是否已由 scheduler 加载到环境变量
+#    - 值："true" = 已加载，跳过配置文件读取；其他 = 未加载，从文件读取
+#    - 默认：未设置或空字符串（从配置文件读取）
+#    - 性能优化：避免多线路模式下重复读取 JSON 配置文件
+#    - 示例：export CF_IP_CFG_LOADED="true"
+#
+# 3. CF_OPT_ENTRY (可选)
+#    - 来源：cfopt.sh 或 scheduler/run.sh
+#    - 用途：标识调用来源，用于日志记录和权限控制
+#    - 值："main_menu" | "scheduler" | "run_sh" | 其他
+#    - 默认：未设置或空字符串
+#    - 示例：export CF_OPT_ENTRY="main_menu"
+#
+# ==================== 导出变量 ====================
+# 本模块导出的变量（供子进程使用）：
+#
+# - ROOT_DIR: 项目根目录（绝对路径）
+# - OUTPUT_DIR: 输出目录（绝对路径）
+# - LOG_DIR: 日志目录（绝对路径）
+# - _LOG_MODULE: 日志模块名 ("cf-ip")
+# - _LOG_FILE: 日志文件路径
+#
 # ==============================================================================
 # 【安全修复】启用严格模式，防止错误传播
 set -euo pipefail
