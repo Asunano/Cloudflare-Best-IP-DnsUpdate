@@ -3200,7 +3200,11 @@ fi
 chmod 600 "$temp_file"
 
 # 原子移动
-mv "$temp_file" "$CONFIG_FILE"
+if ! mv "$temp_file" "$CONFIG_FILE"; then
+    echo -e "${RED}[ERROR] 配置文件更新失败${NC}" >&2
+    rm -f "$temp_file" 2>/dev/null
+    return 1
+fi
 
 echo -e "${GREEN}[OK] 配置文件已生成: ${CONFIG_FILE#${ROOT_DIR}/}${NC}"
 echo ""
@@ -3276,7 +3280,11 @@ EOF
             chmod 600 "$temp_file"
             
             # 原子移动（避免部分写入）
-            mv "$temp_file" "$filepath"
+            if ! mv "$temp_file" "$filepath"; then
+                echo -e "${RED}[ERROR] IP 文件创建失败: ${filepath}${NC}" >&2
+                rm -f "$temp_file" 2>/dev/null
+                return 1
+            fi
             
             echo -e "  ${GREEN}[OK] 创建: ${filepath#${ROOT_DIR}/}${NC}"
         else
