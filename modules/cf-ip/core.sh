@@ -172,7 +172,7 @@ if [[ ! -f "${CONFIG_FILE}" ]]; then
     # 创建 conf 目录
     mkdir -p "$(dirname "${CONFIG_FILE}")" 2>/dev/null || true
     
-    # 使用 jq 创建最小化配置（所有 cfst 参数设为 null，使用 cfst 内置默认值）
+    # 使用 jq 创建最小化配置（cfst 对象留空，让 cfst 使用内置默认值）
     if command -v jq &>/dev/null; then
         jq -n '{
             "enabled": true,
@@ -182,23 +182,7 @@ if [[ ! -f "${CONFIG_FILE}" ]]; then
                 "max_retry": 3,
                 "enable_log": true
             },
-            "cfst": {
-                "threads": null,
-                "colo": null,
-                "ping_times": null,
-                "download_count": null,
-                "download_time": null,
-                "port": null,
-                "url": null,
-                "httping": null,
-                "latency_max": null,
-                "packet_loss_max": null,
-                "speed_min": null,
-                "show_count": null,
-                "ip_file": null,
-                "disable_download": null,
-                "all_ip": null
-            }
+            "cfst": {}
         }' > "${CONFIG_FILE}"
         chmod 600 "${CONFIG_FILE}"
         echo -e "${GREEN}[OK] 已创建默认配置文件: ${CONFIG_FILE}${NC}"
@@ -334,21 +318,21 @@ if [[ "${CF_IP_CFG_LOADED:-}" != "true" ]]; then
         [
             "cfst_dir=" + (if .cfst.directory == null then "" else .cfst.directory end),
             "take_ip_num=" + (.speed_test.take_ip_num // 5 | tostring),
-            "cfst_threads=" + (.cfst.threads // 200 | tostring),
-            "cfst_colo=" + (if .cfst.colo == null then "HKG,NRT" else .cfst.colo end),
-            "cfst_ping_times=" + (.cfst.ping_times // 4 | tostring),
-            "cfst_download_count=" + (.cfst.download_count // 10 | tostring),
-            "cfst_download_time=" + (.cfst.download_time // 10 | tostring),
-            "cfst_port=" + (.cfst.port // 443 | tostring),
-            "cfst_url=" + (if .cfst.url == null then "https://mirror.drxian.qzz.io/index.html" else .cfst.url end),
-            "cfst_httping=" + (.cfst.httping // false | tostring),
-            "cfst_latency_max=" + (.cfst.latency_max // 9999 | tostring),
-            "cfst_packet_loss_max=" + (.cfst.packet_loss_max // 100 | tostring),
-            "cfst_speed_min=" + (.cfst.speed_min // 0 | tostring),
-            "cfst_show_count=" + (.cfst.show_count // 20 | tostring),
+            "cfst_threads=" + (if .cfst.threads == null then "" else (.cfst.threads | tostring) end),
+            "cfst_colo=" + (if .cfst.colo == null then "" else .cfst.colo end),
+            "cfst_ping_times=" + (if .cfst.ping_times == null then "" else (.cfst.ping_times | tostring) end),
+            "cfst_download_count=" + (if .cfst.download_count == null then "" else (.cfst.download_count | tostring) end),
+            "cfst_download_time=" + (if .cfst.download_time == null then "" else (.cfst.download_time | tostring) end),
+            "cfst_port=" + (if .cfst.port == null then "" else (.cfst.port | tostring) end),
+            "cfst_url=" + (if .cfst.url == null then "" else .cfst.url end),
+            "cfst_httping=" + (if .cfst.httping == null then "" else (.cfst.httping | tostring) end),
+            "cfst_latency_max=" + (if .cfst.latency_max == null then "" else (.cfst.latency_max | tostring) end),
+            "cfst_packet_loss_max=" + (if .cfst.packet_loss_max == null then "" else (.cfst.packet_loss_max | tostring) end),
+            "cfst_speed_min=" + (if .cfst.speed_min == null then "" else (.cfst.speed_min | tostring) end),
+            "cfst_show_count=" + (if .cfst.show_count == null then "" else (.cfst.show_count | tostring) end),
             "cfst_ip_file=" + (if .cfst.ip_file == null then "" else .cfst.ip_file end),
-            "cfst_disable_download=" + (.cfst.disable_download // false | tostring),
-            "cfst_all_ip=" + (.cfst.all_ip // false | tostring),
+            "cfst_disable_download=" + (if .cfst.disable_download == null then "" else (.cfst.disable_download | tostring) end),
+            "cfst_all_ip=" + (if .cfst.all_ip == null then "" else (.cfst.all_ip | tostring) end),
             "output_html=" + (.speed_test.output_html // true | tostring),
             "max_retry=" + (.speed_test.max_retry // 3 | tostring),
             "enable_log=" + (.speed_test.enable_log // true | tostring)
@@ -370,20 +354,21 @@ else
         [
             "cfst_dir=" + (if .cfst.directory == null then "" else .cfst.directory end),
             "take_ip_num=" + (.speed_test.take_ip_num // 5 | tostring),
-            "cfst_threads=" + (.cfst.threads // 200 | tostring),
-            "cfst_ping_times=" + (.cfst.ping_times // 4 | tostring),
-            "cfst_download_count=" + (.cfst.download_count // 10 | tostring),
-            "cfst_download_time=" + (.cfst.download_time // 10 | tostring),
-            "cfst_port=" + (.cfst.port // 443 | tostring),
-            "cfst_url=" + (if .cfst.url == null then "https://mirror.drxian.qzz.io/index.html" else .cfst.url end),
-            "cfst_httping=" + (.cfst.httping // false | tostring),
-            "cfst_latency_max=" + (.cfst.latency_max // 9999 | tostring),
-            "cfst_packet_loss_max=" + (.cfst.packet_loss_max // 100 | tostring),
-            "cfst_speed_min=" + (.cfst.speed_min // 0 | tostring),
-            "cfst_show_count=" + (.cfst.show_count // 20 | tostring),
+            "cfst_threads=" + (if .cfst.threads == null then "" else (.cfst.threads | tostring) end),
+            "cfst_colo=" + (if .cfst.colo == null then "" else .cfst.colo end),
+            "cfst_ping_times=" + (if .cfst.ping_times == null then "" else (.cfst.ping_times | tostring) end),
+            "cfst_download_count=" + (if .cfst.download_count == null then "" else (.cfst.download_count | tostring) end),
+            "cfst_download_time=" + (if .cfst.download_time == null then "" else (.cfst.download_time | tostring) end),
+            "cfst_port=" + (if .cfst.port == null then "" else (.cfst.port | tostring) end),
+            "cfst_url=" + (if .cfst.url == null then "" else .cfst.url end),
+            "cfst_httping=" + (if .cfst.httping == null then "" else (.cfst.httping | tostring) end),
+            "cfst_latency_max=" + (if .cfst.latency_max == null then "" else (.cfst.latency_max | tostring) end),
+            "cfst_packet_loss_max=" + (if .cfst.packet_loss_max == null then "" else (.cfst.packet_loss_max | tostring) end),
+            "cfst_speed_min=" + (if .cfst.speed_min == null then "" else (.cfst.speed_min | tostring) end),
+            "cfst_show_count=" + (if .cfst.show_count == null then "" else (.cfst.show_count | tostring) end),
             "cfst_ip_file=" + (if .cfst.ip_file == null then "" else .cfst.ip_file end),
-            "cfst_disable_download=" + (.cfst.disable_download // false | tostring),
-            "cfst_all_ip=" + (.cfst.all_ip // false | tostring),
+            "cfst_disable_download=" + (if .cfst.disable_download == null then "" else (.cfst.disable_download | tostring) end),
+            "cfst_all_ip=" + (if .cfst.all_ip == null then "" else (.cfst.all_ip | tostring) end),
             "output_html=" + (.speed_test.output_html // true | tostring),
             "max_retry=" + (.speed_test.max_retry // 3 | tostring),
             "enable_log=" + (.speed_test.enable_log // true | tostring)
@@ -531,18 +516,49 @@ build_cfst_cmd() {
     local output_csv="$2"
     local ip_data_file="${3:-}"
     
-    # 【修复】使用全局变量返回数组，兼容 bash 3.2+
-    CFST_CMD_ARRAY=("${CFST_BIN}" "-n" "${CFST_THREADS}" "-t" "${CFST_PING_TIMES}")
+    # 【重构】只有当配置项非空时才添加参数，让 cfst 使用内置默认值
+    CFST_CMD_ARRAY=("${CFST_BIN}")
+    
+    # 线程数（可选）
+    [[ -n "${CFST_THREADS}" ]] && CFST_CMD_ARRAY+=("-n" "${CFST_THREADS}")
+    
+    # Ping 次数（可选）
+    [[ -n "${CFST_PING_TIMES}" ]] && CFST_CMD_ARRAY+=("-t" "${CFST_PING_TIMES}")
+    
+    # 目标地区（可选）
     [[ -n "${target_colo}" ]] && CFST_CMD_ARRAY+=("-cfcolo" "${target_colo}")
+    
+    # IP 数据文件（可选）
     [[ -n "${ip_data_file}" ]] && CFST_CMD_ARRAY+=("-f" "${ip_data_file}")
-    CFST_CMD_ARRAY+=("-dn" "${CFST_DOWNLOAD_COUNT}" "-dt" "${CFST_DOWNLOAD_TIME}")
-    CFST_CMD_ARRAY+=("-tp" "${CFST_PORT}")
+    
+    # 下载测速参数（可选）
+    [[ -n "${CFST_DOWNLOAD_COUNT}" ]] && CFST_CMD_ARRAY+=("-dn" "${CFST_DOWNLOAD_COUNT}")
+    [[ -n "${CFST_DOWNLOAD_TIME}" ]] && CFST_CMD_ARRAY+=("-dt" "${CFST_DOWNLOAD_TIME}")
+    
+    # 端口（可选）
+    [[ -n "${CFST_PORT}" ]] && CFST_CMD_ARRAY+=("-tp" "${CFST_PORT}")
+    
+    # 下载 URL（可选）
     [[ -n "${CFST_URL}" ]] && CFST_CMD_ARRAY+=("-url" "${CFST_URL}")
+    
+    # HTTP Ping 模式（可选）
     [[ "${CFST_HTTPING}" = "true" ]] && CFST_CMD_ARRAY+=("-httping")
-    CFST_CMD_ARRAY+=("-tl" "${CFST_LATENCY_MAX}" "-tlr" "${CFST_PACKET_LOSS_MAX}" "-sl" "${CFST_SPEED_MIN}")
-    CFST_CMD_ARRAY+=("-p" "${CFST_SHOW_COUNT}")
+    
+    # 延迟和速度阈值（可选）
+    [[ -n "${CFST_LATENCY_MAX}" ]] && CFST_CMD_ARRAY+=("-tl" "${CFST_LATENCY_MAX}")
+    [[ -n "${CFST_PACKET_LOSS_MAX}" ]] && CFST_CMD_ARRAY+=("-tlr" "${CFST_PACKET_LOSS_MAX}")
+    [[ -n "${CFST_SPEED_MIN}" ]] && CFST_CMD_ARRAY+=("-sl" "${CFST_SPEED_MIN}")
+    
+    # 显示数量（可选）
+    [[ -n "${CFST_SHOW_COUNT}" ]] && CFST_CMD_ARRAY+=("-p" "${CFST_SHOW_COUNT}")
+    
+    # 禁用下载测速（可选）
     [[ "${CFST_DISABLE_DOWNLOAD}" = "true" ]] && CFST_CMD_ARRAY+=("-dd")
+    
+    # 测试所有 IP（可选）
     [[ "${CFST_ALL_IP}" = "true" ]] && CFST_CMD_ARRAY+=("-allip")
+    
+    # 输出文件（必需）
     CFST_CMD_ARRAY+=("-o" "${output_csv}")
 }
 
