@@ -219,11 +219,12 @@ check_config() {
         return ${CONFIG_INVALID_JSON}
     fi
     
-    # 检查是否包含关键配置字段（验证是否真正完成了用户配置）
-    local has_colo
-    has_colo=$(jq -r '.cfst.colo // empty' "${CONFIG_FILE}" 2>/dev/null)
-    if [[ -z "${has_colo}" ]]; then
-        # 配置文件存在但缺少关键配置，视为未配置
+    # 【修复】检查配置文件是否包含基本的 enabled 字段
+    # core.sh 中所有其他字段都有默认值，只有 enabled 是必须的
+    local has_enabled
+    has_enabled=$(jq -r '.enabled // empty' "${CONFIG_FILE}" 2>/dev/null)
+    if [[ -z "${has_enabled}" ]]; then
+        # 配置文件存在但缺少 enabled 字段，视为未配置
         return ${CONFIG_INCOMPLETE}
     fi
     
