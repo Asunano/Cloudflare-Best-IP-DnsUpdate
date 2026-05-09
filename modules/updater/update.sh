@@ -382,11 +382,19 @@ download_file() {
     TEMP_FILES+=("${temp_file}")  # 【修复】注册临时文件
     
     # 【特殊处理】updater.sh 自身：下载到 .new 文件，避免覆盖正在运行的脚本
-    local original_temp_file="${temp_file}"  # 【修复】记住原始临时文件
     if [[ "${remote_path}" = "modules/updater/update.sh" ]]; then
+        local original_temp="${temp_file}"  # 【修复】记住原始临时文件路径
         temp_file="${ROOT_DIR}/modules/updater/update.sh.new"
-        # 【修复】将 .new 文件也注册到 TEMP_FILES，确保失败时能清理
-        TEMP_FILES+=("${temp_file}")
+        
+        # 【修复】从 TEMP_FILES 中移除原始临时文件（它不再需要被跟踪）
+        local -a filtered=()
+        for f in "${TEMP_FILES[@]}"; do
+            [[ "${f}" != "${original_temp}" ]] && filtered+=("${f}")
+        done
+        TEMP_FILES=("${filtered[@]}")
+        
+        # 【修复】立即清理原始临时文件
+        rm -f "${original_temp}"
     fi
     
     local download_success=false
@@ -462,10 +470,6 @@ download_file() {
                 echo -e "  ${RED}[FAIL]${NC} ${display_name} (缺少哈希校验工具)"
                 echo -e "    ${YELLOW}提示: 请安装 coreutils 或 perl-digest-sha${NC}"
                 rm -f "${temp_file}"
-                # 【修复】如果是 updater.sh，也要清理原始临时文件
-                if [[ "${remote_path}" = "modules/updater/update.sh" ]] && [[ -n "${original_temp_file:-}" ]]; then
-                    rm -f "${original_temp_file}"
-                fi
                 return ${EXIT_MISSING_TOOL}
             fi
             
@@ -478,10 +482,6 @@ download_file() {
                 echo -e "      2. 远程文件已被修改，但 version.txt 未更新"
                 echo -e "      3. 本地文件被手动修改"
                 rm -f "${temp_file}"
-                # 【修复】如果是 updater.sh，也要清理原始临时文件
-                if [[ "${remote_path}" = "modules/updater/update.sh" ]] && [[ -n "${original_temp_file:-}" ]]; then
-                    rm -f "${original_temp_file}"
-                fi
                 return ${EXIT_VALIDATION_ERROR}
             fi
         fi
@@ -503,10 +503,6 @@ download_file() {
         return ${EXIT_SUCCESS}
     else
         rm -f "${temp_file}"
-        # 【修复】如果是 updater.sh，也要清理原始临时文件
-        if [[ "${remote_path}" = "modules/updater/update.sh" ]] && [[ -n "${original_temp_file:-}" ]]; then
-            rm -f "${original_temp_file}"
-        fi
         echo -e "  ${RED}[FAIL]${NC} ${display_name} (网络错误)"
         echo -e "    ${YELLOW}可能原因:${NC}"
         echo -e "      1. 网络连接异常，请检查网络"
