@@ -1228,7 +1228,7 @@ if [[ "${config_status}" -eq 1 ]]; then
     # 创建 conf 目录
     mkdir -p "$(dirname "${CONFIG_FILE}")" 2>/dev/null || true
     
-    # 使用 jq 创建最小化配置
+    # 使用 jq 创建最小化配置（所有 cfst 参数设为 null，使用 cfst 内置默认值）
     if command -v jq &>/dev/null; then
         jq -n '{
             "enabled": true,
@@ -1239,21 +1239,21 @@ if [[ "${config_status}" -eq 1 ]]; then
                 "enable_log": true
             },
             "cfst": {
-                "threads": 200,
-                "colo": "HKG,NRT",
-                "ping_times": 4,
-                "download_count": 10,
-                "download_time": 10,
-                "port": 443,
-                "url": "",
-                "httping": false,
-                "latency_max": 9999,
-                "packet_loss_max": 100,
-                "speed_min": 0,
-                "show_count": 20,
-                "ip_file": "",
-                "disable_download": false,
-                "all_ip": false
+                "threads": null,
+                "colo": null,
+                "ping_times": null,
+                "download_count": null,
+                "download_time": null,
+                "port": null,
+                "url": null,
+                "httping": null,
+                "latency_max": null,
+                "packet_loss_max": null,
+                "speed_min": null,
+                "show_count": null,
+                "ip_file": null,
+                "disable_download": null,
+                "all_ip": null
             }
         }' > "${CONFIG_FILE}"
         chmod 600 "${CONFIG_FILE}"
