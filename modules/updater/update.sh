@@ -147,7 +147,7 @@ get_remote_version() {
             # 检查是否为有效的 version.txt（以注释或 KEY= 开头）
             if [[ "${first_line}" == "#"* ]] || [[ "${first_line}" == *"="* ]]; then
                 remote_version=$(cat "${temp_version_file}")
-                rm -f "${temp_version_file}"
+                # 【修复】不再手动删除，由 cleanup_temp_files 统一处理
                 echo "${remote_version}"
                 return ${EXIT_SUCCESS}
             fi
@@ -161,14 +161,14 @@ get_remote_version() {
             first_line=$(head -1 "${temp_version_file}" 2>/dev/null)
             if [[ "${first_line}" == "#"* ]] || [[ "${first_line}" == *"="* ]]; then
                 remote_version=$(cat "${temp_version_file}")
-                rm -f "${temp_version_file}"
+                # 【修复】不再手动删除，由 cleanup_temp_files 统一处理
                 echo "${remote_version}"
                 return ${EXIT_SUCCESS}
             fi
         fi
     fi
     
-    rm -f "${temp_version_file}"
+    # 【修复】不再手动删除，由 cleanup_temp_files 统一处理
     echo ""
     return ${EXIT_NETWORK_ERROR}
 }
