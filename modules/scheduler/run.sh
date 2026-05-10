@@ -119,6 +119,8 @@ start_watchdog() {
     : > "${pid_file}"
 
     (
+        # 【修复】禁用严格模式，防止 sleep 被信号中断时子 shell 立即终止
+        set +euo pipefail
         sleep "$timeout"
         
         # 【修复】检查父进程是否存活，防止成为僵尸进程

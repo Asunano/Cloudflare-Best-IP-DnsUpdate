@@ -939,6 +939,9 @@ for ((retry=0; retry<=MAX_RETRY; retry++)); do
     
     # 2. 【修复】使用 subshell 隔离目录切换
     (
+        # 【修复】禁用严格模式，防止 cfst 非零退出时子 shell 立即终止
+        # set -e 会跳过 wait 和 exit ${EXIT_CODE}，导致重试逻辑失效和脚本闪退
+        set +euo pipefail
         cd "$(dirname "${CFST_BIN}")" || exit 1
         
         # 3. 【修复】启动测速程序（后台运行），添加超时保护
