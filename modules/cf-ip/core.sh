@@ -946,51 +946,14 @@ for ((retry=0; retry<=MAX_RETRY; retry++)); do
         cd "$(dirname "${CFST_BIN}")" || exit 1
         
         # 3. 【修复】启动测速程序（后台运行），添加超时保护
-        # 【关键修复】cfst (Go 程序) 的进度输出使用 \r（回车符）覆盖同一行，而非 \n（换行符）
-        # 当 stdout 重定向到文件时，Go 的 bufio.Writer 不会因 \r 而 flush
-        # 这导致日志文件内容不更新，monitor_progress 读不到新进度（一直卡在某个数字）
-        # 解决方案：使用 script 命令创建 PTY，让 Go runtime 以为 stdout 是终端，实现实时 flush
-        #
-        # 注意：不使用 "script -c '${CFST_CMD_ARRAY[*]}'" 是因为参数中可能含空格
-        # 通过临时 wrapper 脚本传递参数数组，确保参数边界正确
-
-        # 创建临时 wrapper 脚本（使用 printf '%q' 正确转义所有参数）
-        CFST_WRAPPER=$(mktemp /tmp/cfst_wrapper.XXXXXX.sh)
-        {
-            echo '#!/bin/bash'
-            printf 'exec'
-            for arg in "${CFST_CMD_ARRAY[@]}"; do
-                printf ' %s' "$(printf '%q' "$arg")"
-            done
-            echo
-        } > "${CFST_WRAPPER}"
-        chmod +x "${CFST_WRAPPER}"
-
-        # 注册清理函数，确保 wrapper 脚本在 subshell 退出时被删除
-        cleanup_wrapper() { rm -f "${CFST_WRAPPER}" 2>/dev/null || true; }
-        trap cleanup_wrapper EXIT
-
-        # 【关键】使用 script 命令创建 PTY，解决 Go 程序 \r 输出不 flush 的问题
-        # 如果 script 不可用，降级为直接执行（进度可能不实时更新）
-        USE_SCRIPT=true
-        if ! command -v script >/dev/null 2>&1; then
-            USE_SCRIPT=false
-            echo -e "${YELLOW}[WARN] script 命令不可用，进度显示可能不实时${NC}"
-        fi
-
         if command -v timeout >/dev/null 2>&1; then
-            if [[ "${USE_SCRIPT}" = true ]]; then
-                timeout "${cfst_timeout}" script -qfc "bash ${CFST_WRAPPER}" "${LOG_FILE}" &
-            else
-                timeout "${cfst_timeout}" "${CFST_CMD_ARRAY[@]}" > "${LOG_FILE}" 2>&1 &
-            fi
+            # 使用 timeout 命令限制执行时间（推荐方式）
+            timeout "${cfst_timeout}" "${CFST_CMD_ARRAY[@]}" > "${LOG_FILE}" 2>&1 &
             CFST_PID=$!
         else
-            if [[ "${USE_SCRIPT}" = true ]]; then
-                script -qfc "bash ${CFST_WRAPPER}" "${LOG_FILE}" &
-            else
-                "${CFST_CMD_ARRAY[@]}" > "${LOG_FILE}" 2>&1 &
-            fi
+            # 【安全增强】fallback：使用 Bash 内置功能实现超时保护
+            # 避免在没有 timeout 命令的系统上进程无限挂起
+            "${CFST_CMD_ARRAY[@]}" > "${LOG_FILE}" 2>&1 &
             CFST_PID=$!
             
             # 启动超时监控子进程
@@ -1010,7 +973,7 @@ for ((retry=0; retry<=MAX_RETRY; retry++)); do
             TIMEOUT_MONITOR_PID=$!
             
             # 确保超时监控进程在主进程退出后被清理
-            trap "kill ${TIMEOUT_MONITOR_PID} 2>/dev/null; cleanup_wrapper" EXIT
+            trap "kill ${TIMEOUT_MONITOR_PID} 2>/dev/null" EXIT
         fi
         
         # 4. 实时显示进度（使用通用监控函数）
