@@ -949,7 +949,7 @@ for ((retry=0; retry<=MAX_RETRY; retry++)); do
         # 【关键修复】使用 script 创建伪终端(PTY)，让 cfst 认为连接了真实终端，强制实时刷新进度输出
         
         # 构建命令字符串（用于 script -c 参数）
-        local cfst_cmd_str="${CFST_CMD_ARRAY[*]}"
+        cfst_cmd_str="${CFST_CMD_ARRAY[*]}"
         
         if command -v timeout >/dev/null 2>&1; then
             # 使用 timeout + script 组合：timeout 控制超时，script 提供 PTY
