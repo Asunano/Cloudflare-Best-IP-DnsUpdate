@@ -683,11 +683,10 @@ else
 fi
 
 # ==================== 日志内容清理函数 ====================
-# 从日志文件读取内容，剥离 ANSI 转义码，将 \r 转换为 \n
-# 用于 script 命令产生的带 PTY 控制字符的日志文件
+# 从日志文件读取内容，将 \r 转换为 \n
 read_log_clean() {
     local log_file="$1"
-    cat "${log_file}" 2>/dev/null | sed 's/\x1b\[[0-9;]*[a-zA-Z]//g' | tr '\r' '\n' || true
+    cat "${log_file}" 2>/dev/null | tr '\r' '\n' || true
 }
 
 # ==================== 进度条显示函数 ====================
