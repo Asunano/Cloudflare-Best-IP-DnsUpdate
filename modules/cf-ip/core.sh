@@ -800,11 +800,10 @@ monitor_progress() {
     local max_empty_loops=20
     local empty_loop_count=0
     
-    # 【新增】进度停滞检测：如果 60 秒内进度没有变化，认为 cfst 卡住了
-    local stuck_timeout=60  # 60 秒
-    local last_progress=""
-    local stuck_start_time=0
-    local stuck_warned=false
+    # 【新增】基于日志文件大小变化的心跳机制
+    local last_file_size=0
+    local last_check_time=$(date +%s)
+    local stuck_timeout=300  # 5分钟停滞超时（给Go缓冲区足够时间）
     
     # 【修复】cfst 使用 \r 覆盖进度条，不会输出 \n
     # 日志文件只有一行，文件大小可能不增长
@@ -828,82 +827,85 @@ monitor_progress() {
         
         empty_loop_count=0
         
-        # 【修复】cfst 使用 \r 覆盖同一行，日志文件只有一行
-        # "开始下载测速" 可能被进度条覆盖，无法用于阶段切换检测
-        # 改为根据日志内容格式自动判断阶段：
-        # - ping 阶段：包含 "可用:" 字样，或格式为 "大数字 / 大数字"
-        # - download 阶段：格式为 "小数字 / 小数字" 或包含 "下载速度" 或 "MB/s"
-        if [[ "${stage}" = "ping" ]]; then
-            # 尝试检测是否进入下载阶段
-            # 【修复】cfst 使用 \r 覆盖同一行，tail -n 20 对单行文件无效
-            # 使用 read_log_clean 清理 ANSI 转义码和回车符后再分析
-            local log_content
-            log_content=$(read_log_clean "${log_file}")
+        # 【关键】获取当前日志文件大小
+        local current_file_size
+        current_file_size=$(stat -c%s "${log_file}" 2>/dev/null || echo 0)
+        
+        # 【关键】根据文件大小变化决定显示内容
+        if [[ ${current_file_size} -eq ${last_file_size} ]]; then
+            # 文件大小没变 → 显示心跳信息
+            local current_time
+            current_time=$(date +%s)
+            local elapsed=$((current_time - last_check_time))
+            local minutes=$((elapsed / 60))
+            local seconds=$((elapsed % 60))
             
-            # 方法 1：检测 "下载测速" 或 "下载速度" 或 "MB/s" 字样
-            if echo "${log_content}" | grep -q "下载测速\|下载速度\|MB/s"; then
-                stage="download"
-                # 【修复】阶段切换时先清空当前行，避免进度条残留
-                printf "\r%-80s\n" ""
-                echo -e "${CYAN}  [进度] 延迟测速完成，正在进行下载测速...${NC}"
-                echo -e "${GRAY}  第二阶段: 下载速度测试${NC}"
-                # 重置大小记录，强制重新解析
-                last_displayed_size=0
-            # 方法 2：检测格式是否为 "X / Y" 且 Y 较小（下载阶段通常是 10）
-            # ping 阶段通常是 "X / 5955" 这样的大数字
-            # 【修复】cfst 下载阶段输出格式是 "2 / 10 [====] 3.24 MB/s"
-            # 原 regex 要求行尾 $ 结束于小数字，但实际行在数字后还有 [====] 3.24 MB/s
-            # 改为匹配数字后跟空格即可正确识别下载阶段
-            elif echo "${log_content}" | grep -qE '^[[:space:]]*[0-9]+[[:space:]]*/[[:space:]]*([0-9]{1,2})[[:space:]]'; then
-                stage="download"
-                printf "\r%-80s\n" ""
-                echo -e "${CYAN}  [进度] 延迟测速完成，正在进行下载测速...${NC}"
-                echo -e "${GRAY}  第二阶段: 下载速度测试${NC}"
-                last_displayed_size=0
-            fi
-        fi
-        
-        # 【修复】始终尝试解析最新内容，确保进度实时更新
-        # 不再依赖文件大小变化（cfst 使用 \r 覆盖，文件大小可能不增长）
-        parse_and_display_progress "${log_file}" "${stage}" "${bar_width}"
-        
-        # 【新增】进度停滞检测：如果 60 秒内进度没有变化，认为 cfst 卡住了
-        local current_progress
-        current_progress=$(read_log_clean "${log_file}" | grep -E '^[[:space:]]*[0-9]+[[:space:]]*/[[:space:]]*[0-9]+' | tail -1 || true)
-        
-        if [[ -n "${current_progress}" ]]; then
-            if [[ "${current_progress}" != "${last_progress}" ]]; then
-                # 进度有变化，重置停滞计时器
-                last_progress="${current_progress}"
-                stuck_start_time=$(date +%s)
-                stuck_warned=false
+            # 格式化时间显示
+            local time_display
+            if [[ ${minutes} -gt 0 ]]; then
+                time_display=$(printf "%d分%02d秒" ${minutes} ${seconds})
             else
-                # 进度没有变化，检查是否超过停滞超时
-                if [[ ${stuck_start_time} -eq 0 ]]; then
-                    # 第一次检测到进度，记录时间
-                    stuck_start_time=$(date +%s)
-                else
-                    local current_time
-                    current_time=$(date +%s)
-                    local elapsed=$((current_time - stuck_start_time))
-                    
-                    if [[ ${elapsed} -ge ${stuck_timeout} ]] && [[ "${stuck_warned}" = false ]]; then
-                        # 进度停滞超过 60 秒，发出警告
-                        echo ""
-                        echo -e "${YELLOW}[WARN] 检测到进度停滞（${current_progress}），已持续 ${elapsed} 秒${NC}"
-                        echo -e "${YELLOW}[WARN] cfst 可能卡住了，将在 30 秒后终止并自动重试...${NC}"
-                        stuck_warned=true
-                    elif [[ ${elapsed} -ge $((stuck_timeout + 30)) ]]; then
-                        # 超过 90 秒，强制终止进程
-                        echo ""
-                        echo -e "${RED}[ERROR] 进度停滞超过 90 秒，终止测速进程（PID: ${pid}）${NC}"
-                        kill -TERM "${pid}" 2>/dev/null || true
-                        sleep 2
-                        kill -9 "${pid}" 2>/dev/null || true
-                        return 1
-                    fi
+                time_display=$(printf "%d秒" ${seconds})
+            fi
+            
+            printf "\r%-80s" "${GRAY}  [测速进行中...] (${time_display})${NC}"
+        else
+            # 文件大小变了 → 解析并显示实际进度
+            last_file_size=${current_file_size}
+            last_check_time=$(date +%s)
+            
+            # 【修复】cfst 使用 \r 覆盖同一行，日志文件只有一行
+            # "开始下载测速" 可能被进度条覆盖，无法用于阶段切换检测
+            # 改为根据日志内容格式自动判断阶段：
+            # - ping 阶段：包含 "可用:" 字样，或格式为 "大数字 / 大数字"
+            # - download 阶段：格式为 "小数字 / 小数字" 或包含 "下载速度" 或 "MB/s"
+            if [[ "${stage}" = "ping" ]]; then
+                # 尝试检测是否进入下载阶段
+                # 【修复】cfst 使用 \r 覆盖同一行，tail -n 20 对单行文件无效
+                # 使用 read_log_clean 清理 ANSI 转义码和回车符后再分析
+                local log_content
+                log_content=$(read_log_clean "${log_file}")
+                
+                # 方法 1：检测 "下载测速" 或 "下载速度" 或 "MB/s" 字样
+                if echo "${log_content}" | grep -q "下载测速\|下载速度\|MB/s"; then
+                    stage="download"
+                    # 【修复】阶段切换时先清空当前行，避免进度条残留
+                    printf "\r%-80s\n" ""
+                    echo -e "${CYAN}  [进度] 延迟测速完成，正在进行下载测速...${NC}"
+                    echo -e "${GRAY}  第二阶段: 下载速度测试${NC}"
+                    # 重置大小记录，强制重新解析
+                    last_displayed_size=0
+                # 方法 2：检测格式是否为 "X / Y" 且 Y 较小（下载阶段通常是 10）
+                # ping 阶段通常是 "X / 5955" 这样的大数字
+                # 【修复】cfst 下载阶段输出格式是 "2 / 10 [====] 3.24 MB/s"
+                # 原 regex 要求行尾 $ 结束于小数字，但实际行在数字后还有 [====] 3.24 MB/s
+                # 改为匹配数字后跟空格即可正确识别下载阶段
+                elif echo "${log_content}" | grep -qE '^[[:space:]]*[0-9]+[[:space:]]*/[[:space:]]*([0-9]{1,2})[[:space:]]'; then
+                    stage="download"
+                    printf "\r%-80s\n" ""
+                    echo -e "${CYAN}  [进度] 延迟测速完成，正在进行下载测速...${NC}"
+                    echo -e "${GRAY}  第二阶段: 下载速度测试${NC}"
+                    last_displayed_size=0
                 fi
             fi
+            
+            # 【修复】始终尝试解析最新内容，确保进度实时更新
+            parse_and_display_progress "${log_file}" "${stage}" "${bar_width}"
+        fi
+        
+        # 【新增】长时间停滞检测：如果 5 分钟内文件大小没有任何变化，认为 cfst 卡住了
+        local current_time
+        current_time=$(date +%s)
+        local total_elapsed=$((current_time - last_check_time))
+        
+        if [[ ${total_elapsed} -ge ${stuck_timeout} ]] && [[ ${current_file_size} -eq ${last_file_size} ]]; then
+            echo ""
+            echo -e "${YELLOW}[WARN] 检测到进度停滞，已持续 ${stuck_timeout} 秒${NC}"
+            echo -e "${YELLOW}[WARN] cfst 可能卡住了，终止测速进程并自动重试...${NC}"
+            kill -TERM "${pid}" 2>/dev/null || true
+            sleep 2
+            kill -9 "${pid}" 2>/dev/null || true
+            return 1
         fi
         
         sleep "${refresh_interval}"
