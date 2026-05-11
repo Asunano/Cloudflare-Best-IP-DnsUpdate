@@ -314,20 +314,21 @@ select_colo_nodes() {
     echo -e " ${YELLOW}提示: 选择距离您服务器较近的地区可获得更优的延迟${NC}"
     echo ""
     echo -e " ${GREEN}常用节点推荐：${NC}"
-    echo -e "   1. 香港 + 东京 (HKG,NRT)          - 亚洲通用推荐"
-    echo -e "   2. 新加坡 + 东京 (SIN,NRT)         - 东南亚优化"
-    echo -e "   3. 洛杉矶 + 旧金山 (LAX,SJC)       - 北美优化"
-    echo -e "   4. 法兰克福 + 伦敦 (FRA,LON)       - 欧洲优化"
-    echo -e "   5. 悉尼 + 东京 (SYD,NRT)           - 大洋洲优化"
+    echo -e "   1. 不使用特定节点（默认，cfst 自动选择）"
+    echo -e "   2. 香港 + 东京 (HKG,NRT)          - 亚洲通用推荐"
+    echo -e "   3. 新加坡 + 东京 (SIN,NRT)         - 东南亚优化"
+    echo -e "   4. 洛杉矶 + 旧金山 (LAX,SJC)       - 北美优化"
+    echo -e "   5. 法兰克福 + 伦敦 (FRA,LON)       - 欧洲优化"
+    echo -e "   6. 悉尼 + 东京 (SYD,NRT)           - 大洋洲优化"
     echo ""
     echo -e " ${GRAY}其他选项：${NC}"
-    echo -e "   6. 自动检测（默认 HKG,NRT）"
-    echo -e "   7. 自定义节点（手动输入）"
+    echo -e "   7. 自动检测（默认 HKG,NRT）"
+    echo -e "   8. 自定义节点（手动输入）"
     echo ""
     echo -e " ${GRAY}提示: 您也可以直接输入节点代码，如 HKG,NRT${NC}"
     echo ""
     
-    echo -ne "${CYAN}请选择 [1-7] (默认 1):${NC} "
+    echo -ne "${CYAN}请选择 [1-8] (默认 1):${NC} "
     read -r colo_choice
     colo_choice=${colo_choice:-1}
     
@@ -344,16 +345,17 @@ select_colo_nodes() {
     fi
     
     case "$colo_choice" in
-        1) echo "HKG,NRT" ;;
-        2) echo "SIN,NRT" ;;
-        3) echo "LAX,SJC" ;;
-        4) echo "FRA,LON" ;;
-        5) echo "SYD,NRT" ;;
-        6)
+        1) echo "" ;;  # 不使用特定节点，返回空字符串让 cfst 自动选择
+        2) echo "HKG,NRT" ;;
+        3) echo "SIN,NRT" ;;
+        4) echo "LAX,SJC" ;;
+        5) echo "FRA,LON" ;;
+        6) echo "SYD,NRT" ;;
+        7)
             # 自动检测（当前逻辑）
             detect_optimal_colo
             ;;
-        7)
+        8)
             echo ""
             echo -e "${YELLOW}请输入 IATA 机场代码，多个用逗号分隔${NC}"
             echo -e "${GRAY}示例: HKG,NRT,LAX 或 SIN,TYO,FRA${NC}"
@@ -369,8 +371,8 @@ select_colo_nodes() {
             fi
             ;;
         *)
-            echo -e "${YELLOW}[WARN] 无效选择，使用默认值 HKG,NRT${NC}"
-            echo "HKG,NRT"
+            echo -e "${YELLOW}[WARN] 无效选择，使用默认值（不指定节点）${NC}"
+            echo ""
             ;;
     esac
 }
