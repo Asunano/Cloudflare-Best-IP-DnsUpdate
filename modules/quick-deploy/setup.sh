@@ -493,6 +493,13 @@ generate_cf_ip_config() {
     # 【修复】注册清理函数，防止 jq 失败时临时文件泄露
     trap "rm -f '${temp_file}'" RETURN
     
+    # 【新增】根据是否指定节点来决定 httping 模式
+    # 当指定了节点时，启用 httping；否则使用 tcping（默认）
+    local httping_enabled=false
+    if [[ -n "$colo_default" ]]; then
+        httping_enabled=true
+    fi
+    
     if [[ "$mode" = "multi" ]]; then
         if ! jq -n \
             --arg cfst_dir "${ROOT_DIR}/assets/cfst" \
@@ -505,6 +512,7 @@ generate_cf_ip_config() {
             --arg colo_mobile "$colo_mobile" \
             --arg colo_unicom "$colo_unicom" \
             --arg colo_telecom "$colo_telecom" \
+            --argjson httping "$httping_enabled" \
             '{
                 "_comment": "Cloudflare IP 优选模块配置",
                 "_version": "0.1",
@@ -519,7 +527,7 @@ generate_cf_ip_config() {
                     "download_time": 10,
                     "port": 443,
                     "url": "https://mirror.drxian.qzz.io/index.html",
-                    "httping": false,
+                    "httping": $httping,
                     "latency_max": 9999,
                     "packet_loss_max": 100,
                     "speed_min": 0,
@@ -556,6 +564,7 @@ generate_cf_ip_config() {
             --argjson enable_log true \
             --arg output_dir "./assets/data/cf-ip" \
             --arg log_dir "./logs/cf-ip" \
+            --argjson httping "$httping_enabled" \
             '{
                 "_comment": "Cloudflare IP 优选模块配置",
                 "_version": "0.1",
@@ -570,7 +579,7 @@ generate_cf_ip_config() {
                     "download_time": 10,
                     "port": 443,
                     "url": "https://mirror.drxian.qzz.io/index.html",
-                    "httping": false,
+                    "httping": $httping,
                     "latency_max": 9999,
                     "packet_loss_max": 100,
                     "speed_min": 0,
