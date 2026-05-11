@@ -426,7 +426,17 @@ mkdir -p "${OUTPUT_DIR}" "${LOG_DIR}"
 
 # 允许外部传入特定的 COLO 列表、输出文件名和线路标识
 LINE_TAG="${3:-default}" # 【修复】先赋值 LINE_TAG，再使用它生成文件名
-TARGET_COLO="${1:-${CFST_COLO:-HKG,NRT}}"
+# 【修复】正确处理空字符串：如果 CFST_COLO 为空字符串，保持为空，不使用默认值
+if [[ -n "${1:-}" ]]; then
+    # 外部传入了参数，优先使用
+    TARGET_COLO="$1"
+elif [[ -n "${CFST_COLO+x}" ]]; then
+    # CFST_COLO 已定义（即使是空字符串），使用它的值
+    TARGET_COLO="${CFST_COLO}"
+else
+    # CFST_COLO 未定义，使用默认值
+    TARGET_COLO="HKG,NRT"
+fi
 # 【修复】如果没有指定输出文件，根据线路标识生成唯一文件名，避免覆盖
 if [[ -n "${2:-}" ]]; then
     OUTPUT_CSV="$2"
