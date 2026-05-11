@@ -1075,7 +1075,7 @@ system_health_check() {
                                         "download_time": 10,
                                         "port": 443,
                                         "url": "",
-                                        "httping": false,
+                                        "httping": true,
                                         "latency_max": 9999,
                                         "packet_loss_max": 100,
                                         "speed_min": 0,
