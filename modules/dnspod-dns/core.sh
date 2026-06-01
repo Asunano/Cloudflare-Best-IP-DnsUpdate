@@ -772,24 +772,8 @@ create_record() {
     call_api "CreateRecord" "${payload}"
 }
 
-# 验证 IP 地址格式
-validate_ip() {
-    local ip="$1"
-    
-    # 检查是否为有效的 IPv4 地址格式
-    if [[ "${ip}" =~ ^([0-9]{1,3})\.([0-9]{1,3})\.([0-9]{1,3})\.([0-9]{1,3})$ ]]; then
-        # 检查每个段是否在 0-255 范围内
-        local i
-        for i in 1 2 3 4; do
-            if [[ "${BASH_REMATCH[$i]}" -gt 255 ]]; then
-                return 1
-            fi
-        done
-        return 0
-    else
-        return 1
-    fi
-}
+# 验证 IP 地址格式 - 统一使用 lib/common.sh 中的公共版本
+# common.sh 的 validate_ip() 更完整，包含 0.0.0.0 和 255.255.255.255 拦截
 
 # 从文件读取优选 IP (单线路通用)
 get_cf_ip_from_file() {

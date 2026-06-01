@@ -12,12 +12,26 @@ set -euo pipefail
 # shellcheck disable=SC2034
 SCRIPT_VERSION="0.1"
 
-# ==================== 入口校验与路径初始化 ====================
+# ==================== 路径初始化 ====================
+# 【关键修复】使用 ${ROOT_DIR:-} 安全引用，防止 set -u 报错
+if [[ -z "${ROOT_DIR:-}" ]]; then
+    SCRIPT_DIR="$( cd -P "$( dirname "${BASH_SOURCE[0]}" )" >/dev/null 2>&1 && pwd )"
+    ROOT_DIR="$(cd "$SCRIPT_DIR/../.." && pwd)"
+fi
+
+# ==================== 加载公共函数库 ====================
+# shellcheck source=../../lib/common.sh
+source "${ROOT_DIR}/lib/common.sh"
+
+# 设置日志模块名
+_LOG_MODULE="cf-dns-setup"
+
+# ==================== 入口校验 ====================
 
 # 【安全修复】检测非 TTY 环境，防止在 cron 中阻塞
 if [[ ! -t 0 ]] && [[ -z "${CF_OPT_ENTRY:-}" ]]; then
-    echo -e "${RED}[ERROR] 此脚本需要交互式终端，请通过 cfopt 菜单运行${NC}"
-    echo -e "${YELLOW}[提示] 正确用法: cfopt -> 3. CF-DNS 管理 -> 1. 配置向导${NC}"
+    log_error "此脚本需要交互式终端，请通过 cfopt 菜单运行"
+    log_warn "正确用法: cfopt -> 3. CF-DNS 管理 -> 1. 配置向导"
     exit 1
 fi
 
@@ -37,19 +51,12 @@ acquire_lock() {
     # 【安全修复】使用 flock 避免 TOCTOU 竞态条件
     exec 9>"$LOCK_FILE"
     if ! flock -n 9; then
-        echo -e "${RED}[ERROR] 另一个实例正在运行，无法获取锁${NC}"
-        echo -e "${YELLOW}提示: 如果确定没有运行，请删除 ${LOCK_FILE}${NC}"
+        log_error "另一个实例正在运行，无法获取锁"
+        log_warn "如果确定没有运行，请删除 ${LOCK_FILE}"
         exit 1
     fi
     # 锁会在脚本退出时自动释放（fd 9 关闭）
 }
-
-# ==================== 路径初始化 ====================
-# 【关键修复】使用 ${ROOT_DIR:-} 安全引用，防止 set -u 报错
-if [[ -z "${ROOT_DIR:-}" ]]; then
-    SCRIPT_DIR="$( cd -P "$( dirname "${BASH_SOURCE[0]}" )" >/dev/null 2>&1 && pwd )"
-    ROOT_DIR="$(cd "$SCRIPT_DIR/../.." && pwd)"
-fi
 
 # 配置文件路径（必须在 ROOT_DIR 定义之后）
 # 支持多域名配置：优先使用 conf/cf-dns/{domain}.json，否则使用 conf/cf-dns.json

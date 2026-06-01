@@ -30,6 +30,32 @@ if [[ "${CF_OPT_ENTRY:-}" != "main_menu" ]]; then
     exit 1
 fi
 
+# ==================== 全局临时文件管理 ====================
+# 【修复】使用栈式管理避免 trap RETURN 相互覆盖
+# 问题：多个函数各自设置 trap RETURN，后者覆盖前者导致资源泄漏
+# 方案：使用全局数组 + EXIT trap 统一清理，各函数退出时自行清理
+declare -a _QD_TEMP_FILES=()
+_qd_register_temp() {
+    _QD_TEMP_FILES+=("$1")
+}
+_qd_cleanup_temp() {
+    local file="$1"
+    rm -f "${file}" 2>/dev/null || true
+    # 从数组中移除
+    local -a new_arr=()
+    for f in "${_QD_TEMP_FILES[@]}"; do
+        [[ "${f}" != "${file}" ]] && new_arr+=("${f}")
+    done
+    _QD_TEMP_FILES=("${new_arr[@]}")
+}
+_qd_cleanup_all_temps() {
+    for f in "${_QD_TEMP_FILES[@]}"; do
+        rm -f "${f}" 2>/dev/null || true
+    done
+    _QD_TEMP_FILES=()
+}
+trap _qd_cleanup_all_temps EXIT
+
 # ==================== 辅助函数 ====================
 show_header() {
     clear
@@ -169,8 +195,8 @@ add_deploy_record() {
     local temp_file
     temp_file=$(mktemp /tmp/cfopt-quick-deploy.XXXXXX)
     chmod 600 "${temp_file}"
-    # 【修复】注册清理函数，防止 jq 失败时临时文件泄露
-    trap "rm -f '${temp_file}'" RETURN
+    # 【修复】注册到全局清理列表，防止 jq 失败时临时文件泄露
+    _qd_register_temp "${temp_file}"
     
     if ! jq --arg d "$domain" \
        --arg t "$dns_type" \
@@ -185,9 +211,10 @@ add_deploy_record() {
     
     if ! mv "$temp_file" "${DEPLOY_RECORD_FILE}"; then
         echo -e "${RED}[ERROR] 配置文件更新失败${NC}" >&2
-        rm -f "$temp_file" 2>/dev/null
+        _qd_cleanup_temp "$temp_file"
         return 1
     fi
+    _qd_cleanup_temp "$temp_file"
     chmod 600 "${DEPLOY_RECORD_FILE}"
 }
 
@@ -281,8 +308,8 @@ delete_domain_config() {
     local temp_file
     temp_file=$(mktemp /tmp/cfopt-quick-deploy.XXXXXX)
     chmod 600 "${temp_file}"
-    # 【修复】注册清理函数，防止 jq 失败时临时文件泄露
-    trap "rm -f '${temp_file}'" RETURN
+    # 【修复】注册到全局清理列表，防止 jq 失败时临时文件泄露
+    _qd_register_temp "${temp_file}"
     
     if ! jq --arg d "$domain" '.domains = [.domains[] | select(.domain != $d)]' \
        "${DEPLOY_RECORD_FILE}" > "$temp_file"; then
@@ -292,9 +319,10 @@ delete_domain_config() {
     
     if ! mv "$temp_file" "${DEPLOY_RECORD_FILE}"; then
         echo -e "${RED}[ERROR] 配置文件更新失败${NC}" >&2
-        rm -f "$temp_file" 2>/dev/null
+        _qd_cleanup_temp "$temp_file"
         return 1
     fi
+    _qd_cleanup_temp "$temp_file"
     chmod 600 "${DEPLOY_RECORD_FILE}"
     echo -e "  [OK] 已删除部署记录"
 }
@@ -490,8 +518,8 @@ generate_cf_ip_config() {
     local temp_file
     temp_file=$(mktemp /tmp/cfopt-quick-deploy.XXXXXX)
     chmod 600 "${temp_file}"
-    # 【修复】注册清理函数，防止 jq 失败时临时文件泄露
-    trap "rm -f '${temp_file}'" RETURN
+    # 【修复】注册到全局清理列表，防止 jq 失败时临时文件泄露
+    _qd_register_temp "${temp_file}"
     
     # 【新增】根据是否指定节点来决定 httping 模式
     # 当指定了节点时，启用 httping；否则使用 tcping（默认）
@@ -612,9 +640,10 @@ generate_cf_ip_config() {
     
     if ! mv "$temp_file" "$config_file"; then
         echo -e "${RED}[ERROR] 配置文件更新失败${NC}" >&2
-        rm -f "$temp_file" 2>/dev/null
+        _qd_cleanup_temp "$temp_file"
         return 1
     fi
+    _qd_cleanup_temp "$temp_file"
     chmod 600 "$config_file"
 }
 
@@ -645,8 +674,8 @@ generate_dnspod_config() {
     local temp_file
     temp_file=$(mktemp /tmp/cfopt-quick-deploy.XXXXXX)
     chmod 600 "${temp_file}"
-    # 【修复】注册清理函数，防止 jq 失败时临时文件泄露
-    trap "rm -f '${temp_file}'" RETURN
+    # 【修复】注册到全局清理列表，防止 jq 失败时临时文件泄露
+    _qd_register_temp "${temp_file}"
     
     if [[ "$mode" = "multi" ]]; then
         if ! jq -n \
@@ -748,9 +777,10 @@ generate_dnspod_config() {
     
     if ! mv "$temp_file" "$config_file"; then
         echo -e "${RED}[ERROR] 配置文件更新失败${NC}" >&2
-        rm -f "$temp_file" 2>/dev/null
+        _qd_cleanup_temp "$temp_file"
         return 1
     fi
+    _qd_cleanup_temp "$temp_file"
     chmod 600 "$config_file"
     
     echo -e "${GREEN}[OK] DNSPod 配置已生成: ${config_file}${NC}"
@@ -781,8 +811,8 @@ generate_cf_dns_config() {
     local temp_file
     temp_file=$(mktemp /tmp/cfopt-quick-deploy.XXXXXX)
     chmod 600 "${temp_file}"
-    # 【修复】注册清理函数，防止 jq 失败时临时文件泄露
-    trap "rm -f '${temp_file}'" RETURN
+    # 【修复】注册到全局清理列表，防止 jq 失败时临时文件泄露
+    _qd_register_temp "${temp_file}"
     
     # 按域名独立存储 IP 列表和测速结果，避免多域名冲突
     # 【修复】统一使用 .iplist 格式（标准格式：IP|延迟|速度|地区码），与 cf-dns/core.sh 保持一致
@@ -824,9 +854,10 @@ generate_cf_dns_config() {
     
     if ! mv "$temp_file" "$config_file"; then
         echo -e "${RED}[ERROR] 配置文件更新失败${NC}" >&2
-        rm -f "$temp_file" 2>/dev/null
+        _qd_cleanup_temp "$temp_file"
         return 1
     fi
+    _qd_cleanup_temp "$temp_file"
     chmod 600 "$config_file"
     
     echo -e "${GREEN}[OK] Cloudflare DNS 配置已生成: ${config_file}${NC}"

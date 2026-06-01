@@ -214,7 +214,11 @@ run_task() {
     fi
 
     # 【修复】将 PID 写入文件，供看门狗子 shell 读取
+    # 【修复】先写入PID文件，再启动看门狗，避免竞争条件
     echo "${TASK_PID}" > "${WATCHDOG_PID_FILE}"
+    
+    # 【新增】等待一小段时间确保PID已写入文件
+    sleep 0.1
     
     wait "${TASK_PID}"
     local exit_code=$?
@@ -325,6 +329,11 @@ else
             # 【优化】通过环境变量传递配置，避免 core.sh 重复读取文件
             export CF_IP_CFG_LOADED="true"
             export CF_OPT_ENTRY=scheduler
+            # 【修复】单线路模式也需要传递多线路配置，保持环境变量一致性
+            export CFG_MULTI_LINE_ENABLED="false"
+            export CFG_COLO_MOBILE="HKG,SIN,TYO,LON"
+            export CFG_COLO_UNICOM="SJC,LAX,SIN,TYO"
+            export CFG_COLO_TELECOM="SJC,LAX,TYO,SIN"
             # 【修复】串行执行，避免 cfst 竞争
             bash "${ROOT_DIR}/modules/cf-ip/core.sh" "${colo_nodes}" "${result_file}" "${domain_name}"
             

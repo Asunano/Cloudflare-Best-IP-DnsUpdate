@@ -222,7 +222,10 @@ check_config() {
     # 【修复】检查配置文件是否包含基本的 enabled 字段
     # core.sh 中所有其他字段都有默认值，只有 enabled 是必须的
     local has_enabled
-    has_enabled=$(jq -r '.enabled // empty' "${CONFIG_FILE}" 2>/dev/null)
+    has_enabled=$(jq -r '.enabled // empty' "${CONFIG_FILE}" 2>/dev/null) || {
+        echo -e "${RED}[ERROR] JSON 解析失败${NC}" >&2
+        return 2
+    }
     if [[ -z "${has_enabled}" ]]; then
         # 配置文件存在但缺少 enabled 字段，视为未配置
         return ${CONFIG_INCOMPLETE}
@@ -480,8 +483,8 @@ configure_advanced() {
     read -r -p "是否生成 HTML 报告？(true/false，默认: true): " ENABLE_HTML
     ENABLE_HTML=${ENABLE_HTML:-"true"}
     
-    read -r -p "HTML输出文件路径（默认: /opt/1panel/www/sites/sw/index/index.html）: " OUTPUT_HTML_PATH
-    OUTPUT_HTML_PATH=${OUTPUT_HTML_PATH:-"/opt/1panel/www/sites/sw/index/index.html"}
+    read -r -p "HTML输出文件路径（默认: ./assets/data/cf-ip/report.html）: " OUTPUT_HTML_PATH
+    OUTPUT_HTML_PATH=${OUTPUT_HTML_PATH:-"./assets/data/cf-ip/report.html"}
     
     read -r -p "需要提取的优质IP数量（默认: 5）: " TAKE_IP_NUM
     TAKE_IP_NUM=${TAKE_IP_NUM:-5}
