@@ -478,11 +478,15 @@ acquire_lock() {
 
     # 【修复】注册清理函数，确保退出时删除锁文件和临时日志
     cleanup_lock() {
+        local exit_code=$?
         rm -f "${LOCK_FILE}" 2>/dev/null || true
         # 【新增】清理临时日志文件（当 ENABLE_LOG=false 时）
         if [[ "${ENABLE_LOG:-true}" != "true" ]] && [[ -f "${LOG_FILE:-}" ]]; then
             rm -f "${LOG_FILE}" 2>/dev/null || true
         fi
+        # 【修复】关闭文件描述符 fd 9，防止泄漏
+        exec 9>&- 2>/dev/null || true
+        exit ${exit_code}
     }
     trap cleanup_lock EXIT
 }
@@ -588,6 +592,10 @@ if [[ "${CFST_DISABLE_DOWNLOAD}" != "true" ]] && [[ -n "${CFST_URL}" ]]; then
     # 第一步：检查 HTTP 状态码
     url_check_result=$(curl -sLf --max-time 10 -o /dev/null -w "%{http_code}" "${CFST_URL}" 2>/dev/null || true)
     
+    # 【修复】添加临时文件清理trap，确保无论如何都会清理
+    local temp_test_file="/tmp/cfst_url_test_$$"
+    trap "rm -f '${temp_test_file}' 2>/dev/null" RETURN
+    
     if [[ ! "${url_check_result}" =~ ^[23] ]]; then
         echo -e "${YELLOW}[WARN] 下载 URL 不可达 (HTTP ${url_check_result:-000})，跳过下载测速${NC}"
         echo -e "${YELLOW}[WARN] 建议检查网络或修改配置文件中的 cfst.url 字段${NC}"
@@ -596,13 +604,13 @@ if [[ "${CFST_DISABLE_DOWNLOAD}" != "true" ]] && [[ -n "${CFST_URL}" ]]; then
     else
         # 第二步：实际测试下载（只下载前 1KB，验证是否真的能下载）
         echo -e "${CYAN}[INFO] 正在测试实际下载能力...${NC}"
-        test_download_result=$(curl -sLf --max-time 15 --range 0-1023 -o /tmp/cfst_url_test_$$ "${CFST_URL}" 2>&1 || true)
+        test_download_result=$(curl -sLf --max-time 15 --range 0-1023 -o "${temp_test_file}" "${CFST_URL}" 2>&1 || true)
         download_exit_code=$?
         
-        if [[ ${download_exit_code} -eq 0 ]] && [[ -s "/tmp/cfst_url_test_$$" ]]; then
-            file_size=$(wc -c < "/tmp/cfst_url_test_$$")
+        if [[ ${download_exit_code} -eq 0 ]] && [[ -s "${temp_test_file}" ]]; then
+            file_size=$(wc -c < "${temp_test_file}")
             echo -e "${GREEN}[OK] 下载 URL 连通性正常 (HTTP ${url_check_result}, 测试下载 ${file_size} 字节)${NC}"
-            rm -f "/tmp/cfst_url_test_$$"
+            rm -f "${temp_test_file}"
         else
             echo -e "${YELLOW}[WARN] 下载 URL 虽然可达，但实际下载失败 (Exit: ${download_exit_code})${NC}"
             if [[ -n "${test_download_result}" ]]; then
@@ -610,7 +618,7 @@ if [[ "${CFST_DISABLE_DOWNLOAD}" != "true" ]] && [[ -n "${CFST_URL}" ]]; then
             fi
             echo -e "${YELLOW}[WARN] 跳过下载测速，仅执行延迟测速${NC}"
             export CFST_DISABLE_DOWNLOAD="true"
-            rm -f "/tmp/cfst_url_test_$$" 2>/dev/null || true
+            rm -f "${temp_test_file}" 2>/dev/null || true
         fi
     fi
     echo ""
@@ -880,6 +888,7 @@ progress_bar_width=40
 # 【增强】测速结果验证与自动重试
 # 【修复】将首次测速也纳入循环，确保 MAX_RETRY 含义符合用户预期
 # 【安全修复】将变量声明移到循环外部，避免重复声明问题
+# 【修复】MAX_RETRY 表示最大重试次数，不包括首次尝试，所以循环应该是 retry=0 到 retry<MAX_RETRY
 cfst_timeout=300
 if [[ -n "${CFST_TIMEOUT:-}" ]] && [[ "${CFST_TIMEOUT}" =~ ^[0-9]+$ ]]; then
     cfst_timeout="${CFST_TIMEOUT}"

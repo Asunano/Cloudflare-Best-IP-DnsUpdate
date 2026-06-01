@@ -540,6 +540,8 @@ needs_update() {
 # ==================== API 调用函数 ====================
 
 # 从文件读取优选 IP
+# 【重构】统一使用 lib/common.sh 中的 read_ips_from_file() 公共函数
+# 公共库版本支持 .iplist、纯IP、逗号/空格分隔等多种格式，避免行为不一致
 get_cf_ip_from_file() {
     if [ ! -f "$IP_FILE" ]; then
         log "${RED}错误${NC}: IP 文件不存在: ${IP_FILE}"
@@ -547,54 +549,8 @@ get_cf_ip_from_file() {
         return 1
     fi
     
-    # 【修复】移除死代码缓存逻辑（原逻辑无论文件是否变化都继续执行，毫无意义）
-    # 如果需要实现真正的缓存，应该返回缓存内容并 return，但当前设计不需要缓存
-    
-    # 读取文件内容,支持多种格式:
-    # 1. 每行一个 IP
-    # 2. 逗号分隔的 IP
-    # 3. 空格分隔的 IP
-    # 4. 混合分隔符
-    # 5. .iplist 格式（IP|延迟|速度|地区码）
-    local content
-    # 【修复】支持 .iplist 的 | 分隔，提取第一列 IP，并添加 trim 去除首尾空格
-    content=$(awk '!/^#/ && !/^$/ { gsub(/#.*/, ""); split($0, a, "|"); gsub(/,/, " ", a[1]); gsub(/^[[:space:]]+|[[:space:]]+$/, "", a[1]); printf "%s ", a[1] }' "$IP_FILE" | sed 's/ $//')
-    
-    if [ -z "$content" ]; then
-        log "${RED}错误${NC}: IP 文件为空: ${IP_FILE}"
-        return 1
-    fi
-    
-    # 限制 IP 数量
-    if [ "$MAX_IPS_PER_RECORD" -gt 0 ]; then
-        # 将 IP 转换为数组
-        IFS=' ' read -ra ip_array <<< "$content"
-        local total_ips=${#ip_array[@]}
-        
-        # 如果超出限制,只取前 N 个
-        if [ "$total_ips" -gt "$MAX_IPS_PER_RECORD" ]; then
-            echo -e "${YELLOW}警告${NC}: IP 文件包含 ${total_ips} 个 IP,超出限制 ${MAX_IPS_PER_RECORD} 个" >&2
-            echo -e "   已自动截取前 ${MAX_IPS_PER_RECORD} 个 IP (避免超出套餐限制)" >&2
-            
-            # 取前 N 个 IP
-            local limited_ips=""
-            for ((i=0; i<MAX_IPS_PER_RECORD && i<total_ips; i++)); do
-                if [ -z "$limited_ips" ]; then
-                    limited_ips="${ip_array[$i]}"
-                else
-                    limited_ips="${limited_ips} ${ip_array[$i]}"
-                fi
-            done
-            echo "$limited_ips"
-        else
-            echo "$content"
-        fi
-    else
-        # 不限制
-        echo "$content"
-    fi
-    
-    return 0
+    # 调用公共库的通用 IP 读取函数
+    read_ips_from_file "$IP_FILE" "$MAX_IPS_PER_RECORD"
 }
 
 # 获取 DNS 记录

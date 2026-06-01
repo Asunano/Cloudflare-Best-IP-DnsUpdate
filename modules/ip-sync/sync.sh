@@ -157,15 +157,18 @@ sync_cf_dns_ips() {
         
         # 检查模块是否启用
         local enabled
-        enabled=$(jq -r '.enabled // false' "$json_file")
+        enabled=$(jq -r '.enabled // false' "$json_file" 2>/dev/null) || {
+            echo -e "  ${RED}[ERROR]${NC} ${domain_name}: JSON 格式错误，跳过"
+            continue
+        }
         if [[ "${enabled}" != "true" ]]; then
             continue
         fi
         
         # 验证关键配置项
         local api_token zone_id
-        api_token=$(jq -r '.api.token // empty' "$json_file")
-        zone_id=$(jq -r '.api.zone_id // empty' "$json_file")
+        api_token=$(jq -r '.api.token // empty' "$json_file" 2>/dev/null) || true
+        zone_id=$(jq -r '.api.zone_id // empty' "$json_file" 2>/dev/null) || true
         
         if [[ -z "${api_token}" ]] || [[ -z "${zone_id}" ]]; then
             continue
@@ -176,12 +179,11 @@ sync_cf_dns_ips() {
             has_synced=true
         fi
         
-        # 【修复】移除冗余的 RESULT_CSV 覆盖逻辑，直接使用 result_file 变量
-        # 从配置中读取限制数量、目标文件路径和测速结果文件路径
+        # 【修复】从配置中读取限制数量、目标文件路径和测速结果文件路径
         local max_ips target_file result_file
-        max_ips=$(jq -r '.dns.max_ips_per_record // 2' "$json_file")
-        target_file=$(jq -r '.ip_source.file_path // empty' "$json_file")
-        result_file=$(jq -r '.ip_source.result_file // empty' "$json_file")
+        max_ips=$(jq -r '.dns.max_ips_per_record // 2' "$json_file" 2>/dev/null) || max_ips=2
+        target_file=$(jq -r '.ip_source.file_path // empty' "$json_file" 2>/dev/null) || true
+        result_file=$(jq -r '.ip_source.result_file // empty' "$json_file" 2>/dev/null) || true
         
         if [[ -z "${target_file}" ]]; then
             echo -e "  ${YELLOW}[WARN]${NC} ${domain_name}: 未配置 ip_source.file_path，跳过"
@@ -251,7 +253,7 @@ sync_cf_dns_ips() {
             
             # 从配置中读取测速节点（如果有）
             local colo_nodes
-            colo_nodes=$(jq -r '.ip_source.colo_nodes // "HKG,NRT"' "$json_file")
+            colo_nodes=$(jq -r '.ip_source.colo_nodes // "HKG,NRT"' "$json_file" 2>/dev/null) || colo_nodes="HKG,NRT"
             
             # 自动重新测速
             if auto_retry_test "${result_file}" "${colo_nodes}" "${domain_name}"; then
@@ -299,23 +301,23 @@ _sync_single_dnspod_config() {
     
     # 验证关键配置项
     local dnspod_id dnspod_token
-    dnspod_id=$(jq -r '.api.id // empty' "$json_file")
-    dnspod_token=$(jq -r '.api.token // empty' "$json_file")
+    dnspod_id=$(jq -r '.api.id // empty' "$json_file" 2>/dev/null) || true
+    dnspod_token=$(jq -r '.api.token // empty' "$json_file" 2>/dev/null) || true
     
     if [[ -z "${dnspod_id}" ]] || [[ -z "${dnspod_token}" ]]; then
         echo -e "  ${YELLOW}[WARN]${NC} ${domain_name}: API 配置不完整，跳过"
         return 1
     fi
     
-    # 获取工作模式
+    # 获取工作模式（mode 嵌套在 .dns 对象下）
     local mode
-    mode=$(jq -r '.mode // "single"' "$json_file")
+    mode=$(jq -r '.dns.mode // "single"' "$json_file")
     
     if [[ "${mode}" = "single" ]]; then
         # 单线路模式：直接同步通用 IP 列表
         local max_ips target_file
-        max_ips=$(jq -r '.dns.max_ips_per_record // 5' "$json_file")
-        target_file=$(jq -r '.ip_source.file_path // empty' "$json_file")
+        max_ips=$(jq -r '.dns.max_ips_per_record // 5' "$json_file" 2>/dev/null) || max_ips=5
+        target_file=$(jq -r '.ip_source.file_path // empty' "$json_file" 2>/dev/null) || true
         
         if [[ -z "${target_file}" ]]; then
             echo -e "  ${YELLOW}[WARN]${NC} ${domain_name}: 未配置 ip_source.file_path，跳过"
@@ -326,7 +328,7 @@ _sync_single_dnspod_config() {
         
         # 【修复】从配置中读取测速结果文件路径，支持多域名模式
         local result_file
-        result_file=$(jq -r '.ip_source.result_file // empty' "$json_file")
+        result_file=$(jq -r '.ip_source.result_file // empty' "$json_file" 2>/dev/null) || true
         
         # Fallback：如果未配置 result_file，根据域名自动推断
         if [[ -z "${result_file}" ]]; then
@@ -369,9 +371,131 @@ _sync_single_dnspod_config() {
         echo -e "    ${GREEN}[OK]${NC} ${domain_name}: 已同步 ${actual_count} 个 IP 到 ${target_file}"
         return 0
     else
-        # 多线路模式：暂不支持
-        echo -e "  ${YELLOW}[WARN]${NC} ${domain_name}: 多线路模式暂不支持，跳过"
-        return 1
+        # 多线路模式：按运营商线路分别同步 IP
+        local isp_lines_str
+        isp_lines_str=$(jq -r '.dns.isp_lines // "默认 联通 移动 电信"' "$json_file" 2>/dev/null) || isp_lines_str="默认 联通 移动 电信"
+        local max_ips
+        max_ips=$(jq -r '.dns.max_ips_per_record // 2' "$json_file" 2>/dev/null) || max_ips=2
+        
+        # 建立线路名称到配置字段后缀的映射
+        declare -A LINE_SUFFIX_MAP
+        LINE_SUFFIX_MAP["默认"]="default"
+        LINE_SUFFIX_MAP["联通"]="unicom"
+        LINE_SUFFIX_MAP["移动"]="mobile"
+        LINE_SUFFIX_MAP["电信"]="telecom"
+        
+        local has_synced=false
+        local synced_count=0
+        local fail_count=0
+        
+        IFS=' ' read -ra isp_lines <<< "${isp_lines_str}"
+        for line in "${isp_lines[@]}"; do
+            local line_suffix="${LINE_SUFFIX_MAP[$line]:-${line,,}}"
+            
+            # 从配置中读取该线路的 IP 文件路径
+            local target_file
+            target_file=$(jq -r --arg suffix "$line_suffix" '.ip_source.files[$suffix] // empty' "$json_file" 2>/dev/null) || true
+            
+            if [[ -z "${target_file}" ]]; then
+                # 使用默认路径：assets/data/dnspod-dns/{line_suffix}.iplist
+                target_file="${ROOT_DIR}/assets/data/dnspod-dns/${line_suffix}.iplist"
+            fi
+            
+            # 将相对路径转为绝对路径
+            if [[ "${target_file}" != /* ]]; then
+                target_file="${ROOT_DIR}/${target_file#./}"
+            fi
+            
+            mkdir -p "$(dirname "${target_file}")"
+            
+            if [[ "${has_synced}" = false ]]; then
+                echo -e "    ${CYAN}[INFO]${NC} ${domain_name}: 多线路模式，共 ${#isp_lines[@]} 条线路"
+                has_synced=true
+            fi
+            
+            # 查找该线路对应的测速结果文件
+            # Scheduler 生成的格式: result_{isp}.csv (如 result_default.csv, result_unicom.csv)
+            local result_file
+            result_file=$(find_latest_file "${RESULT_DIR}" "result_${line_suffix}_*.csv")
+            
+            # 备用：查找不带时间戳的固定文件名
+            if [[ -z "${result_file}" ]] || [[ ! -f "${result_file}" ]]; then
+                if [[ -f "${RESULT_DIR}/result_${line_suffix}.csv" ]]; then
+                    result_file="${RESULT_DIR}/result_${line_suffix}.csv"
+                fi
+            fi
+            
+            # 最后fallback：如果没有线路专用结果，尝试使用全局最新结果
+            if [[ -z "${result_file}" ]] || [[ ! -f "${result_file}" ]]; then
+                echo -e "    ${YELLOW}[WARN]${NC}   ${line}线路: 未找到测速结果文件 (${line_suffix})"
+                echo -e "    ${YELLOW}[提示]${NC}   请先运行多线路测速：cfopt → 5. 自动化调度中心 → 1. 立即执行"
+                fail_count=$((fail_count + 1))
+                continue
+            fi
+            
+            # 验证测速结果有效性
+            local first_ip
+            first_ip="$(sed -n '2p' "${result_file}" | awk -F',' '{print $1}')"
+            if [[ -z "${first_ip}" ]] || [[ "${first_ip}" = "0.0.0.0" ]] || [[ ! "${first_ip}" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+                echo -e "    ${YELLOW}[WARN]${NC}   ${line}线路: 测速结果数据异常 (首个 IP: ${first_ip:-空})"
+                
+                # 自动重新测速 - 从 CF-IP 配置中读取该线路对应的 colo 节点
+                local colo_nodes
+                local cf_ip_config="${ROOT_DIR}/conf/cf-ip.json"
+                case "$line_suffix" in
+                    "default") colo_nodes=$(jq -r '.cfst.colo // "HKG,NRT"' "$cf_ip_config" 2>/dev/null) || colo_nodes="HKG,NRT" ;;
+                    "unicom")  colo_nodes=$(jq -r '.multi_line.colo_unicom // "SJC,LAX,SIN,TYO"' "$cf_ip_config" 2>/dev/null) || colo_nodes="SJC,LAX,SIN,TYO" ;;
+                    "mobile")  colo_nodes=$(jq -r '.multi_line.colo_mobile // "HKG,SIN,TYO,LON"' "$cf_ip_config" 2>/dev/null) || colo_nodes="HKG,SIN,TYO,LON" ;;
+                    "telecom") colo_nodes=$(jq -r '.multi_line.colo_telecom // "SJC,LAX,TYO,SIN"' "$cf_ip_config" 2>/dev/null) || colo_nodes="SJC,LAX,TYO,SIN" ;;
+                    *)         colo_nodes="HKG,NRT" ;;
+                esac
+                
+                if auto_retry_test "${result_file}" "${colo_nodes}" "${line_suffix}"; then
+                    echo -e "    ${CYAN}[INFO]${NC}   ${line}线路: 重新测速成功，正在重试同步..."
+                else
+                    echo -e "    ${RED}[ERROR]${NC}   ${line}线路: 自动重新测速失败，跳过"
+                    fail_count=$((fail_count + 1))
+                    continue
+                fi
+            fi
+            
+            # 从 CSV 中提取最优 IP 写入 .iplist 文件
+            {
+                echo "# Cloudflare 优选 IP 列表 - DNSPod ${line}线路"
+                echo "# 生成时间: $(date '+%Y-%m-%d %H:%M:%S')"
+                echo "#"
+                echo "# IP地址|延迟(ms)|下载速度(MB/s)|地区码"
+                awk -F',' 'NR>1 && $6>0 {print $0}' "${result_file}" | \
+                    sort -t',' -k6,6 -rn -k5,5 -n | \
+                    head -n "${max_ips}" | \
+                    awk -F',' '{gsub(/\r/,"",$5); gsub(/\r/,"",$6); gsub(/\r/,"",$7); print $1"|"$5"|"$6"|"$7}'
+            } > "${target_file}"
+            
+            local actual_count
+            actual_count=$(grep -v '^#' "${target_file}" | grep -v '^\s*$' | wc -l)
+            actual_count="${actual_count// /}"
+            
+            if [[ "${actual_count}" -eq 0 ]]; then
+                echo -e "    ${RED}[ERROR]${NC}  ${line}线路: 所有 IP 下载速度均为 0，测速数据无效"
+                fail_count=$((fail_count + 1))
+            else
+                echo -e "    ${GREEN}[OK]${NC}   ${line}线路: 已同步 ${actual_count} 个 IP 到 ${target_file}"
+                synced_count=$((synced_count + 1))
+            fi
+        done
+        
+        if [[ "${synced_count}" -gt 0 ]]; then
+            echo -e "    ${GREEN}[OK]${NC} ${domain_name}: 多线路同步完成 (成功 ${synced_count}/${#isp_lines[@]})"
+        fi
+        if [[ "${fail_count}" -gt 0 ]]; then
+            echo -e "    ${YELLOW}[WARN]${NC} ${domain_name}: ${fail_count} 条线路同步失败，请检查测速结果"
+        fi
+        
+        if [[ "${synced_count}" -gt 0 ]]; then
+            return 0
+        else
+            return 1
+        fi
     fi
 }
 
@@ -609,8 +733,12 @@ batch_update_cf_dns() {
         local domain_name
         domain_name=$(basename "$config_file" .json)
         
-        # 【安全修复】清理文件名中的非域名字符，防止特殊字符注入
-        domain_name=$(echo "$domain_name" | tr -cd 'a-zA-Z0-9.-')
+        # 【安全修复】白名单验证域名，只允许字母、数字、连字符和点
+        if [[ ! "${domain_name}" =~ ^[a-zA-Z0-9.-]+$ ]]; then
+            echo -e "${RED}[ERROR] 无效的域名格式: ${domain_name}${NC}"
+            FAIL_COUNT=$((FAIL_COUNT + 1))
+            continue
+        fi
         
         if [[ -z "$domain_name" ]]; then
             echo -e "${RED}[ERROR] 无效的配置文件名: $(basename "$config_file")${NC}"
@@ -695,8 +823,12 @@ batch_update_dnspod_dns() {
         local domain_name
         domain_name=$(basename "$config_file" .json)
         
-        # 【安全修复】清理文件名中的非域名字符，防止特殊字符注入
-        domain_name=$(echo "$domain_name" | tr -cd 'a-zA-Z0-9.-')
+        # 【安全修复】白名单验证域名，只允许字母、数字、连字符和点
+        if [[ ! "${domain_name}" =~ ^[a-zA-Z0-9.-]+$ ]]; then
+            echo -e "${RED}[ERROR] 无效的域名格式: ${domain_name}${NC}"
+            FAIL_COUNT=$((FAIL_COUNT + 1))
+            continue
+        fi
         
         if [[ -z "$domain_name" ]]; then
             echo -e "${RED}[ERROR] 无效的配置文件名: $(basename "$config_file")${NC}"

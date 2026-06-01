@@ -12,16 +12,17 @@ set -euo pipefail
 ORIGINAL_ARGS=("$@")
 
 # --- 终端颜色定义 (必须最先定义，防止 set -u 报错) ---
-# 【关键修复】使用 export 导出颜色变量，确保子进程可以继承
-export GREEN='\033[0;32m'
-export YELLOW='\033[1;33m'
-export RED='\033[0;31m'
-export BLUE='\033[0;34m'
-export CYAN='\033[0;36m'
-export GRAY='\033[0;90m'
-export MAGENTA='\033[0;35m'
-export BOLD='\033[1m'
-export NC='\033[0m'
+# 【修复】移除 export，由 lib/common.sh 统一管理
+# 在 common.sh 加载前使用临时定义
+RED='\033[0;31m'
+YELLOW='\033[1;33m'
+GREEN='\033[0;32m'
+BLUE='\033[0;34m'
+CYAN='\033[0;36m'
+GRAY='\033[0;90m'
+MAGENTA='\033[0;35m'
+BOLD='\033[1m'
+NC='\033[0m'
 
 # ====================== 【统一错误处理系统】 ======================
 
@@ -58,12 +59,20 @@ _rotate_log_fallback() {
 
 # 触发回滚
 # 回滚函数（用于 trigger_rollback）
-# 此函数可能在 common.sh 加载前被调用，使用 echo 替代 log_* 函数
+# 【修复】添加 INSTALL_DIR 参数，避免依赖全局变量
 rollback_on_failure() {
+    local install_dir="${1:-${INSTALL_DIR:-}}"
+    
+    # 【修复】检查 INSTALL_DIR 是否有效
+    if [[ -z "${install_dir}" ]]; then
+        echo -e "${RED}[ERROR] INSTALL_DIR 未定义，无法执行回滚${NC}"
+        return 1
+    fi
+    
     echo -e "${YELLOW}[WARN] 执行回滚操作...${NC}"
     
     # 检查是否有备份
-    local backup_dir="${INSTALL_DIR}/backup"
+    local backup_dir="${install_dir}/backup"
     if [[ ! -d "${backup_dir}" ]]; then
         echo -e "${RED}[ERROR] 未找到备份目录: ${backup_dir}${NC}"
         return 1
@@ -92,7 +101,7 @@ rollback_on_failure() {
 
 trigger_rollback() {
     echo -e "${YELLOW}[WARN] 检测到严重错误，尝试回滚到上一版本...${NC}"
-    if rollback_on_failure; then
+    if rollback_on_failure "${INSTALL_DIR}"; then
         echo -e "${GREEN}[OK] 回滚成功，系统已恢复${NC}"
     else
         echo -e "${RED}[ERROR] 回滚失败，请手动修复或重新安装${NC}"
@@ -366,9 +375,12 @@ if [[ "${CURRENT_SCRIPT_PATH}" != "${TARGET_SCRIPT_PATH}" ]]; then
                 
                 # 【修复】不使用 exec，避免信号处理器丢失
                 # 直接启动新进程，让当前进程正常退出
-                # 【关键修复】使用 ${array[@]+"${array[@]}"} 语法防止 set -u 下空数组报错
-                # 兼容 bash 4.2（CentOS 7 默认版本）
-                bash "${TARGET_SCRIPT_PATH}" ${ORIGINAL_ARGS[@]+"${ORIGINAL_ARGS[@]}"}
+                # 【关键修复】显式检查数组是否为空，兼容所有 bash 版本
+                if [[ ${#ORIGINAL_ARGS[@]} -gt 0 ]]; then
+                    bash "${TARGET_SCRIPT_PATH}" "${ORIGINAL_ARGS[@]}"
+                else
+                    bash "${TARGET_SCRIPT_PATH}"
+                fi
                 exit $?
             else
                 echo -e "${RED}[ERROR] 目标文件语法检查失败:${NC}"
@@ -412,9 +424,12 @@ if [[ "${CURRENT_SCRIPT_PATH}" != "${TARGET_SCRIPT_PATH}" ]]; then
                     
                     # 【修复】不使用 exec，避免信号处理器丢失
                     # 直接启动新进程，让当前进程正常退出
-                    # 【关键修复】使用 ${array[@]+"${array[@]}"} 语法防止 set -u 下空数组报错
-                    # 兼容 bash 4.2（CentOS 7 默认版本）
-                    bash "${TARGET_SCRIPT_PATH}" ${ORIGINAL_ARGS[@]+"${ORIGINAL_ARGS[@]}"}
+                    # 【关键修复】显式检查数组是否为空，兼容所有 bash 版本
+                    if [[ ${#ORIGINAL_ARGS[@]} -gt 0 ]]; then
+                        bash "${TARGET_SCRIPT_PATH}" "${ORIGINAL_ARGS[@]}"
+                    else
+                        bash "${TARGET_SCRIPT_PATH}"
+                    fi
                     exit $?
                 else
                     echo -e "${RED}[ERROR] 无法将临时文件移动到目标位置${NC}"
@@ -565,6 +580,12 @@ install_system_cmd() {
         # 非 Root 用户尝试提权处理
         if [[ "${EUID}" -ne 0 ]]; then
             if command -v sudo >/dev/null 2>&1; then
+                # 【安全修复】先检查 sudo 是否需要密码，避免在非交互式环境中卡住
+                if ! sudo -n true 2>/dev/null; then
+                    log_warn "sudo 需要密码输入，请在交互式终端中运行"
+                    return 1
+                fi
+                
                 # 【安全修复】直接执行命令，避免 bash -c 字符串拼接
                 # safe_execute 使用 "$@" 传递参数，保持参数边界，防止注入
                 if safe_execute "安装全局命令" sudo ln -sf "${script_path}" "${SYSTEM_CMD_PATH}" && \
