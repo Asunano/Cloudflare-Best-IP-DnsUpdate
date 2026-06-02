@@ -264,6 +264,7 @@ if [[ -f "${ROOT_DIR}/conf/cf-ip.json" ]]; then
 fi
 
 # 检查是否开启多线路测速
+# shellcheck disable=SC2034
 CFST_COLO="${CF_IP_CFG[cfst_colo]:-HKG,NRT}"
 ENABLE_MULTI_LINE="${CF_IP_CFG[multi_line_enabled]:-false}"
 COLO_MOBILE="${CF_IP_CFG[colo_mobile]:-HKG,SIN,TYO,LON}"

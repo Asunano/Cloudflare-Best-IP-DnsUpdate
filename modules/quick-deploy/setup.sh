@@ -436,6 +436,7 @@ validate_config_consistency() {
     
     # 【修复】扫描多域名目录结构中的 DNSPod 配置文件
     local dnspod_mode="single"
+    # shellcheck disable=SC2034
     local has_dnspod_config=false
     if [[ -d "$dnspod_dir" ]]; then
         # 查找所有启用的 DNSPod 配置文件

@@ -73,6 +73,7 @@ trap cleanup_temp_files EXIT INT TERM
 # ==================== 配置 ====================
 VERSION_FILE="${ROOT_DIR}/version.txt"
 GITHUB_REPO="Asunano/Cloudflare-Best-IP-DnsUpdate"
+# shellcheck disable=SC2034
 GITHUB_API_URL="https://api.github.com/repos/${GITHUB_REPO}"
 RAW_BASE_URL="https://raw.githubusercontent.com/${GITHUB_REPO}/main"
 # 自定义镜像源（优先使用）

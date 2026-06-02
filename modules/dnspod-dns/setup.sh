@@ -185,7 +185,8 @@ prompt_and_validate_subdomain() {
 # 用法: run_core_command [参数]
 # 返回: core.sh 的退出码
 run_core_command() {
-    local core_script="$(dirname "$0")/core.sh"
+    local core_script
+    core_script="$(dirname "$0")/core.sh"
     chmod +x "$core_script" 2>/dev/null
     bash "$core_script" "$@"
     return $?
@@ -1484,13 +1485,15 @@ sync_records_separate() {
     echo ""
     
     # 直接调用多线路更新脚本
+    local run_exit_code=0
     if run_core_command -m; then
         echo ""
         echo -e "${GREEN}[OK] DNS 记录同步完成"
         echo ""
         echo -e "${CYAN}提示: 各线路已自动创建解析记录"
     else
-        echo -e "${RED}[ERROR] DNS 记录同步失败 (退出码: ${exit_code})"
+        run_exit_code=$?
+        echo -e "${RED}[ERROR] DNS 记录同步失败 (退出码: ${run_exit_code})"
         echo ""
         echo -e "${CYAN}提示: 请检查配置文件和 IP 文件是否正确"
     fi
@@ -3213,15 +3216,14 @@ if [ "$MODE" = "multi" ]; then
     echo -e "${CYAN}正在创建 IP 文件模板...${NC}"
     echo ""
     
-    # 【修复】移除函数外的 local 关键字
-    ip_dir=$(jq -r '.ip_source.files // empty' "$CONFIG_FILE" 2>/dev/null || true)
+        # 【修复】移除函数外的 local 关键字
+        ip_dir=$(jq -r '.ip_source.files // empty' "$CONFIG_FILE" 2>/dev/null || true)
     
     if [[ -z "$ip_dir" ]] || [[ "$ip_dir" == "null" ]]; then
         # 如果配置文件中没有 files 字段，使用默认路径
         ip_dir="${ROOT_DIR}/assets/data/dnspod-dns"
     else
         # 提取目录路径（从第一个文件路径推断）
-        local first_file
         first_file=$(echo "$ip_dir" | jq -r 'to_entries[0].value // empty' 2>/dev/null || true)
         if [[ -n "$first_file" ]] && [[ "$first_file" != "null" ]]; then
             ip_dir=$(dirname "$first_file")
@@ -3252,7 +3254,7 @@ if [ "$MODE" = "multi" ]; then
         fi
         
         # 获取对应的文件名
-        local filename="${line_files[$line]:-}"
+        filename="${line_files[$line]:-}"
         if [[ -z "$filename" ]]; then
             echo -e "${YELLOW}[WARN] 未知线路: ${line}，跳过${NC}"
             continue
