@@ -878,14 +878,20 @@ EOF
         fi
         
         # 为当前域名生成独立的测速结果文件（使用静默模式，不显示标题栏）
-        CF_OPT_ENTRY=scheduler bash "${ROOT_DIR}/modules/cf-ip/core.sh" "${recommended_colo}" "${result_file}" "${full_domain}" 2>&1 | grep -v "^+" | grep -v "项目仓库" | grep -v "启动时间" | grep -v "^$" || true
-        echo -e "${GREEN}[OK] 测速完成${NC}"
+        if CF_OPT_ENTRY=scheduler bash "${ROOT_DIR}/modules/cf-ip/core.sh" "${recommended_colo}" "${result_file}" "${full_domain}" 2>&1 | grep -v "^+" | grep -v "项目仓库" | grep -v "启动时间" | grep -v "^$"; then
+            echo -e "${GREEN}[OK] 测速完成${NC}"
+        else
+            echo -e "${RED}[ERROR] 测速失败，请检查网络和配置${NC}"
+        fi
         echo ""
         
         # 执行 IP 同步，将测速结果同步到 DNS 模块的 IP 文件（静默模式）
         echo -e "${CYAN}正在同步 IP 数据...${NC}"
-        bash "${ROOT_DIR}/modules/ip-sync/sync.sh" 2>&1 | grep -v "^+" | grep -v "项目仓库" | grep -v "^$" || true
-        echo -e "${GREEN}[OK] IP 数据已同步到: ${ip_file}${NC}"
+        if bash "${ROOT_DIR}/modules/ip-sync/sync.sh" 2>&1 | grep -v "^+" | grep -v "项目仓库" | grep -v "^$"; then
+            echo -e "${GREEN}[OK] IP 数据已同步到: ${ip_file}${NC}"
+        else
+            echo -e "${YELLOW}[WARN] IP 同步失败，可稍后通过菜单手动同步${NC}"
+        fi
     fi
     
     echo ""

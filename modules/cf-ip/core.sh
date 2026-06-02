@@ -592,9 +592,8 @@ if [[ "${CFST_DISABLE_DOWNLOAD}" != "true" ]] && [[ -n "${CFST_URL}" ]]; then
     # 第一步：检查 HTTP 状态码
     url_check_result=$(curl -sLf --max-time 10 -o /dev/null -w "%{http_code}" "${CFST_URL}" 2>/dev/null || true)
     
-    # 【修复】添加临时文件清理trap，确保无论如何都会清理
-    local temp_test_file="/tmp/cfst_url_test_$$"
-    trap "rm -f '${temp_test_file}' 2>/dev/null" RETURN
+    # 【修复】在脚本体中不能使用 local（仅函数内可用），直接赋值即可
+    temp_test_file="/tmp/cfst_url_test_$$"
     
     if [[ ! "${url_check_result}" =~ ^[23] ]]; then
         echo -e "${YELLOW}[WARN] 下载 URL 不可达 (HTTP ${url_check_result:-000})，跳过下载测速${NC}"

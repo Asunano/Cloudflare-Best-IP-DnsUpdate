@@ -772,9 +772,6 @@ create_record() {
     call_api "CreateRecord" "${payload}"
 }
 
-# 验证 IP 地址格式 - 统一使用 lib/common.sh 中的公共版本
-# common.sh 的 validate_ip() 更完整，包含 0.0.0.0 和 255.255.255.255 拦截
-
 # 从文件读取优选 IP (单线路通用)
 get_cf_ip_from_file() {
     if [[ ! -f "${IP_FILE}" ]]; then
