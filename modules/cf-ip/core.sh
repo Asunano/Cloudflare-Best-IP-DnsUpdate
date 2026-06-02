@@ -1159,6 +1159,27 @@ echo -e "${CYAN}+------------------------------------------------------------+"
 echo ""
 echo -e "${GRAY}文件位置:${NC}"
 echo -e "  • 完整结果: ${OUTPUT_CSV}"
+
+# 【新增】自动生成 .iplist 标准格式文件（程序专属格式）
+# 从 CSV 中提取有效 IP（下载速度 > 0），按速度降序+延迟升序排序，
+# 取前 TAKE_IP_NUM 个，输出为 IP|延迟|速度|地区码 格式
+local iplist_file="${OUTPUT_CSV%.csv}.iplist"
+{
+    echo "# Cloudflare 优选 IP 列表"
+    echo "# 生成时间: $(date '+%Y-%m-%d %H:%M:%S')"
+    echo "# 测速节点: ${TARGET_COLO}"
+    echo "#"
+    echo "# IP地址|延迟(ms)|下载速度(MB/s)|地区码"
+    awk -F',' 'NR>1 && $6>0 {print $0}' "${OUTPUT_CSV}" | \
+        sort -t',' -k6,6 -rn -k5,5 -n | \
+        head -n "${TAKE_IP_NUM:-5}" | \
+        awk -F',' '{gsub(/\r/,"",$5); gsub(/\r/,"",$6); gsub(/\r/,"",$7); print $1"|"$5"|"$6"|"$7}'
+} > "${iplist_file}"
+
+local iplist_count
+iplist_count=$(grep -c '|' "${iplist_file}" 2>/dev/null || echo 0)
+echo -e "  • IP 列表:   ${iplist_file} (${iplist_count} 个有效 IP)"
+
 if [[ "${ENABLE_LOG}" = "true" ]] && [[ -f "${LOG_FILE:-}" ]]; then
     echo -e "  • 运行日志: ${LOG_FILE}"
 fi

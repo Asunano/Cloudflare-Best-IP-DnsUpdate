@@ -1545,7 +1545,7 @@ deploy_cloudflare_dns() {
     echo ""
     echo -e " ${CYAN}配置文件位置：${NC}"
     echo -e "   • DNS 配置: ${GREEN}${ROOT_DIR}/conf/cf-dns/${full_domain}.json${NC}"
-    echo -e "   • IP 列表文件: ${GREEN}${ROOT_DIR}/assets/data/cf-dns/${full_domain}.txt${NC}"
+    echo -e "   • IP 列表文件: ${GREEN}${ROOT_DIR}/assets/data/cf-dns/${full_domain}.iplist${NC}"
     echo ""
     
     read -r -p "按回车键返回主菜单..."
@@ -1781,7 +1781,7 @@ deploy_dnspod_single() {
     echo ""
     echo -e " ${CYAN}配置文件位置：${NC}"
     echo -e "   • DNS 配置: ${GREEN}${ROOT_DIR}/conf/dnspod/${full_domain}.json${NC}"
-    echo -e "   • IP 列表文件: ${GREEN}${ROOT_DIR}/assets/data/dnspod-dns/${full_domain}.txt${NC}"
+    echo -e "   • IP 列表文件: ${GREEN}${ROOT_DIR}/assets/data/dnspod-dns/${full_domain}.iplist${NC}"
     echo ""
     
     read -r -p "按回车键返回主菜单..."

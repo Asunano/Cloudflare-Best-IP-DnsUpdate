@@ -32,11 +32,21 @@ RESULT_DIR="${ROOT_DIR}/assets/data/cf-ip"
 # 【修复】确保结果目录存在
 mkdir -p "${RESULT_DIR}"
 
-# 【修复】跨平台查找最新的测速结果文件（按修改时间排序）
-RESULT_CSV=$(find_latest_file "${RESULT_DIR}" "result_*.csv")
+# 【修复】跨平台查找最新的测速结果文件（优先 .iplist，其次 .csv）
+RESULT_CSV=$(find_latest_file "${RESULT_DIR}" "result_*.iplist")
 
 if [[ -z "${RESULT_CSV}" ]]; then
-    RESULT_CSV="${RESULT_DIR}/result.csv"
+    # 备用：查找 CSV 格式结果（cfst 原始输出）
+    RESULT_CSV=$(find_latest_file "${RESULT_DIR}" "result_*.csv")
+fi
+
+if [[ -z "${RESULT_CSV}" ]]; then
+    # 最后的 fallback
+    if [[ -f "${RESULT_DIR}/result.iplist" ]]; then
+        RESULT_CSV="${RESULT_DIR}/result.iplist"
+    elif [[ -f "${RESULT_DIR}/result.csv" ]]; then
+        RESULT_CSV="${RESULT_DIR}/result.csv"
+    fi
 fi
 
 # 【修复】检查结果文件是否存在，不存在则给出明确提示而非静默退出
@@ -44,6 +54,12 @@ if [[ ! -f "${RESULT_CSV}" ]]; then
     echo -e "${RED}[ERROR] 未找到任何测速结果文件${NC}"
     echo -e "${YELLOW}[提示] 请先运行 CF-IP 测速: cfopt → 2. CF IP 优选管理 → 3. 立即执行测速${NC}"
     exit 1
+fi
+
+# 检测输入文件格式（.iplist 直接使用，.csv 需要转换）
+RESULT_IS_IPLIST=false
+if [[ "${RESULT_CSV}" == *.iplist ]]; then
+    RESULT_IS_IPLIST=true
 fi
 
 echo -e "${CYAN}+------------------------------------------------------------+${NC}"
@@ -74,8 +90,12 @@ echo -e "${GREEN}[INFO] 最大重试次数: ${MAX_RETRY}${NC}"
 echo ""
 
 # ==================== 数据有效性校验 ====================
-# 提取第二行（跳过标题）的第一个字段，防止因测速程序 Bug 导致写入全 0 或空数据
-FIRST_IP="$(sed -n '2p' "${RESULT_CSV}" | awk -F',' '{print $1}')"
+# 兼容 .iplist（IP|延迟|速度|地区码）和 .csv 两种格式
+if [[ "${RESULT_IS_IPLIST}" = true ]]; then
+    FIRST_IP="$(grep -v '^#' "${RESULT_CSV}" | grep -v '^\s*$' | head -1 | awk -F'|' '{print $1}' | xargs)"
+else
+    FIRST_IP="$(sed -n '2p' "${RESULT_CSV}" | awk -F',' '{print $1}')"
+fi
 if [[ -z "${FIRST_IP}" ]] || [[ "${FIRST_IP}" = "0.0.0.0" ]] || [[ ! "${FIRST_IP}" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
     echo -e "${RED}[ERROR] 检测到测速结果数据异常 (首个 IP: ${FIRST_IP:-空})${NC}"
     echo -e "${YELLOW}提示: 这可能是测速程序的临时 Bug，请重新运行测速。${NC}"
