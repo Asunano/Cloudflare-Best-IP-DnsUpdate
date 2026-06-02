@@ -330,45 +330,44 @@ delete_domain_config() {
 select_colo_nodes() {
     local domain="$1"
     
-    # 【修复】将 clear 的输出重定向到 /dev/tty，避免污染 stdout 返回值
+    # 【关键修复】所有 UI 输出重定向到 stderr (>&2)，防止命令替换 $() 中返回值被污染
+    # 背景：调用方使用 $(select_colo_nodes "$domain") 捕获返回值
+    #       如果 UI 输出走 stdout，菜单文本会被一起捕获到变量中，
+    #       导致后续 echo "[OK] 已选择测速节点: ${recommended_colo}" 输出整段菜单
     
-    echo -e "${CYAN}+------------------------------------------------------------+${NC}"
-    echo -e " ${BOLD}${YELLOW}Cloudflare-Best-IP-DnsUpdate v${SCRIPT_VERSION}${NC}"
-    echo -e " ${MAGENTA}项目仓库: https://github.com/Asunano/Cloudflare-Best-IP-DnsUpdate${NC}"
-    echo -e "${CYAN}+------------------------------------------------------------+${NC}"
-    echo ""
-    echo -e "${CYAN}[选择测速节点（地区）]${NC}"
-    echo ""
-    echo -e " ${YELLOW}提示: 选择距离您服务器较近的地区可获得更优的延迟${NC}"
-    echo ""
-    echo -e " ${GREEN}常用节点推荐：${NC}"
-    echo -e "   1. 不使用特定节点（默认，cfst 自动选择）"
-    echo -e "   2. 香港 + 东京 (HKG,NRT)          - 亚洲通用推荐"
-    echo -e "   3. 新加坡 + 东京 (SIN,NRT)         - 东南亚优化"
-    echo -e "   4. 洛杉矶 + 旧金山 (LAX,SJC)       - 北美优化"
-    echo -e "   5. 法兰克福 + 伦敦 (FRA,LON)       - 欧洲优化"
-    echo -e "   6. 悉尼 + 东京 (SYD,NRT)           - 大洋洲优化"
-    echo ""
-    echo -e " ${GRAY}其他选项：${NC}"
-    echo -e "   7. 自动检测（默认 HKG,NRT）"
-    echo -e "   8. 自定义节点（手动输入）"
-    echo ""
-    echo -e " ${GRAY}提示: 您也可以直接输入节点代码，如 HKG,NRT${NC}"
-    echo ""
+    echo -e "${CYAN}+------------------------------------------------------------+${NC}" >&2
+    echo -e " ${BOLD}${YELLOW}Cloudflare-Best-IP-DnsUpdate v${SCRIPT_VERSION}${NC}" >&2
+    echo -e " ${MAGENTA}项目仓库: https://github.com/Asunano/Cloudflare-Best-IP-DnsUpdate${NC}" >&2
+    echo -e "${CYAN}+------------------------------------------------------------+${NC}" >&2
+    echo "" >&2
+    echo -e "${CYAN}[选择测速节点（地区）]${NC}" >&2
+    echo "" >&2
+    echo -e " ${YELLOW}提示: 选择距离您服务器较近的地区可获得更优的延迟${NC}" >&2
+    echo "" >&2
+    echo -e " ${GREEN}常用节点推荐：${NC}" >&2
+    echo -e "   1. 不使用特定节点（默认，cfst 自动选择）" >&2
+    echo -e "   2. 香港 + 东京 (HKG,NRT)          - 亚洲通用推荐" >&2
+    echo -e "   3. 新加坡 + 东京 (SIN,NRT)         - 东南亚优化" >&2
+    echo -e "   4. 洛杉矶 + 旧金山 (LAX,SJC)       - 北美优化" >&2
+    echo -e "   5. 法兰克福 + 伦敦 (FRA,LON)       - 欧洲优化" >&2
+    echo -e "   6. 悉尼 + 东京 (SYD,NRT)           - 大洋洲优化" >&2
+    echo "" >&2
+    echo -e " ${GRAY}其他选项：${NC}" >&2
+    echo -e "   7. 自动检测（默认 HKG,NRT）" >&2
+    echo -e "   8. 自定义节点（手动输入）" >&2
+    echo "" >&2
+    echo -e " ${GRAY}提示: 您也可以直接输入节点代码，如 HKG,NRT${NC}" >&2
+    echo "" >&2
     
-    echo -ne "${CYAN}请选择 [1-8] (默认 1):${NC} "
+    echo -ne "${CYAN}请选择 [1-8] (默认 1):${NC} " >&2
     read -r colo_choice
     colo_choice=${colo_choice:-1}
     
     # 【修复】支持直接输入节点代码（如 HKG,NRT）
     if [[ "$colo_choice" =~ ^[A-Za-z,]+$ ]]; then
         # 用户直接输入了节点代码，转换为大写并去除空格
-        local normalized_colo
-        normalized_colo=$(echo "$colo_choice" | tr '[:lower:]' '[:upper:]' | tr -d ' ')
-        
-        # 【修复】不要清屏，直接返回节点代码
-        # 因为这是在命令替换中调用，清屏会导致后续输出不可见
-        echo "$normalized_colo"
+        # 返回值走 stdout，被调用方 $() 捕获
+        echo "$colo_choice" | tr '[:lower:]' '[:upper:]' | tr -d ' '
         return
     fi
     
@@ -384,22 +383,22 @@ select_colo_nodes() {
             detect_optimal_colo
             ;;
         8)
-            echo ""
-            echo -e "${YELLOW}请输入 IATA 机场代码，多个用逗号分隔${NC}"
-            echo -e "${GRAY}示例: HKG,NRT,LAX 或 SIN,TYO,FRA${NC}"
-            echo -e "${GRAY}常见代码: HKG(香港) NRT/TYO(东京) SIN(新加坡) LAX(洛杉矶) SJC(旧金山) FRA(法兰克福) LON(伦敦) SYD(悉尼)${NC}"
-            echo -ne "${CYAN}请输入节点代码:${NC} "
+            echo "" >&2
+            echo -e "${YELLOW}请输入 IATA 机场代码，多个用逗号分隔${NC}" >&2
+            echo -e "${GRAY}示例: HKG,NRT,LAX 或 SIN,TYO,FRA${NC}" >&2
+            echo -e "${GRAY}常见代码: HKG(香港) NRT/TYO(东京) SIN(新加坡) LAX(洛杉矶) SJC(旧金山) FRA(法兰克福) LON(伦敦) SYD(悉尼)${NC}" >&2
+            echo -ne "${CYAN}请输入节点代码:${NC} " >&2
             read -r custom_colo
             if [[ -z "$custom_colo" ]]; then
-                echo -e "${YELLOW}[WARN] 未输入，使用默认值 HKG,NRT${NC}"
+                echo -e "${YELLOW}[WARN] 未输入，使用默认值 HKG,NRT${NC}" >&2
                 echo "HKG,NRT"
             else
-                # 转换为大写并去除空格
+                # 转换为大写并去除空格（返回值走 stdout）
                 echo "$custom_colo" | tr '[:lower:]' '[:upper:]' | tr -d ' '
             fi
             ;;
         *)
-            echo -e "${YELLOW}[WARN] 无效选择，使用默认值（不指定节点）${NC}"
+            echo -e "${YELLOW}[WARN] 无效选择，使用默认值（不指定节点）${NC}" >&2
             echo ""
             ;;
     esac
@@ -1472,13 +1471,20 @@ deploy_cloudflare_dns() {
         
         # 为当前域名生成独立的测速结果文件
         local result_file="${ROOT_DIR}/assets/data/cf-ip/result_${full_domain}.csv"
-        CF_OPT_ENTRY=1 bash "${ROOT_DIR}/modules/cf-ip/core.sh" "${recommended_colo}" "${result_file}" "${full_domain}" || true
-        echo -e "${GREEN}[OK] 测速完成${NC}"
-        
-        # 执行 IP 同步，将测速结果同步到 DNS 模块的 IP 文件
-        echo -e "${CYAN}正在同步 IP 数据...${NC}"
-        bash "${ROOT_DIR}/modules/ip-sync/sync.sh" || true
-        echo -e "${GREEN}[OK] IP 数据已同步到: ${ROOT_DIR}/assets/data/cf-dns/${full_domain}.txt${NC}"
+        if CF_OPT_ENTRY=1 bash "${ROOT_DIR}/modules/cf-ip/core.sh" "${recommended_colo}" "${result_file}" "${full_domain}"; then
+            echo -e "${GREEN}[OK] 测速完成${NC}"
+            
+            # 执行 IP 同步，将测速结果同步到 DNS 模块的 IP 文件
+            echo -e "${CYAN}正在同步 IP 数据...${NC}"
+            if bash "${ROOT_DIR}/modules/ip-sync/sync.sh"; then
+                echo -e "${GREEN}[OK] IP 数据已同步到: ${ROOT_DIR}/assets/data/cf-dns/${full_domain}.iplist${NC}"
+            else
+                echo -e "${YELLOW}[WARN] IP 同步失败，可稍后通过菜单手动同步${NC}"
+            fi
+        else
+            echo -e "${RED}[ERROR] 测速失败，请检查网络和配置${NC}"
+            echo -e "${YELLOW}[提示] 可稍后通过菜单手动执行测速和同步${NC}"
+        fi
     fi
     
     # 第5步：设置定时任务
@@ -1701,13 +1707,20 @@ deploy_dnspod_single() {
         
         # 为当前域名生成独立的测速结果文件
         local result_file="${ROOT_DIR}/assets/data/cf-ip/result_${full_domain}.csv"
-        CF_OPT_ENTRY=1 bash "${ROOT_DIR}/modules/cf-ip/core.sh" "${recommended_colo}" "${result_file}" "${full_domain}" || true
-        echo -e "${GREEN}[OK] 测速完成${NC}"
-        
-        # 执行 IP 同步，将测速结果同步到 DNS 模块的 IP 文件
-        echo -e "${CYAN}正在同步 IP 数据...${NC}"
-        bash "${ROOT_DIR}/modules/ip-sync/sync.sh" || true
-        echo -e "${GREEN}[OK] IP 数据已同步到: ${ROOT_DIR}/assets/data/cf-dns/${full_domain}.txt${NC}"
+        if CF_OPT_ENTRY=1 bash "${ROOT_DIR}/modules/cf-ip/core.sh" "${recommended_colo}" "${result_file}" "${full_domain}"; then
+            echo -e "${GREEN}[OK] 测速完成${NC}"
+            
+            # 执行 IP 同步，将测速结果同步到 DNS 模块的 IP 文件
+            echo -e "${CYAN}正在同步 IP 数据...${NC}"
+            if bash "${ROOT_DIR}/modules/ip-sync/sync.sh"; then
+                echo -e "${GREEN}[OK] IP 数据已同步到: ${ROOT_DIR}/assets/data/dnspod-dns/${full_domain}.iplist${NC}"
+            else
+                echo -e "${YELLOW}[WARN] IP 同步失败，可稍后通过菜单手动同步${NC}"
+            fi
+        else
+            echo -e "${RED}[ERROR] 测速失败，请检查网络和配置${NC}"
+            echo -e "${YELLOW}[提示] 可稍后通过菜单手动执行测速和同步${NC}"
+        fi
     fi
     
     # 第5步：设置定时任务
@@ -1863,12 +1876,20 @@ deploy_dnspod_multi() {
     if [[ "$run_test" =~ ^[Yy]$ ]]; then
         cd "${ROOT_DIR}" || return 1
         echo -e "${CYAN}正在执行多线路并发测速...${NC}"
-        CF_OPT_ENTRY=scheduler bash "${ROOT_DIR}/modules/scheduler/run.sh" || true
-        echo -e "${GREEN}[OK] 多线路测速完成${NC}"
-        
-        # 执行 IP 同步，将测速结果同步到 DNS 模块的 IP 文件
-        echo -e "${CYAN}正在同步 IP 数据...${NC}"
-        bash "${ROOT_DIR}/modules/ip-sync/sync.sh" || true
+        if CF_OPT_ENTRY=scheduler bash "${ROOT_DIR}/modules/scheduler/run.sh"; then
+            echo -e "${GREEN}[OK] 多线路测速完成${NC}"
+            
+            # 执行 IP 同步，将测速结果同步到 DNS 模块的 IP 文件
+            echo -e "${CYAN}正在同步 IP 数据...${NC}"
+            if bash "${ROOT_DIR}/modules/ip-sync/sync.sh"; then
+                echo -e "${GREEN}[OK] IP 数据已同步${NC}"
+            else
+                echo -e "${YELLOW}[WARN] IP 同步失败，可稍后通过菜单手动同步${NC}"
+            fi
+        else
+            echo -e "${RED}[ERROR] 多线路测速失败，请检查网络和配置${NC}"
+            echo -e "${YELLOW}[提示] 可稍后通过菜单手动执行测速${NC}"
+        fi
         echo -e "${GREEN}[OK] IP 数据已同步到:${NC}"
         echo -e "   • ${ROOT_DIR}/assets/data/dnspod-dns/ip_list_default.iplist"
         echo -e "   • ${ROOT_DIR}/assets/data/dnspod-dns/ip_list_unicom.iplist"
