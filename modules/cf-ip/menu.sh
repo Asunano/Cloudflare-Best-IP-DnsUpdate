@@ -181,6 +181,7 @@ show_info() {
 }
 
 # ====================== 【函数：暂停等待用户】 ======================
+# shellcheck disable=SC2120
 pause_and_continue() {
     local msg="${1:-按回车键继续...}"
     echo ""

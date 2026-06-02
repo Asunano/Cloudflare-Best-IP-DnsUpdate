@@ -813,6 +813,7 @@ monitor_progress() {
     local bar_width="${3:-40}"
     
     local stage="ping"
+    # shellcheck disable=SC2034
     local last_displayed_size=0
     local max_empty_loops=20
     local empty_loop_count=0
@@ -951,7 +952,8 @@ for ((retry=0; retry<=MAX_RETRY; retry++)); do
             TIMEOUT_MONITOR_PID=$!
             
             # 确保超时监控进程在主进程退出后被清理
-            trap "kill ${TIMEOUT_MONITOR_PID} 2>/dev/null" EXIT
+            # shellcheck disable=SC2064
+            trap 'kill ${TIMEOUT_MONITOR_PID} 2>/dev/null' EXIT
         fi
         
         # 4. 实时显示进度（使用通用监控函数）

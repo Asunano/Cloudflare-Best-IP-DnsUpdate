@@ -17,6 +17,7 @@ ORIGINAL_ARGS=("$@")
 RED='\033[0;31m'
 YELLOW='\033[1;33m'
 GREEN='\033[0;32m'
+# shellcheck disable=SC2034
 BLUE='\033[0;34m'
 CYAN='\033[0;36m'
 GRAY='\033[0;90m'
@@ -322,6 +323,7 @@ SCRIPT_VERSION="0.1"
 REMOTE_URL="https://raw.githubusercontent.com/Asunano/Cloudflare-Best-IP-DnsUpdate/main"
 # 自定义镜像源（优先使用）
 REMOTE_URL_MIRROR="https://mirror.drxian.qzz.io/scripts/Cloudflare-Best-IP-DnsUpdate"
+# shellcheck disable=SC2034
 VERSION_FILE_REMOTE="${REMOTE_URL}/version.txt"
 
 # 根据用户权限动态确定安装目录

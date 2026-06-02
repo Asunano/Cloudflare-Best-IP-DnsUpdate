@@ -1149,6 +1149,7 @@ main_multi() {
             local new_ip="${ip_addresses[$ip_index]}"
             
             # 获取当前线路的子域名
+            # shellcheck disable=SC2034
             local current_subdomain
             current_subdomain="$(get_subdomain_for_line "${line}")"
             
