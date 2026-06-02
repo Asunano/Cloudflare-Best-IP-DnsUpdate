@@ -1205,46 +1205,6 @@ show_main_menu() {
     LAST_UPDATE_TIME="${LAST_UPDATE_TIME:-}"
     INSTALL_CHECKED="${INSTALL_CHECKED:-false}"
     
-    # 【新增】检测并自动下载 cfst（如果缺失）
-    local cfst_bin="${INSTALL_DIR}/assets/cfst/cfst"
-    if [[ ! -f "${cfst_bin}" ]]; then
-        echo -e "${YELLOW}[INFO] 检测到测速程序 cfst 缺失，正在自动下载...${NC}"
-        echo ""
-        
-        # 使用自定义镜像源下载（仅支持 amd64，服务器主流架构）
-        local cfst_url="https://mirror.drxian.qzz.io/resource/cfst_linux_amd64.tar.gz"
-        local cfst_temp="/tmp/cfst_download.tar.gz"
-        
-        mkdir -p "${INSTALL_DIR}/assets/cfst"
-        
-        if curl -sfL --connect-timeout 10 --max-time 60 -o "${cfst_temp}" "${cfst_url}" 2>/dev/null; then
-            if tar -xzf "${cfst_temp}" -C "${INSTALL_DIR}/assets/cfst/" 2>/dev/null; then
-                local cfst_file
-                cfst_file=$(find "${INSTALL_DIR}/assets/cfst/" -name "cfst" -type f 2>/dev/null | head -1 || true)
-                if [[ -n "${cfst_file}" ]] && [[ -f "${cfst_file}" ]]; then
-                    chmod +x "${cfst_file}"
-                    log_success "cfst 测速程序已安装: ${cfst_file}"
-                else
-                    log_warn "cfst 解压后未找到可执行文件"
-                fi
-            else
-                log_warn "cfst 解压失败"
-            fi
-            rm -f "${cfst_temp}"
-        else
-            log_warn "cfst 下载失败，请检查网络连接或手动安装"
-        fi
-        
-        echo ""
-        read -r -p "按回车键继续..."
-        clear
-        # 【修复】clear后重新输出标题栏
-        echo -e "${CYAN}+------------------------------------------------------------+${NC}"
-        echo -e " ${BOLD}${YELLOW}Cloudflare-Best-IP-DnsUpdate v${SCRIPT_VERSION}${NC}"
-        echo -e " ${MAGENTA}项目仓库: https://github.com/Asunano/Cloudflare-Best-IP-DnsUpdate${NC}"
-        echo -e "${CYAN}+------------------------------------------------------------+${NC}"
-    fi
-    
     # 【修复】获取各模块状态（支持多域名架构）
     local cf_ip_status
     cf_ip_status="$(get_module_status "${INSTALL_DIR}/conf/cf-ip.json" "${INSTALL_DIR}/assets/data/cf-ip/result.csv")"
@@ -2233,7 +2193,37 @@ init_cfopt() {
         
     # 【安全修复】无论下载是否成功，都继续执行后续步骤
     # 避免因单个模块下载失败导致整个安装流程中断
-    # 注意：cfst 测速程序已在菜单加载时自动检测并下载（第 1187-1220 行），此处不再重复下载
+
+    # 4.2 下载 cfst 测速程序（核心依赖）
+    local cfst_bin="${INSTALL_DIR}/assets/cfst/cfst"
+    if [[ ! -f "${cfst_bin}" ]]; then
+        echo ""
+        echo -e "${CYAN}[INFO] 正在下载 cfst 测速程序...${NC}"
+        
+        # 使用自定义镜像源下载（仅支持 amd64，服务器主流架构）
+        local cfst_url="https://mirror.drxian.qzz.io/resource/cfst_linux_amd64.tar.gz"
+        local cfst_temp="/tmp/cfst_download.tar.gz"
+        
+        if curl -sfL --connect-timeout 10 --max-time 60 -o "${cfst_temp}" "${cfst_url}" 2>/dev/null; then
+            if tar -xzf "${cfst_temp}" -C "${INSTALL_DIR}/assets/cfst/" 2>/dev/null; then
+                local cfst_file
+                cfst_file=$(find "${INSTALL_DIR}/assets/cfst/" -name "cfst" -type f 2>/dev/null | head -1 || true)
+                if [[ -n "${cfst_file}" ]] && [[ -f "${cfst_file}" ]]; then
+                    chmod +x "${cfst_file}"
+                    log_success "cfst 测速程序已安装: ${cfst_file}"
+                else
+                    log_warn "cfst 解压后未找到可执行文件"
+                fi
+            else
+                log_warn "cfst 解压失败，请检查磁盘空间"
+            fi
+            rm -f "${cfst_temp}"
+        else
+            log_warn "cfst 下载失败，请检查网络连接或稍后通过菜单手动下载"
+        fi
+    else
+        echo -e "${GREEN}[OK] cfst 测速程序已就绪${NC}"
+    fi
 
     # 初始化状态配置文件 (如果不存在)
     STATUS_CONF="${INSTALL_DIR}/conf/status.conf"
