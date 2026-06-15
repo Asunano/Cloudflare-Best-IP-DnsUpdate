@@ -172,7 +172,8 @@ if [[ ! -f "${CONFIG_FILE}" ]]; then
     # 创建 conf 目录
     mkdir -p "$(dirname "${CONFIG_FILE}")" 2>/dev/null || true
     
-    # 【修复】包含默认下载 URL，确保 cfst 能执行下载测速
+    # 【关键】默认配置保持 cfst 为空对象，运行时等效于 ./cfst 不加任何参数
+    # cfst 会自动使用其内置默认值（含内置下载 URL、线程数等）
     if command -v jq &>/dev/null; then
         jq -n '{
             "enabled": true,
@@ -182,12 +183,7 @@ if [[ ! -f "${CONFIG_FILE}" ]]; then
                 "max_retry": 3,
                 "enable_log": true
             },
-            "cfst": {
-                "url": "https://mirror.drxian.qzz.io/index.html",
-                "threads": 200,
-                "download_count": 10,
-                "download_time": 10
-            }
+            "cfst": {}
         }' > "${CONFIG_FILE}"
         chmod 600 "${CONFIG_FILE}"
         echo -e "${GREEN}[OK] 已创建默认配置文件: ${CONFIG_FILE}${NC}"
@@ -408,13 +404,6 @@ if [[ -z "${CFST_DIR:-}" ]]; then
     CFST_DIR="${ROOT_DIR}/assets/cfst"
 fi
 CFST_BIN="${CFST_DIR}/cfst"
-
-# 【修复】当未配置下载 URL 时，使用项目镜像源作为默认值
-# 否则 cfst 没有下载目标，所有 IP 下载速度均为 0
-if [[ -z "${CFST_URL:-}" ]] && [[ "${CFST_DISABLE_DOWNLOAD:-}" != "true" ]]; then
-    CFST_URL="https://mirror.drxian.qzz.io/index.html"
-    echo -e "${YELLOW}[INFO] 未配置下载测速 URL，已使用默认值: ${CFST_URL}${NC}"
-fi
 
 # 【修复】输出和日志目录（如果 scheduler 已加载配置，使用默认值）
 if [[ "${CF_IP_CFG_LOADED:-}" != "true" ]]; then
