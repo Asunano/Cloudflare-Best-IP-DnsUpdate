@@ -172,8 +172,6 @@ if [[ ! -f "${CONFIG_FILE}" ]]; then
     # 创建 conf 目录
     mkdir -p "$(dirname "${CONFIG_FILE}")" 2>/dev/null || true
     
-    # 【关键】默认配置保持 cfst 为空对象，运行时等效于 ./cfst 不加任何参数
-    # cfst 会自动使用其内置默认值（含内置下载 URL、线程数等）
     if command -v jq &>/dev/null; then
         jq -n '{
             "enabled": true,
@@ -183,7 +181,9 @@ if [[ ! -f "${CONFIG_FILE}" ]]; then
                 "max_retry": 3,
                 "enable_log": true
             },
-            "cfst": {}
+            "cfst": {
+                "url": "https://mirror.drxian.qzz.io/index.html"
+            }
         }' > "${CONFIG_FILE}"
         chmod 600 "${CONFIG_FILE}"
         echo -e "${GREEN}[OK] 已创建默认配置文件: ${CONFIG_FILE}${NC}"
