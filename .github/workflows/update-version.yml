@@ -51,6 +51,7 @@ jobs:
         # 收集所有 .sh 文件
         SCRIPTS=()
         [ -f "cfopt.sh" ] && SCRIPTS+=("cfopt.sh")
+        [ -f "lib/common.sh" ] && SCRIPTS+=("lib/common.sh")
         while IFS= read -r -d '' file; do
           SCRIPTS+=("$file")
         done < <(find modules -name "*.sh" -type f -print0 2>/dev/null)

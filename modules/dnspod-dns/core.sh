@@ -33,6 +33,7 @@ if [[ $# -gt 0 ]] && [[ -f "$1" ]]; then
     # 方式 1: 命令行参数指定配置文件
     CONFIG_FILE="$1"
     DOMAIN_NAME=$(basename "$CONFIG_FILE" .json)
+    shift  # 【修复】消费掉配置文件参数，避免后续 while 循环将其当作未知参数
 elif [[ -n "${DNSPOD_DOMAIN:-}" ]]; then
     # 方式 2: 环境变量指定域名
     DOMAIN_NAME="${DNSPOD_DOMAIN}"
@@ -210,12 +211,18 @@ REQUEST_TIMEOUT="${CFG[timeout]}"
 MAX_RETRIES="${CFG[max_retries]}"
 
 # DNS 配置
-export DOMAIN="${CFG[domain]}"
-export SUB_DOMAIN="${CFG[sub_domain]}"
-export TTL="${CFG[ttl]}"
+# 【安全修复】不要 export，避免通过 /proc/<pid>/environ 泄露
+DOMAIN="${CFG[domain]}"
+SUB_DOMAIN="${CFG[sub_domain]}"
+TTL="${CFG[ttl]}"
 
 # IP 源配置
-export IP_FILE="${CFG[ip_file]}"
+# 【修复】将相对路径转换为绝对路径（相对于项目根目录），防止 cron 调用时工作目录不同
+_ip_file_raw="${CFG[ip_file]}"
+if [[ -n "${_ip_file_raw}" ]] && [[ "${_ip_file_raw}" != /* ]]; then
+    _ip_file_raw="${ROOT_DIR}/${_ip_file_raw#./}"
+fi
+export IP_FILE="${_ip_file_raw}"
 
 # 多线路模式配置（mode 字段已移至 dns 对象内）
 export MODE="${CFG[mode]}"
@@ -289,6 +296,10 @@ else
                 continue
                 ;;
         esac
+        # 【修复】将相对路径转换为绝对路径，防止 cron 调用时工作目录不同
+        if [[ -n "$ip_file" ]] && [[ "$ip_file" != /* ]]; then
+            ip_file="${ROOT_DIR}/${ip_file#./}"
+        fi
         IP_FILES_TO_CHECK+=("$ip_file")
     done
 fi
@@ -516,6 +527,11 @@ get_cf_ip_from_file_by_line() {
             ;;
     esac
     
+    # 【修复】将相对路径转换为绝对路径，防止 cron 调用时工作目录不同
+    if [[ -n "$ip_file" ]] && [[ "$ip_file" != /* ]]; then
+        ip_file="${ROOT_DIR}/${ip_file#./}"
+    fi
+    
     # 调用通用 IP 读取函数
     read_ips_from_file "$ip_file" "$MAX_IPS_PER_RECORD"
 }
@@ -665,7 +681,8 @@ generate_signature() {
 call_api() {
     local action="$1"
     local payload="$2"
-    local max_retries=3
+    # 【修复】使用配置文件中的 MAX_RETRIES（默认 5），而非硬编码 3
+    local max_retries="${MAX_RETRIES:-5}"
     local retry=0
     local result=""
     
@@ -1227,7 +1244,8 @@ main_multi() {
                 log_info "  正在删除第 $((i+1)) 条记录 (RecordID=${record_id}, IP=${current_value})..."
                 
                 local delete_response
-                delete_response="$(delete_record_by_line "${record_id}" "${line}")"
+                # 【修复】保护 API 调用赋值，防止 set -e 在 API 失败时终止脚本
+                if delete_response="$(delete_record_by_line "${record_id}" "${line}")"; then true; else delete_response=""; fi
                 
                 # 检查结果
                 if echo "${delete_response}" | jq -r '.Response.Error' 2>/dev/null | grep -q 'Code'; then
@@ -1326,7 +1344,8 @@ main_delete() {
         local payload
         payload=$(jq -n --arg domain "$DOMAIN" --arg subdomain "$subdomain" '{"Domain":$domain,"Subdomain":$subdomain,"RecordType":"A","Limit":100}')
         local record_response
-        record_response="$(call_api "DescribeRecordList" "${payload}")"
+        # 【修复】保护 API 调用赋值，防止 set -e 在 API 失败时终止脚本
+        if record_response="$(call_api "DescribeRecordList" "${payload}")"; then true; else record_response=""; fi
         
         # 检查是否有错误
         local error_code
@@ -1395,7 +1414,8 @@ main_delete() {
         log_info "    ⟳ 正在删除..."
         
         local delete_response
-        delete_response="$(delete_record_by_line "${record_id}")"
+        # 【修复】保护 API 调用赋值，防止 set -e 在 API 失败时终止脚本
+        if delete_response="$(delete_record_by_line "${record_id}")"; then true; else delete_response=""; fi
         
         # 检查结果
         if echo "${delete_response}" | jq -r '.Response.Error' 2>/dev/null | grep -q 'Code'; then
@@ -1451,7 +1471,8 @@ main_delete_unified() {
     local payload
     payload=$(jq -n --arg domain "$DOMAIN" --arg subdomain "$unified_subdomain" '{"Domain":$domain,"Subdomain":$subdomain,"RecordType":"A","Limit":100}')
     local record_response
-    record_response="$(call_api "DescribeRecordList" "${payload}")"
+    # 【修复】保护 API 调用赋值，防止 set -e 在 API 失败时终止脚本
+    if record_response="$(call_api "DescribeRecordList" "${payload}")"; then true; else record_response=""; fi
     
     # 检查是否有错误
     local error_code
@@ -1526,7 +1547,8 @@ main_delete_unified() {
         log_info "    ⟳ 正在删除..."
         
         local delete_response
-        delete_response="$(delete_record_by_line "${record_id}")"
+        # 【修复】保护 API 调用赋值，防止 set -e 在 API 失败时终止脚本
+        if delete_response="$(delete_record_by_line "${record_id}")"; then true; else delete_response=""; fi
         local delete_error
         delete_error="$(echo "${delete_response}" | jq -r '.Response.Error.Code' 2>/dev/null)"
         
@@ -1582,7 +1604,8 @@ main_delete_unified_non_default() {
     local payload
     payload=$(jq -n --arg domain "$DOMAIN" --arg subdomain "$unified_subdomain" '{"Domain":$domain,"Subdomain":$subdomain,"RecordType":"A","Limit":100}')
     local record_response
-    record_response="$(call_api "DescribeRecordList" "${payload}")"
+    # 【修复】保护 API 调用赋值，防止 set -e 在 API 失败时终止脚本
+    if record_response="$(call_api "DescribeRecordList" "${payload}")"; then true; else record_response=""; fi
         
     # 检查是否有错误
     local error_code
@@ -1665,7 +1688,8 @@ main_delete_unified_non_default() {
         log_info "    ⟳ 正在删除..."
         
         local delete_response
-        delete_response="$(delete_record_by_line "${record_id}")"
+        # 【修复】保护 API 调用赋值，防止 set -e 在 API 失败时终止脚本
+        if delete_response="$(delete_record_by_line "${record_id}")"; then true; else delete_response=""; fi
         local delete_error
         delete_error="$(echo "${delete_response}" | jq -r '.Response.Error.Code' 2>/dev/null)"
         
@@ -2024,8 +2048,9 @@ handle_multi_to_single() {
 # 【修复】必须在所有函数定义之后执行，避免 "command not found" 错误
 if [[ -n "${DNSPOD_MODE_SWITCH:-}" ]]; then
     # 检测到模式切换请求，执行智能处理
-    log_info "检测到模式切换请求: ${DNSPOD_FROM_MODE} → ${DNSPOD_TO_MODE}"
-    handle_mode_switch "$DNSPOD_FROM_MODE" "$DNSPOD_TO_MODE" "$DNSPOD_STRATEGY"
+    # 【修复】使用 :- 默认值防止 set -u 报 unbound variable 错误
+    log_info "检测到模式切换请求: ${DNSPOD_FROM_MODE:-unknown} → ${DNSPOD_TO_MODE:-unknown}"
+    handle_mode_switch "${DNSPOD_FROM_MODE:-}" "${DNSPOD_TO_MODE:-}" "${DNSPOD_STRATEGY:-smart}"
     exit $?
 fi
 

@@ -10,7 +10,7 @@
 set -euo pipefail
 
 # shellcheck disable=SC2034
-SCRIPT_VERSION="0.1"
+SCRIPT_VERSION="0.2"
 # shellcheck disable=SC2034
 MODULE_NAME="cf-dns"
 
