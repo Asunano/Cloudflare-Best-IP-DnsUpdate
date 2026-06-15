@@ -172,7 +172,7 @@ if [[ ! -f "${CONFIG_FILE}" ]]; then
     # 创建 conf 目录
     mkdir -p "$(dirname "${CONFIG_FILE}")" 2>/dev/null || true
     
-    # 使用 jq 创建最小化配置（cfst 对象留空，让 cfst 使用内置默认值）
+    # 【修复】包含默认下载 URL，确保 cfst 能执行下载测速
     if command -v jq &>/dev/null; then
         jq -n '{
             "enabled": true,
@@ -182,7 +182,12 @@ if [[ ! -f "${CONFIG_FILE}" ]]; then
                 "max_retry": 3,
                 "enable_log": true
             },
-            "cfst": {}
+            "cfst": {
+                "url": "https://mirror.drxian.qzz.io/index.html",
+                "threads": 200,
+                "download_count": 10,
+                "download_time": 10
+            }
         }' > "${CONFIG_FILE}"
         chmod 600 "${CONFIG_FILE}"
         echo -e "${GREEN}[OK] 已创建默认配置文件: ${CONFIG_FILE}${NC}"
@@ -403,6 +408,13 @@ if [[ -z "${CFST_DIR:-}" ]]; then
     CFST_DIR="${ROOT_DIR}/assets/cfst"
 fi
 CFST_BIN="${CFST_DIR}/cfst"
+
+# 【修复】当未配置下载 URL 时，使用项目镜像源作为默认值
+# 否则 cfst 没有下载目标，所有 IP 下载速度均为 0
+if [[ -z "${CFST_URL:-}" ]] && [[ "${CFST_DISABLE_DOWNLOAD:-}" != "true" ]]; then
+    CFST_URL="https://mirror.drxian.qzz.io/index.html"
+    echo -e "${YELLOW}[INFO] 未配置下载测速 URL，已使用默认值: ${CFST_URL}${NC}"
+fi
 
 # 【修复】输出和日志目录（如果 scheduler 已加载配置，使用默认值）
 if [[ "${CF_IP_CFG_LOADED:-}" != "true" ]]; then
@@ -1030,10 +1042,16 @@ for ((retry=0; retry<=MAX_RETRY; retry++)); do
         else
             # 数据无效，继续重试
             if [[ ${retry} -lt ${MAX_RETRY} ]]; then
-                if [[ "${CFST_DISABLE_DOWNLOAD}" = "true" ]]; then
-                    echo -e "${YELLOW}[WARN] 第 ${retry} 次测速完成，但未找到有效 IP 数据，数据无效${NC}"
+                local attempt_label=""
+                if [[ ${retry} -eq 0 ]]; then
+                    attempt_label="首次"
                 else
-                    echo -e "${YELLOW}[WARN] 第 ${retry} 次测速完成，但所有 IP 下载速度均为 0，数据无效${NC}"
+                    attempt_label="第 ${retry} 次"
+                fi
+                if [[ "${CFST_DISABLE_DOWNLOAD}" = "true" ]]; then
+                    echo -e "${YELLOW}[WARN] ${attempt_label}测速完成，但未找到有效 IP 数据，数据无效${NC}"
+                else
+                    echo -e "${YELLOW}[WARN] ${attempt_label}测速完成，但所有 IP 下载速度均为 0，数据无效${NC}"
                 fi
             else
                 echo -e "${RED}[ERROR] 已重试 ${MAX_RETRY} 次，所有测速结果均无效${NC}"
@@ -1054,7 +1072,13 @@ for ((retry=0; retry<=MAX_RETRY; retry++)); do
     else
         # 测速程序执行失败
         if [[ ${retry} -lt ${MAX_RETRY} ]]; then
-            echo -e "${YELLOW}[WARN] 第 ${retry} 次测速失败 (Exit Code: ${EXIT_CODE})${NC}"
+            local attempt_label=""
+            if [[ ${retry} -eq 0 ]]; then
+                attempt_label="首次"
+            else
+                attempt_label="第 ${retry} 次"
+            fi
+            echo -e "${YELLOW}[WARN] ${attempt_label}测速失败 (Exit Code: ${EXIT_CODE})${NC}"
         else
             echo -e "${RED}[ERROR] 测速程序执行失败 (Exit Code: ${EXIT_CODE})${NC}"
             if [[ "${ENABLE_LOG}" = "true" ]] && [[ -f "${LOG_FILE:-}" ]]; then
