@@ -521,17 +521,19 @@ generate_cf_ip_config() {
     # 【修复】注册到全局清理列表，防止 jq 失败时临时文件泄露
     _qd_register_temp "${temp_file}"
     
-    # 【新增】根据是否指定节点来决定 httping 模式
-    # 当指定了节点时，启用 httping；否则使用 tcping（默认）
+    # 【关键】-cfcolo 必须在 HTTPing 模式下才生效（cfst 文档规定）
+    # HTTPing 模式高并发会触发 CDN 限速导致下载测速返回 0，需降线程
     local httping_enabled=false
+    local cfst_threads=200
     if [[ -n "$colo_default" ]]; then
         httping_enabled=true
+        cfst_threads=100  # HTTPing 模式降并发防止被限速
     fi
     
     if [[ "$mode" = "multi" ]]; then
         if ! jq -n \
             --arg cfst_dir "${ROOT_DIR}/assets/cfst" \
-            --argjson threads 200 \
+            --argjson threads "${cfst_threads}" \
             --arg colo "$colo_default" \
             --argjson enable_log true \
             --arg output_dir "./assets/data/cf-ip" \
@@ -557,25 +559,25 @@ generate_cf_ip_config() {
                     "url": "https://mirror.drxian.qzz.io/index.html",
                     "httping": $httping,
                     "latency_max": 9999,
-                    "packet_loss_max": 100,
+                    "packet_loss_max": 1.00,
                     "speed_min": 0,
                     "show_count": 20,
                     "ip_file": "",
                     "disable_download": false,
                     "all_ip": false
-                },
-                "speed_test": {
-                    "take_ip_num": 5,
-                    "max_retry": 3,
-                    "output_html": true,
-                    "enable_log": $enable_log
-                },
-                "multi_line": {
-                    "enabled": $multi_enabled,
-                    "colo_mobile": $colo_mobile,
-                    "colo_unicom": $colo_unicom,
-                    "colo_telecom": $colo_telecom
-                },
+            },
+            "speed_test": {
+                "take_ip_num": 5,
+                "max_retry": 3,
+                "output_html": true,
+                "enable_log": $enable_log
+            },
+            "multi_line": {
+                "enabled": $multi_enabled,
+                "colo_mobile": $colo_mobile,
+                "colo_unicom": $colo_unicom,
+                "colo_telecom": $colo_telecom
+            },
                 "paths": {
                     "output_dir": $output_dir,
                     "log_dir": $log_dir
@@ -587,7 +589,7 @@ generate_cf_ip_config() {
     else
         if ! jq -n \
             --arg cfst_dir "${ROOT_DIR}/assets/cfst" \
-            --argjson threads 200 \
+            --argjson threads "${cfst_threads}" \
             --arg colo "$colo_default" \
             --argjson enable_log true \
             --arg output_dir "./assets/data/cf-ip" \
@@ -609,7 +611,7 @@ generate_cf_ip_config() {
                     "url": "https://mirror.drxian.qzz.io/index.html",
                     "httping": $httping,
                     "latency_max": 9999,
-                    "packet_loss_max": 100,
+                    "packet_loss_max": 1.00,
                     "speed_min": 0,
                     "show_count": 20,
                     "ip_file": "",
@@ -873,7 +875,8 @@ setup_auto_schedule() {
     local cron_cmd="${cron_expr} CF_OPT_ENTRY=scheduler /bin/bash ${script_path} >> ${log_path} 2>&1"
     
     # 删除旧的定时任务，添加新的
-    (crontab -l 2>/dev/null | grep -v "scheduler/run.sh"; echo "${cron_cmd}") | crontab -
+    # 【修复】grep -v 在无匹配时返回 1，set -eo pipefail 会终止脚本；用 || true 保护
+    (crontab -l 2>/dev/null | { grep -v "scheduler/run.sh" || true; }; echo "${cron_cmd}") | crontab -
 }
 
 # ==================== 主程序入口 ====================

@@ -608,7 +608,7 @@ generate_config_simple() {
                 "url": "https://mirror.drxian.qzz.io/index.html",
                 "httping": false,
                 "latency_max": 9999,
-                "packet_loss_max": 100,
+                "packet_loss_max": 1.00,
                 "speed_min": 0,
                 "show_count": 20,
                 "ip_file": "",
@@ -811,7 +811,7 @@ view_config() {
             (.cfst.ping_times // 4 | tostring),
             (.cfst.download_count // 10 | tostring),
             (.cfst.latency_max // 9999 | tostring),
-            (.cfst.packet_loss_max // 100 | tostring),
+            (.cfst.packet_loss_max // 1 | tostring),
             (.cfst.speed_min // 0 | tostring),
             (.cfst.show_count // 20 | tostring),
             (.speed_test.take_ip_num // 5 | tostring),
@@ -882,7 +882,9 @@ view_config() {
     echo ""
     echo -e " ${GREEN}[筛选条件]${NC}"
     printf "   %-12s %b\n" "最大延迟:" "${YELLOW}${latency_max} ms${NC}"
-    printf "   %-12s %b\n" "最大丢包:" "${YELLOW}${packet_loss_max}%${NC}"
+    local loss_percent
+    loss_percent=$(awk "BEGIN {printf \"%.0f\", ${packet_loss_max} * 100}")
+    printf "   %-12s %b\n" "最大丢包:" "${YELLOW}${loss_percent}%%${NC}"
     printf "   %-12s %b\n" "最低速度:" "${YELLOW}${speed_min} MB/s${NC}"
     printf "   %-12s %b\n" "显示数量:" "${YELLOW}${show_count} 个${NC}"
     
@@ -1026,7 +1028,8 @@ setup_cron() {
     
     if [[ "${CONFIRM_CRON}" = "y" ]] || [[ "${CONFIRM_CRON}" = "Y" ]]; then
         # 先删除旧的，再添加新的
-        if (crontab -l 2>/dev/null | grep -v "cf-ip/core.sh"; echo "${CRON_CMD}") | crontab -; then
+        # 【修复】grep -v 在无匹配时返回 1，pipefail 会终止子 shell；用 || true 保护
+        if (crontab -l 2>/dev/null | { grep -v "cf-ip/core.sh" || true; }; echo "${CRON_CMD}") | crontab -; then
             echo -e "${GREEN}[OK] 定时任务添加成功！${NC}"
         else
             echo -e "${RED}[ERROR] 定时任务添加失败${NC}"
@@ -1039,7 +1042,8 @@ remove_cron() {
     echo ""
     
     # 获取所有 CF-IP 相关的定时任务
-    CRON_LIST=$(crontab -l 2>/dev/null | grep "cf-ip/core.sh")
+    # 【修复】grep 在无匹配时返回 1，set -e 会终止脚本；用 || true 保护
+    CRON_LIST=$(crontab -l 2>/dev/null | grep "cf-ip/core.sh" || true)
     
     if [[ -z "${CRON_LIST}" ]]; then
         echo -e "${YELLOW}[WARN] 未找到 CF-IP 相关的定时任务${NC}"
@@ -1077,7 +1081,8 @@ remove_cron() {
     if [[ "${DELETE_CHOICE}" == "all" ]] || [[ "${DELETE_CHOICE}" == "ALL" ]]; then
         read -r -p "确认删除所有 ${#TASKS[@]} 个 CF-IP 定时任务？(y/n): " CONFIRM_ALL
         if [[ "${CONFIRM_ALL}" == "y" ]] || [[ "${CONFIRM_ALL}" == "Y" ]]; then
-            crontab -l 2>/dev/null | grep -v "cf-ip/core.sh" | crontab -
+            # 【修复】grep -v 在无匹配时返回 1，pipefail 会终止脚本
+            (crontab -l 2>/dev/null | { grep -v "cf-ip/core.sh" || true; }) | crontab -
             echo -e "${GREEN}[OK] 已删除所有 CF-IP 定时任务${NC}"
         else
             echo -e "${GRAY}[INFO] 已取消删除操作${NC}"
@@ -1122,7 +1127,8 @@ remove_cron() {
     
     for i in "${SELECTED_INDICES[@]}"; do
         # 【修复】使用 -Fx 进行整行精确匹配，避免子串误删
-        NEW_CRON=$(echo "${NEW_CRON}" | grep -v -Fx "${TASKS[$i]}")
+        # 【修复】grep -v 在无匹配时返回 1，set -e 会终止脚本；用 || true 保护
+        NEW_CRON=$(echo "${NEW_CRON}" | { grep -v -Fx "${TASKS[$i]}" || true; })
     done
     
     # 更新 crontab

@@ -5,6 +5,7 @@
 # Description: 所有模块共享的工具函数，避免重复定义
 # Usage: source "$(dirname "${BASH_SOURCE[0]}")/../lib/common.sh"
 # ==============================================================================
+SCRIPT_VERSION="1.0"
 
 # 防止重复加载
 [[ "${_CFOPT_COMMON_LOADED:-}" == "true" ]] && return 0

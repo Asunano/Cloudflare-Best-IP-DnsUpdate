@@ -88,6 +88,10 @@ calculate_timeout() {
     # 并行度: threads
     local base_time=60
     local time_per_ip=3
+    # 【修复】防止 threads 为 0 导致除法错误，最小值为 1
+    if [[ $threads -lt 1 ]]; then
+        threads=1
+    fi
     local calculated_timeout=$((base_time + (ip_count * time_per_ip / threads)))
     
     # 设置最小值和最大值
@@ -195,9 +199,6 @@ run_task() {
         return 1
     fi
     
-    # 【新增】启动超时保护看门狗
-    start_watchdog "${SCHEDULER_TIMEOUT}" "${task_name}" "${WATCHDOG_PID_FILE}"
-    
     # 执行脚本并捕获退出码
     # 【安全修复】使用 setsid 创建新进程组，确保 kill -- -PID 能杀死整个进程树
     # 【修复】设置 CF_OPT_ENTRY=scheduler，允许子模块通过入口校验
@@ -213,15 +214,23 @@ run_task() {
         TASK_PID=$!
     fi
 
-    # 【修复】将 PID 写入文件，供看门狗子 shell 读取
     # 【修复】先写入PID文件，再启动看门狗，避免竞争条件
     echo "${TASK_PID}" > "${WATCHDOG_PID_FILE}"
     
     # 【新增】等待一小段时间确保PID已写入文件
     sleep 0.1
     
-    wait "${TASK_PID}"
-    local exit_code=$?
+    # 【新增】启动超时保护看门狗（在PID写入之后启动，避免竞态条件）
+    start_watchdog "${SCHEDULER_TIMEOUT}" "${task_name}" "${WATCHDOG_PID_FILE}"
+    
+    # 【修复】保护 wait 调用，防止 set -e 在后台进程失败时静默终止脚本
+    # 原代码 `wait "${TASK_PID}"` 在进程失败时会被 set -e 拦截，
+    # 导致后续的 exit_code 赋值和错误日志都不会执行，调度器静默退出
+    if wait "${TASK_PID}"; then
+        local exit_code=0
+    else
+        local exit_code=$?
+    fi
     TASK_PID=""  # 清空 TASK_PID
     
     # 【新增】停止看门狗（任务完成或失败后都需要停止）
@@ -293,12 +302,12 @@ if [[ "${ENABLE_MULTI_LINE}" = "true" ]]; then
         export CFG_COLO_MOBILE="${COLO_MOBILE}"
         export CFG_COLO_UNICOM="${COLO_UNICOM}"
         export CFG_COLO_TELECOM="${COLO_TELECOM}"
+        # 【修复】传递调用来源标识，与单线路模式保持一致
+        export CF_OPT_ENTRY=scheduler
         # 传入第三个参数作为线路标识，用于进程锁隔离
         # 【修复】串行执行，等待当前线路完成后再执行下一条
-        bash "${ROOT_DIR}/modules/cf-ip/core.sh" "${colo_list}" "${output_file}" "${isp}"
-        
-        # 检查退出码
-        if [[ $? -ne 0 ]]; then
+        # 【修复】使用 || true 防止 set -e 导致测速失败时终止整个调度流程
+        if ! bash "${ROOT_DIR}/modules/cf-ip/core.sh" "${colo_list}" "${output_file}" "${isp}"; then
             echo -e "${RED}[WARN] ${isp} 线路测速失败，继续执行下一条线路${NC}"
         fi
     done
@@ -336,10 +345,8 @@ else
             export CFG_COLO_UNICOM="SJC,LAX,SIN,TYO"
             export CFG_COLO_TELECOM="SJC,LAX,TYO,SIN"
             # 【修复】串行执行，避免 cfst 竞争
-            bash "${ROOT_DIR}/modules/cf-ip/core.sh" "${colo_nodes}" "${result_file}" "${domain_name}"
-            
-            # 检查退出码
-            if [[ $? -ne 0 ]]; then
+            # 【修复】使用 if ! 防止 set -e 导致测速失败时终止整个调度流程
+            if ! bash "${ROOT_DIR}/modules/cf-ip/core.sh" "${colo_nodes}" "${result_file}" "${domain_name}"; then
                 echo -e "${RED}[WARN] ${domain_name} 测速失败，继续执行下一个域名${NC}"
             fi
             
@@ -353,6 +360,7 @@ else
         echo -e "${YELLOW}[WARN] 未找到已启用的 CF-DNS 配置，执行默认测速...${NC}"
         # 【优化】通过环境变量传递配置，避免 core.sh 重复读取文件
         export CF_IP_CFG_LOADED="true"
+        export CF_OPT_ENTRY=scheduler
         bash "${ROOT_DIR}/modules/cf-ip/core.sh" || exit 1
     fi
 fi

@@ -86,6 +86,44 @@ else
     export MAX_RETRY
 fi
 
+# 【修复】读取 CFST_DISABLE_DOWNLOAD 配置，用于动态调整 IP 过滤条件
+# 当禁用下载测速时，所有下载速度为 0，不能用 $6>0 过滤
+CFST_DISABLE_DOWNLOAD="false"
+if [[ -f "${CONFIG_FILE}" ]]; then
+    CFST_DISABLE_DOWNLOAD=$(jq -r '.cfst.disable_download // false' "${CONFIG_FILE}")
+fi
+
+# 【修复】定义 IP 有效性过滤的 awk 条件（根据是否禁用下载测速动态选择）
+# 当禁用下载测速时：只要 IP 字段非空即为有效
+# 当启用下载测速时：要求下载速度 > 0
+if [[ "${CFST_DISABLE_DOWNLOAD}" = "true" ]]; then
+    AWK_VALID_IP_FILTER='NR>1 && $1 != ""'
+    AWK_SORT_ARGS='-t, -k5,5 -n'
+else
+    AWK_VALID_IP_FILTER='NR>1 && $6>0'
+    AWK_SORT_ARGS='-t, -k6,6 -rn -k5,5 -n'
+fi
+
+# 【修复】辅助函数：从 CSV 结果文件中提取最优 IP 并生成 .iplist 格式
+# 参数: $1=result_csv_file, $2=target_iplist_file, $3=max_ips
+extract_best_ips() {
+    local result_csv="$1"
+    local target_file="$2"
+    local max_ips="${3:-5}"
+    
+    {
+        echo "# Cloudflare 优选 IP 列表"
+        echo "# 生成时间: $(date '+%Y-%m-%d %H:%M:%S')"
+        echo "#"
+        echo "# IP地址|延迟(ms)|下载速度(MB/s)|地区码"
+        # 【修复】使用动态过滤条件，支持禁用下载测速场景
+        awk -F',' "${AWK_VALID_IP_FILTER} {print \$0}" "${result_csv}" | \
+            sort ${AWK_SORT_ARGS} | \
+            head -n "${max_ips}" | \
+            awk -F',' '{gsub(/\r/,"",$5); gsub(/\r/,"",$6); gsub(/\r/,"",$7); print $1"|"$5"|"$6"|"$7}'
+    } > "${target_file}"
+}
+
 echo -e "${GREEN}[INFO] 最大重试次数: ${MAX_RETRY}${NC}"
 echo ""
 
@@ -130,19 +168,33 @@ auto_retry_test() {
         
         # 调用 core.sh 执行测速
         # 【修复】传递调用者的 CF_OPT_ENTRY 值，而非硬编码为 1
-        CF_OPT_ENTRY="${CF_OPT_ENTRY:-1}" bash "${ROOT_DIR}/modules/cf-ip/core.sh" "${colo_nodes}" "${result_file}" "${line_id}"
-        
-        local exit_code=$?
+        # 【修复】保护命令调用，防止 set -e 在 core.sh 失败时静默终止函数
+        # 原代码 `CF_OPT_ENTRY=... bash ... ; local exit_code=$?` 在 core.sh 失败时，
+        # set -e 会在 exit_code 赋值前终止函数，导致重试逻辑永远无法执行
+        if CF_OPT_ENTRY="${CF_OPT_ENTRY:-1}" bash "${ROOT_DIR}/modules/cf-ip/core.sh" "${colo_nodes}" "${result_file}" "${line_id}"; then
+            local exit_code=0
+        else
+            local exit_code=$?
+        fi
         if [[ ${exit_code} -eq 0 ]] && [[ -f "${result_file}" ]]; then
-            # 【增强】验证测速结果是否有效：检查是否有下载速度 > 0 的 IP
+            # 【增强】验证测速结果是否有效
+            # 【修复】根据是否禁用下载测速，使用不同的验证条件
             local valid_ip_count
-            valid_ip_count=$(awk -F',' 'NR>1 && $6>0 {count++} END {print count+0}' "${result_file}")
+            if [[ "${CFST_DISABLE_DOWNLOAD}" = "true" ]]; then
+                valid_ip_count=$(awk -F',' 'NR>1 && $1 != "" {count++} END {print count+0}' "${result_file}")
+            else
+                valid_ip_count=$(awk -F',' 'NR>1 && $6>0 {count++} END {print count+0}' "${result_file}")
+            fi
             
             if [[ "${valid_ip_count}" -gt 0 ]]; then
                 echo -e "${GREEN}[OK] 自动重新测速完成 (尝试 ${i}/${max_retries})，找到 ${valid_ip_count} 个有效 IP${NC}"
                 return 0
             else
-                echo -e "${YELLOW}[WARN] 第 ${i} 次测速完成，但所有 IP 下载速度仍为 0，数据无效${NC}"
+                if [[ "${CFST_DISABLE_DOWNLOAD}" = "true" ]]; then
+                    echo -e "${YELLOW}[WARN] 第 ${i} 次测速完成，但未找到有效 IP 数据${NC}"
+                else
+                    echo -e "${YELLOW}[WARN] 第 ${i} 次测速完成，但所有 IP 下载速度仍为 0，数据无效${NC}"
+                fi
             fi
         else
             echo -e "${YELLOW}[WARN] 第 ${i} 次测速失败 (Exit Code: ${exit_code})${NC}"
@@ -244,32 +296,22 @@ sync_cf_dns_ips() {
         mkdir -p "$(dirname "${target_file}")"
         
         # 【优化】从 CSV 中提取最优 IP（综合考虑下载速度和延迟）
-        # 策略：
-        #   1. 跳过标题行
-        #   2. 过滤掉下载速度为 0 的 IP（无效数据）
-        #   3. 按下载速度降序排序（优先高速 IP）
-        #   4. 如果下载速度相同，按延迟升序排序
-        #   5. 提取前 max_ips 个 IP
-        # 【修复】生成 .iplist 标准格式（IP|延迟|速度|地区码）
-        {
-            echo "# Cloudflare 优选 IP 列表"
-            echo "# 生成时间: $(date '+%Y-%m-%d %H:%M:%S')"
-            echo "#"
-            echo "# IP地址|延迟(ms)|下载速度(MB/s)|地区码"
-            awk -F',' 'NR>1 && $6>0 {print $0}' "${result_file}" | \
-                sort -t',' -k6,6 -rn -k5,5 -n | \
-                head -n "${max_ips}" | \
-                awk -F',' '{gsub(/\r/,"",$5); gsub(/\r/,"",$6); gsub(/\r/,"",$7); print $1"|"$5"|"$6"|"$7}'
-        } > "${target_file}"
+        # 【修复】使用 extract_best_ips 辅助函数，自动根据 CFST_DISABLE_DOWNLOAD 配置
+        # 选择正确的过滤条件和排序策略
+        extract_best_ips "${result_file}" "${target_file}" "${max_ips}"
         
         # 【修复】只统计非注释行，排除 4 行注释头
         actual_count="$(grep -v '^#' "${target_file}" | grep -v '^\s*$' | wc -l)"
         actual_count="${actual_count// /}"
         
-        # 【关键】如果没有找到有效 IP（所有 IP 下载速度都为 0），说明测速有问题
+        # 【关键】如果没有找到有效 IP，说明测速有问题
         # 在无人值守模式下，自动重新测速
         if [[ "${actual_count}" -eq 0 ]]; then
-            echo -e "  ${YELLOW}[WARN]${NC} ${domain_name}: 所有 IP 下载速度均为 0，测速数据无效"
+            if [[ "${CFST_DISABLE_DOWNLOAD}" = "true" ]]; then
+                echo -e "  ${YELLOW}[WARN]${NC} ${domain_name}: 未找到有效 IP 数据，测速数据无效"
+            else
+                echo -e "  ${YELLOW}[WARN]${NC} ${domain_name}: 所有 IP 下载速度均为 0，测速数据无效"
+            fi
             
             # 从配置中读取测速节点（如果有）
             local colo_nodes
@@ -279,17 +321,8 @@ sync_cf_dns_ips() {
             if auto_retry_test "${result_file}" "${colo_nodes}" "${domain_name}"; then
                 # 重新测速成功后，再次尝试同步
                 echo -e "  ${CYAN}[INFO]${NC} ${domain_name}: 正在使用新的测速结果进行同步..."
-                # 【修复】生成 .iplist 标准格式（IP|延迟|速度|地区码）
-                {
-                    echo "# Cloudflare 优选 IP 列表"
-                    echo "# 生成时间: $(date '+%Y-%m-%d %H:%M:%S')"
-                    echo "#"
-                    echo "# IP地址|延迟(ms)|下载速度(MB/s)|地区码"
-                    awk -F',' 'NR>1 && $6>0 {print $0}' "${result_file}" | \
-                        sort -t',' -k6,6 -rn -k5,5 -n | \
-                        head -n "${max_ips}" | \
-                        awk -F',' '{gsub(/\r/,"",$5); gsub(/\r/,"",$6); gsub(/\r/,"",$7); print $1"|"$5"|"$6"|"$7}'
-                } > "${target_file}"
+                # 【修复】使用 extract_best_ips 辅助函数，支持禁用下载测速场景
+                extract_best_ips "${result_file}" "${target_file}" "${max_ips}"
                 
                 # 【修复】移除重复的 local 声明，直接使用外层变量
                 actual_count="$(grep -v '^#' "${target_file}" | grep -v '^\s*$' | wc -l)"
@@ -344,6 +377,11 @@ _sync_single_dnspod_config() {
             return 1
         fi
         
+        # 【修复】将相对路径转换为绝对路径（相对于项目根目录）
+        if [[ "${target_file}" != /* ]]; then
+            target_file="${ROOT_DIR}/${target_file#./}"
+        fi
+        
         mkdir -p "$(dirname "${target_file}")"
         
         # 【修复】从配置中读取测速结果文件路径，支持多域名模式
@@ -371,17 +409,8 @@ _sync_single_dnspod_config() {
         fi
         
         # 【优化】从 CSV 中提取最优 IP（综合考虑下载速度和延迟）
-        # 【修复】生成 .iplist 标准格式（IP|延迟|速度|地区码）
-        {
-            echo "# Cloudflare 优选 IP 列表"
-            echo "# 生成时间: $(date '+%Y-%m-%d %H:%M:%S')"
-            echo "#"
-            echo "# IP地址|延迟(ms)|下载速度(MB/s)|地区码"
-            awk -F',' 'NR>1 && $6>0 {print $0}' "${result_file}" | \
-                sort -t',' -k6,6 -rn -k5,5 -n | \
-                head -n "${max_ips}" | \
-                awk -F',' '{gsub(/\r/,"",$5); gsub(/\r/,"",$6); gsub(/\r/,"",$7); print $1"|"$5"|"$6"|"$7}'
-        } > "${target_file}"
+        # 【修复】使用 extract_best_ips 辅助函数，支持禁用下载测速场景
+        extract_best_ips "${result_file}" "${target_file}" "${max_ips}"
         
         local actual_count
         # 【修复】只统计非注释行，排除 4 行注释头
@@ -480,13 +509,14 @@ _sync_single_dnspod_config() {
             fi
             
             # 从 CSV 中提取最优 IP 写入 .iplist 文件
+            # 【修复】使用动态过滤条件，支持禁用下载测速场景
             {
                 echo "# Cloudflare 优选 IP 列表 - DNSPod ${line}线路"
                 echo "# 生成时间: $(date '+%Y-%m-%d %H:%M:%S')"
                 echo "#"
                 echo "# IP地址|延迟(ms)|下载速度(MB/s)|地区码"
-                awk -F',' 'NR>1 && $6>0 {print $0}' "${result_file}" | \
-                    sort -t',' -k6,6 -rn -k5,5 -n | \
+                awk -F',' "${AWK_VALID_IP_FILTER} {print \$0}" "${result_file}" | \
+                    sort ${AWK_SORT_ARGS} | \
                     head -n "${max_ips}" | \
                     awk -F',' '{gsub(/\r/,"",$5); gsub(/\r/,"",$6); gsub(/\r/,"",$7); print $1"|"$5"|"$6"|"$7}'
             } > "${target_file}"
@@ -496,7 +526,11 @@ _sync_single_dnspod_config() {
             actual_count="${actual_count// /}"
             
             if [[ "${actual_count}" -eq 0 ]]; then
-                echo -e "    ${RED}[ERROR]${NC}  ${line}线路: 所有 IP 下载速度均为 0，测速数据无效"
+                if [[ "${CFST_DISABLE_DOWNLOAD}" = "true" ]]; then
+                    echo -e "    ${RED}[ERROR]${NC}  ${line}线路: 未找到有效 IP 数据，测速数据无效"
+                else
+                    echo -e "    ${RED}[ERROR]${NC}  ${line}线路: 所有 IP 下载速度均为 0，测速数据无效"
+                fi
                 fail_count=$((fail_count + 1))
             else
                 echo -e "    ${GREEN}[OK]${NC}   ${line}线路: 已同步 ${actual_count} 个 IP 到 ${target_file}"
@@ -915,6 +949,7 @@ echo -e "${GREEN}IP 数据同步任务执行完毕！${NC}"
 
 # 3. 【新增】批量更新 Cloudflare DNS 记录
 echo -e "\n${CYAN}[INFO] 开始执行 Cloudflare DNS 批量更新...${NC}"
+dns_has_failure=false
 if batch_update_cf_dns; then
     echo -e "${GREEN}[OK] Cloudflare DNS 批量更新完成${NC}"
 else
@@ -922,6 +957,7 @@ else
     # 【修复】如果批量更新失败，考虑是否继续执行后续步骤
     # 这里选择继续执行，因为可能是部分域名失败，不影响其他模块
     echo -e "${YELLOW}[WARN] 部分域名更新失败，但将继续执行 DNSPod 更新${NC}"
+    dns_has_failure=true
 fi
 
 # 4. 【新增】批量更新 DNSPod DNS 记录
@@ -932,8 +968,14 @@ else
     echo -e "${RED}[ERROR] DNSPod DNS 批量更新失败${NC}"
     # 【修复】记录最终状态，供调用者判断
     echo -e "${YELLOW}[WARN] DNSPod 批量更新存在失败项${NC}"
+    dns_has_failure=true
 fi
 
 echo -e "\n${CYAN}+------------------------------------------------------------+${NC}"
 echo -e "${GREEN}所有任务执行完毕！${NC}"
 echo -e "${CYAN}+------------------------------------------------------------+${NC}"
+
+# 【修复】如果有 DNS 批量更新失败，返回非零退出码供调度器判断
+if [[ "${dns_has_failure}" = true ]]; then
+    exit 1
+fi

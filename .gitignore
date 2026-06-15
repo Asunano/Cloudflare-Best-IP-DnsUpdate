@@ -1,22 +1,20 @@
 # 运行时生成的配置文件（用户自定义）
 conf/*.json
 conf/status.conf
-conf/.templates_downloaded
+conf/history.jsonl
+
+# 运行时标记文件
+.restart_needed
 
 # 日志文件
 logs/
 *.log
 
-# 锁文件
-modules/*/.lock
-modules/*/.core.lock
-modules/*/.setup.lock
-modules/*/.menu.lock
+# 锁文件（匹配所有模块下的 .*.lock 文件）
+modules/**/*.lock
 
-# IP 数据文件（运行时生成）
-assets/data/cf-ip/result*.csv
-assets/data/cf-dns/ip_list.txt
-assets/data/dnspod-dns/*.txt
+# 运行时数据目录（测速结果、IP 列表等）
+assets/data/
 
 # cfst 程序二进制文件
 assets/cfst/cfst
@@ -34,3 +32,4 @@ Thumbs.db
 .lingma/
 .vscode/
 .idea/
+.codebuddy/

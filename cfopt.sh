@@ -248,7 +248,9 @@ safe_copy() {
             fi
         fi
     else
-        log_error "${description}: 复制失败"
+        # 【修复】cp 失败时，无论目标是否存在，都应返回失败
+        # 之前的逻辑在 cp 失败后检查 target 是否为目录并返回 0，这是错误的
+        log_error "${description}: 复制操作失败 (源: ${source}, 目标: ${target})"
         return 1
     fi
 }
@@ -1100,7 +1102,7 @@ system_health_check() {
                                         "url": "",
                                         "httping": false,
                                         "latency_max": 9999,
-                                        "packet_loss_max": 100,
+                                        "packet_loss_max": 1.00,
                                         "speed_min": 0,
                                         "show_count": 20,
                                         "ip_file": "",

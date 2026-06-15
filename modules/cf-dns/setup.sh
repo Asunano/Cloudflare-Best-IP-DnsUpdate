@@ -848,7 +848,7 @@ EOF
                     "url": "https://mirror.drxian.qzz.io/index.html",
                     "httping": false,
                     "latency_max": 9999,
-                    "packet_loss_max": 100,
+                    "packet_loss_max": 1.00,
                     "speed_min": 0,
                     "show_count": 20,
                     "ip_file": "",
