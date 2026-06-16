@@ -2,9 +2,11 @@
 conf/*.json
 conf/status.conf
 conf/history.jsonl
+conf/deployments.json
 
 # 运行时标记文件
 .restart_needed
+.restart_count
 
 # 日志文件
 logs/
@@ -12,6 +14,9 @@ logs/
 
 # 锁文件（匹配所有模块下的 .*.lock 文件）
 modules/**/*.lock
+
+# 部署版本特有的模块（原始仓库函数内联在 cfopt.sh 中）
+modules/install/
 
 # 运行时数据目录（测速结果、IP 列表等）
 assets/data/

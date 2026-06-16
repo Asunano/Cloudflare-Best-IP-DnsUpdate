@@ -17,6 +17,13 @@ ROOT_DIR="$(cd "$SCRIPT_DIR/../.." && pwd)"
 # shellcheck source=../../lib/common.sh
 source "${ROOT_DIR}/lib/common.sh"
 
+# 【修复】确保颜色变量有默认值（防止 common.sh 加载失败时变量未定义）
+RED="${RED:-\033[0;31m}"
+GREEN="${GREEN:-\033[0;32m}"
+YELLOW="${YELLOW:-\033[1;33m}"
+CYAN="${CYAN:-\033[0;36m}"
+NC="${NC:-\033[0m}"
+
 _LOG_MODULE="scheduler"
 # 【修复】设置日志文件路径，使 log_info 等函数能写入文件
 mkdir -p "${ROOT_DIR}/logs"
@@ -240,7 +247,7 @@ run_task() {
         echo -e "${RED}[FAIL] ${task_name} 执行失败 (Exit Code: ${exit_code})，终止后续任务。${NC}"
         return 1
     else
-        echo -e "${GREEN}[OK] ${task_name} 执行成功。${NC}"
+        echo -e "${GREEN:-}[OK] ${task_name} 执行成功。${NC:-}"
         return 0
     fi
 }
@@ -263,11 +270,11 @@ if [[ -f "${ROOT_DIR}/conf/cf-ip.json" ]]; then
         [[ -n "$key" ]] && CF_IP_CFG["$key"]="$value"
     done < <(jq -r '
         [
-            "cfst_colo=\(.cfst.colo // \"HKG,NRT\")",
+            "cfst_colo=\(.cfst.colo // "HKG,NRT")",
             "multi_line_enabled=\(.multi_line.enabled // false)",
-            "colo_mobile=\(.multi_line.colo_mobile // \"HKG,SIN,TYO,LON\")",
-            "colo_unicom=\(.multi_line.colo_unicom // \"SJC,LAX,SIN,TYO\")",
-            "colo_telecom=\(.multi_line.colo_telecom // \"SJC,LAX,TYO,SIN\")"
+            "colo_mobile=\(.multi_line.colo_mobile // "HKG,SIN,TYO,LON")",
+            "colo_unicom=\(.multi_line.colo_unicom // "SJC,LAX,SIN,TYO")",
+            "colo_telecom=\(.multi_line.colo_telecom // "SJC,LAX,TYO,SIN")"
         ] | .[]
     ' "${ROOT_DIR}/conf/cf-ip.json")
 fi
@@ -364,7 +371,7 @@ else
         bash "${ROOT_DIR}/modules/cf-ip/core.sh" || exit 1
     fi
 fi
-echo -e "${GREEN}[OK] IP 优选测速执行成功。${NC}"
+echo -e "${GREEN:-}[OK] IP 优选测速执行成功。${NC:-}"
 
 # 第二阶段：执行 IP 数据同步与 DNS 批量更新（已合并到 sync.sh）
 run_task "IP 数据同步与 DNS 批量更新" "${ROOT_DIR}/modules/ip-sync/sync.sh" || exit 1

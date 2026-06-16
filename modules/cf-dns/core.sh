@@ -224,7 +224,7 @@ IP_FILE="${CFG[ip_file]}"
 MAX_IPS_PER_RECORD="${CFG[max_ips_per_record]}"
 REQUEST_TIMEOUT="${CFG[timeout]}"
 MAX_RETRIES="${CFG[max_retries]}"
-LOG_DIR="${CFG[log_dir]}"
+LOG_DIR="${CFG[log_dir]:-$LOG_DIR_DEFAULT}"
 
 # 【修复】如果 CF_DOMAIN 为空，fallback 到 DOMAIN_NAME（支持通过 CF_DNS_DOMAIN 环境变量指定域名）
 if [[ -z "${CF_DOMAIN}" ]] && [[ -n "${DOMAIN_NAME:-}" ]]; then
@@ -958,189 +958,117 @@ main() {
         fi
     fi
     
-    # 策略：智能同步（优先更新，减少 API 调用）
-    # 1. 找出现有记录中需要删除的 IP（不在目标列表中）
+    # 策略：智能同步（优先就地更新，减少 API 调用）
+    # 【核心优化】记录数相同时就地更新，只有多余记录才删除
+    
     local -a records_to_delete_ids=()
     local -a records_to_delete_values=()
-    # 【性能优化】维护保留的记录列表，避免删除后重新查询
     local -a retained_record_ids=()
     local -a retained_record_values=()
     
-    if [ "$record_count" -gt 0 ]; then
+    # 关键优化：当记录数 == 目标IP数时，不做删除，直接就地更新
+    if [[ "$record_count" -eq "${#ip_addresses[@]}" ]] && [[ "$record_count" -gt 0 ]]; then
+        # 记录数一致 → 直接就地更新（最优路径，0次删除，0次创建）
+        log "  ${CYAN}[INFO]${NC} 记录数与目标一致，执行就地更新..."
+        
+        local -a ips_to_update=()
+        local -a update_record_ids=()
+        
         for ((i=0; i<record_count; i++)); do
-            local existing_ip="${current_values[$i]}"
             local clean_existing
-            clean_existing=$(echo "$existing_ip" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
+            clean_existing=$(echo "${current_values[$i]}" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
+            local clean_target
+            clean_target=$(echo "${ip_addresses[$i]}" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
             
-            # 检查这个 IP 是否在目标列表中
-            local found=false
-            for target_ip in "${ip_addresses[@]}"; do
-                local clean_target
-                clean_target=$(echo "$target_ip" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
-                if [ "$clean_existing" = "$clean_target" ]; then
-                    found=true
-                    break
+            if [ "$clean_existing" != "$clean_target" ]; then
+                ips_to_update+=("${ip_addresses[$i]}")
+                update_record_ids+=("${record_ids[$i]}")
+            else
+                skipped_count=$((skipped_count + 1))
+            fi
+        done
+        
+        # 执行就地更新
+        if [[ "${#ips_to_update[@]}" -gt 0 ]]; then
+            local full_dns_name
+            full_dns_name=$(build_full_domain "$CF_DNS_NAME" "$CF_DOMAIN")
+            log "  ${CYAN}⟳${NC} 更新 ${#ips_to_update[@]} 条记录..."
+            for ((i=0; i<${#ips_to_update[@]}; i++)); do
+                local update_result
+                update_result=$(update_dns_record "${update_record_ids[$i]}" "$full_dns_name" "${ips_to_update[$i]}") || true
+                if [[ "$update_result" == success* ]]; then
+                    updated_count=$((updated_count + 1))
                 fi
             done
-            
-            # 如果不在目标列表中，标记为删除；否则加入保留列表
-            if [ "$found" = false ]; then
-                records_to_delete_ids+=("${record_ids[$i]}")
-                records_to_delete_values+=("$existing_ip")
-            else
-                retained_record_ids+=("${record_ids[$i]}")
-                retained_record_values+=("$existing_ip")
-            fi
-        done
-    fi
-    
-    # 2. 先删除多余的记录
-    if [[ "${#records_to_delete_ids[@]}" -gt 0 ]]; then
-        log "  ${YELLOW}⟳${NC} 删除 ${#records_to_delete_ids[@]} 条多余记录..."
+            log "  [OK] 已更新 ${updated_count} 条记录"
+        else
+            log "  ${GREEN}[OK]${NC} 所有 IP 已存在，无需更新"
+        fi
         
-        for ((i=0; i<${#records_to_delete_ids[@]}; i++)); do
-            local record_id="${records_to_delete_ids[$i]}"
-            local current_value="${records_to_delete_values[$i]}"
-            
-            local delete_result
-            # 【修复】在 set -e 模式下，API 调用失败不应导致脚本退出
-            delete_result=$(delete_dns_record "$record_id") || true
-            
-            if [[ "$delete_result" == success* ]]; then
-                deleted_count=$((deleted_count + 1))
-            else
-                log "    ${RED}[ERROR]${NC} 删除失败: ${current_value}"
-            fi
-        done
-        log "  [OK] 已删除 ${deleted_count} 条记录"
-        
-        # 【性能优化】直接使用保留的记录列表，避免重新查询 API
-        record_ids=("${retained_record_ids[@]}")
-        current_values=("${retained_record_values[@]}")
-        record_count=${#record_ids[@]}
-    fi
-    
-    # 3. 【重构】智能同步逻辑：删除、更新、创建
-    local -a ips_to_update=()
-    local -a update_record_ids=()
-        
-    # 【重构】清晰的分支结构，避免脆弱的嵌套依赖
-    if needs_update "${current_values[@]}" -- "${ip_addresses[@]}"; then
-        log "  ${CYAN}[INFO]${NC} 检测到 IP 变化，开始更新..."
-            
-        # 情况 1：有现有记录且有待同步的 IP → 执行智能匹配更新
-        if [[ "${record_count}" -gt 0 ]] && [[ "${#ip_addresses[@]}" -gt 0 ]]; then
-            # 【修复】使用集合差异算法，避免位置依赖导致的遗漏
-            # 找出可以直接保留的记录（IP 相同）
-            local -a matched_indices=()
-            local -a used_target_indices=()  # 跟踪已使用的目标 IP 索引
-                
+    else
+        # 记录数不一致 → 需要删除多余的 + 创建新的
+        if [ "$record_count" -gt 0 ]; then
             for ((i=0; i<record_count; i++)); do
                 local existing_ip="${current_values[$i]}"
                 local clean_existing
                 clean_existing=$(echo "$existing_ip" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
-                    
-                # 在目标列表中查找匹配的 IP
-                for ((j=0; j<${#ip_addresses[@]}; j++)); do
-                    # 跳过已使用的目标 IP
-                    local is_used=false
-                    for ui in "${used_target_indices[@]}"; do
-                        if [ "$ui" -eq "$j" ]; then
-                            is_used=true
-                            break
-                        fi
-                    done
-                    [ "$is_used" = true ] && continue
-                        
-                    local target_ip="${ip_addresses[$j]}"
+                
+                local found=false
+                for target_ip in "${ip_addresses[@]}"; do
                     local clean_target
                     clean_target=$(echo "$target_ip" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
-                        
                     if [ "$clean_existing" = "$clean_target" ]; then
-                        matched_indices+=("$i")
-                        used_target_indices+=("$j")
-                        skipped_count=$((skipped_count + 1))
+                        found=true
                         break
                     fi
                 done
-            done
                 
-            # 对于未匹配的记录，尝试找到可以更新的
-            for ((i=0; i<record_count; i++)); do
-                # 跳过已匹配的
-                local is_matched=false
-                for mi in "${matched_indices[@]}"; do
-                    if [ "$mi" -eq "$i" ]; then
-                        is_matched=true
-                        break
-                    fi
-                done
-                [ "$is_matched" = true ] && continue
-                    
-                # 找到一个未被使用的目标 IP 来更新这条记录
-                for ((j=0; j<${#ip_addresses[@]}; j++)); do
-                    # 跳过已使用的目标 IP
-                    local is_used=false
-                    for ui in "${used_target_indices[@]}"; do
-                        if [ "$ui" -eq "$j" ]; then
-                            is_used=true
-                            break
-                        fi
-                    done
-                    [ "$is_used" = true ] && continue
-                        
-                    # 将这个目标 IP 分配给当前记录
-                    ips_to_update+=("${ip_addresses[$j]}")
-                    update_record_ids+=("${record_ids[$i]}")
-                    used_target_indices+=("$j")
-                    break
-                done
-            done
-        fi
-            
-        # 执行更新
-        if [[ "${#ips_to_update[@]}" -gt 0 ]]; then
-            log "  ${CYAN}⟳${NC} 更新 ${#ips_to_update[@]} 条记录..."
-                
-            # 构建完整域名用于 API 调用
-            local full_dns_name
-            full_dns_name=$(build_full_domain "$CF_DNS_NAME" "$CF_DOMAIN")
-                
-            local total=${#ips_to_update[@]}
-            for ((i=0; i<total; i++)); do
-                local target_ip="${ips_to_update[$i]}"
-                local record_id="${update_record_ids[$i]}"
-                    
-                # 【功能增强】显示进度
-                printf "\r  [%d/%d] 正在更新 %s..." "$((i+1))" "$total" "$target_ip"
-                    
-                local update_result
-                # 【修复】在 set -e 模式下，API 调用失败不应导致脚本退出
-                update_result=$(update_dns_record "$record_id" "$full_dns_name" "$target_ip") || true
-                    
-                if [[ "$update_result" == success* ]]; then
-                    updated_count=$((updated_count + 1))
+                if [ "$found" = false ]; then
+                    records_to_delete_ids+=("${record_ids[$i]}")
+                    records_to_delete_values+=("$existing_ip")
                 else
-                    echo ""  # 换行
-                    log "    ${RED}[ERROR]${NC} 更新失败: ${target_ip}"
+                    retained_record_ids+=("${record_ids[$i]}")
+                    retained_record_values+=("$existing_ip")
                 fi
             done
-            echo ""  # 换行
-            log "  [OK] 已更新 ${updated_count} 条记录"
-        elif [[ "${record_count}" -gt 0 ]] && [[ "${#ip_addresses[@]}" -gt 0 ]]; then
-            # 【修复】无需更新，所有 IP 已存在且相同
-            log_success "所有 IP 已存在且相同，无需更新"
-            skipped_count=${#ip_addresses[@]}
         fi
-    else
-        # 无需更新，所有 IP 已存在
-        if [ "$record_count" -eq "${#ip_addresses[@]}" ]; then
-            log "  ${GREEN}[OK]${NC} 所有 IP 已存在，无需更新"
-            skipped_count=${#ip_addresses[@]}
-        else
-            log "  ${YELLOW}[WARN]${NC} 未执行任何操作，但记录数 (${record_count}) 与目标 IP 数 (${#ip_addresses[@]}) 不一致"
-            log "  ${YELLOW}[WARN]${NC} 这可能是 API 查询失败导致，请检查配置和网络连接"
+        
+        # 删除多余的记录
+        if [[ "${#records_to_delete_ids[@]}" -gt 0 ]]; then
+            log "  ${YELLOW}⟳${NC} 删除 ${#records_to_delete_ids[@]} 条多余记录..."
+            for ((i=0; i<${#records_to_delete_ids[@]}; i++)); do
+                local delete_result
+                delete_result=$(delete_dns_record "${records_to_delete_ids[$i]}") || true
+                if [[ "$delete_result" == success* ]]; then
+                    deleted_count=$((deleted_count + 1))
+                fi
+            done
+            log "  [OK] 已删除 ${deleted_count} 条记录"
+            
+            record_ids=("${retained_record_ids[@]}")
+            current_values=("${retained_record_values[@]}")
+            record_count=${#record_ids[@]}
         fi
+        
+        # 对保留的记录执行就地更新
+        for ((i=0; i<record_count; i++)); do
+            local clean_existing
+            clean_existing=$(echo "${current_values[$i]}" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
+            local clean_target
+            clean_target=$(echo "${ip_addresses[$i]}" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
+            
+            if [ "$clean_existing" != "$clean_target" ]; then
+                local full_dns_name
+                full_dns_name=$(build_full_domain "$CF_DNS_NAME" "$CF_DOMAIN")
+                local update_result
+                update_result=$(update_dns_record "${record_ids[$i]}" "$full_dns_name" "${ip_addresses[$i]}") || true
+                if [[ "$update_result" == success* ]]; then
+                    updated_count=$((updated_count + 1))
+                fi
+            else
+                skipped_count=$((skipped_count + 1))
+            fi
+        done
     fi
     
     # 4. 【重构】独立于 needs_update 的创建逻辑
