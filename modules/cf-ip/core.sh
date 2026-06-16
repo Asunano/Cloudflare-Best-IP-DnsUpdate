@@ -531,57 +531,8 @@ build_cfst_cmd() {
     local output_csv="$2"
     local ip_data_file="${3:-}"
     
-    # 【重构】只有当配置项非空时才添加参数，让 cfst 使用内置默认值
-    CFST_CMD_ARRAY=("${CFST_BIN}")
-    
-    # 线程数（可选，HTTPing 模式自动降并发防止 CDN 限速）
-    if [[ -n "${CFST_THREADS}" ]]; then
-        local actual_threads="${CFST_THREADS}"
-        if [[ "${CFST_HTTPING}" = "true" ]] && [[ "${actual_threads}" -gt 100 ]]; then
-            actual_threads=100
-            log_warn "HTTPing 模式自动降线程: ${CFST_THREADS} → 100（避免 CDN 限速致下载测速全 0）"
-        fi
-        CFST_CMD_ARRAY+=("-n" "${actual_threads}")
-    fi
-    
-    # Ping 次数（可选）
-    [[ -n "${CFST_PING_TIMES}" ]] && CFST_CMD_ARRAY+=("-t" "${CFST_PING_TIMES}")
-    
-    # 目标地区（可选）
-    [[ -n "${target_colo}" ]] && CFST_CMD_ARRAY+=("-cfcolo" "${target_colo}")
-    
-    # IP 数据文件（可选）
-    [[ -n "${ip_data_file}" ]] && CFST_CMD_ARRAY+=("-f" "${ip_data_file}")
-    
-    # 下载测速参数（可选）
-    [[ -n "${CFST_DOWNLOAD_COUNT}" ]] && CFST_CMD_ARRAY+=("-dn" "${CFST_DOWNLOAD_COUNT}")
-    [[ -n "${CFST_DOWNLOAD_TIME}" ]] && CFST_CMD_ARRAY+=("-dt" "${CFST_DOWNLOAD_TIME}")
-    
-    # 端口（可选）
-    [[ -n "${CFST_PORT}" ]] && CFST_CMD_ARRAY+=("-tp" "${CFST_PORT}")
-    
-    # 下载 URL（可选）
-    [[ -n "${CFST_URL}" ]] && CFST_CMD_ARRAY+=("-url" "${CFST_URL}")
-    
-    # HTTP Ping 模式（可选）
-    [[ "${CFST_HTTPING}" = "true" ]] && CFST_CMD_ARRAY+=("-httping")
-    
-    # 延迟和速度阈值（可选）
-    [[ -n "${CFST_LATENCY_MAX}" ]] && CFST_CMD_ARRAY+=("-tl" "${CFST_LATENCY_MAX}")
-    [[ -n "${CFST_PACKET_LOSS_MAX}" ]] && CFST_CMD_ARRAY+=("-tlr" "${CFST_PACKET_LOSS_MAX}")
-    [[ -n "${CFST_SPEED_MIN}" ]] && CFST_CMD_ARRAY+=("-sl" "${CFST_SPEED_MIN}")
-    
-    # 显示数量（可选）
-    [[ -n "${CFST_SHOW_COUNT}" ]] && CFST_CMD_ARRAY+=("-p" "${CFST_SHOW_COUNT}")
-    
-    # 禁用下载测速（可选）
-    [[ "${CFST_DISABLE_DOWNLOAD}" = "true" ]] && CFST_CMD_ARRAY+=("-dd")
-    
-    # 测试所有 IP（可选）
-    [[ "${CFST_ALL_IP}" = "true" ]] && CFST_CMD_ARRAY+=("-allip")
-    
-    # 输出文件（必需）
-    CFST_CMD_ARRAY+=("-o" "${output_csv}")
+    # 最简参数：仅 ./cfst，使用全部内置默认值
+    CFST_CMD_ARRAY=("${CFST_BIN}" "-o" "${output_csv}")
 }
 
 # ==================== 执行测速 ====================
@@ -897,7 +848,7 @@ progress_bar_width=40
 # 【修复】将首次测速也纳入循环，确保 MAX_RETRY 含义符合用户预期
 # 【安全修复】将变量声明移到循环外部，避免重复声明问题
 # 【修复】MAX_RETRY 表示最大重试次数，不包括首次尝试，所以循环应该是 retry=0 到 retry<MAX_RETRY
-cfst_timeout=300
+cfst_timeout=600
 if [[ -n "${CFST_TIMEOUT:-}" ]] && [[ "${CFST_TIMEOUT}" =~ ^[0-9]+$ ]]; then
     cfst_timeout="${CFST_TIMEOUT}"
 fi
@@ -1007,7 +958,10 @@ for ((retry=0; retry<=MAX_RETRY; retry++)); do
         echo -e "${CYAN}  [========================================] 100% 测速完成！${NC}"
         echo ""
         
-        # 将退出码传递给父 shell
+        # 将退出码传递给父 shell（超时码124视为正常，因为CSV已有数据）
+        if [[ "${EXIT_CODE}" -eq 124 ]]; then
+            exit 0
+        fi
         exit ${EXIT_CODE}
     )
     EXIT_CODE=$?
@@ -1059,8 +1013,27 @@ for ((retry=0; retry<=MAX_RETRY; retry++)); do
             fi
         fi
     else
-        # 测速程序执行失败
-        if [[ ${retry} -lt ${MAX_RETRY} ]]; then
+        # 测速程序执行失败或超时后无结果文件
+        if [[ ! -f "${OUTPUT_CSV}" ]]; then
+            # CSV 文件不存在，可能是 cfst 被超时杀掉前未写入数据
+            if [[ ${retry} -lt ${MAX_RETRY} ]]; then
+                attempt_label=""
+                if [[ ${retry} -eq 0 ]]; then
+                    attempt_label="首次"
+                else
+                    attempt_label="第 ${retry} 次"
+                fi
+                echo -e "${YELLOW}[WARN] ${attempt_label}测速超时，结果文件未生成，正在重试...${NC}"
+            else
+                echo -e "${RED}[ERROR] 已重试 ${MAX_RETRY} 次，测速均超时未产生结果${NC}"
+                echo -e "${YELLOW}[提示] 可能原因：${NC}"
+                echo -e "  • IP 列表过大（5955个IP），测速时间超过超时限制"
+                echo -e "  • 网络环境不佳导致测速缓慢"
+                echo -e "${CYAN}[建议] 设置环境变量 CFST_TIMEOUT 增大超时时间，例如：${NC}"
+                echo -e "${CYAN}  CFST_TIMEOUT=600 bash modules/cf-ip/core.sh${NC}"
+                exit 1
+            fi
+        elif [[ ${retry} -lt ${MAX_RETRY} ]]; then
             attempt_label=""
             if [[ ${retry} -eq 0 ]]; then
                 attempt_label="首次"

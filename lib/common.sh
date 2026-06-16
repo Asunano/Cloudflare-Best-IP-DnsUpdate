@@ -254,7 +254,7 @@ _cfopt_log() {
     fi
 
     # 终端输出（带颜色）
-    printf "[%s] [%-5s] [%s] %s\n" "$timestamp" "$level" "$module" "$*"
+    echo -e "[$timestamp] [$level] [$module] $*"
 }
 
 # 便捷日志函数（需要先设置 _LOG_MODULE 和 _LOG_FILE 变量）
