@@ -2255,29 +2255,15 @@ if [ $config_check_result -eq 0 ]; then
     # 配置有效,直接进入菜单模式
     :
 elif [ $config_check_result -eq 1 ]; then
-    # 配置文件不存在或无效,显示提示并进入配置向导
+    # 配置文件不存在,显示首次配置提示后继续进入菜单
     echo -e "\n${CYAN}${MENU_BORDER}"
     echo -e " ${YELLOW}DNSPod DNS 更新器 - 首次配置"
     echo -e "${CYAN}${MENU_BORDER_BOTTOM}"
     echo ""
     echo -e "${YELLOW}[INFO] 检测到您尚未配置 DNSPod 模块${NC}"
-    echo -e "${YELLOW}[INFO] 将启动快速配置向导...${NC}"
+    echo -e "${YELLOW}[INFO] 请使用菜单中的 1. 完整配置向导 进行配置${NC}"
     echo ""
-    echo -e "  1) DNSPod API ID 和 Token"
-    echo -e "  2) 域名和子域名设置"
-    echo -e "  3) 单线路/多线路模式选择"
-    echo -e "  4) 运营商分流策略（可选）"
-    echo ""
-    read -r -p "是否立即启动配置向导？[Y/n] (默认: Y): " choice
-    choice=${choice:-Y}
-    
-    if [[ "$choice" =~ ^[Yy]$ ]] || [[ -z "$choice" ]]; then
-        # 调用配置向导（由 dnspod-dns/core.sh 提供）
-        exec bash "$ROOT_DIR/modules/dnspod-dns/core.sh"
-    else
-        echo -e "${YELLOW}已取消操作${NC}"
-        exit 1
-    fi
+    read -r -p "按回车键进入主菜单..."
 elif [ $config_check_result -eq 2 ]; then
     # 配置不完整(多线路模式缺少必要配置)
     echo -e "\n${CYAN}${MENU_BORDER}"
