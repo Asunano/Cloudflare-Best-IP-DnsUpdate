@@ -2590,7 +2590,7 @@ else
             ;;
         3)
             clear
-            view_config
+            view_config || true
             echo ""
             read -r -p "按回车键返回主菜单..."
             clear
@@ -3347,7 +3347,7 @@ while true; do
             ;;
         3)
             clear
-            view_config
+            view_config || true
             echo ""
             read -r -p "按回车键返回主菜单..."
             clear
