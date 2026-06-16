@@ -987,20 +987,17 @@ main() {
                     manage_deployed_domains_menu
                     local exit_code=$?
                     
-                    # 如果返回 1，说明删除了配置，需要检查是否还有域名
+                    # 如果返回 1，说明用户选择返回上一级
                     if [[ $exit_code -eq 1 ]]; then
-                        # 重新获取域名列表
+                        break
+                    elif [[ $exit_code -eq 0 ]]; then
+                        # 管理完单个域名或无效选择，重新获取域名列表
                         deployed_domains=$(list_deployed_domains)
                         if [[ -z "$deployed_domains" ]]; then
-                            # 没有域名了，退出循环
                             echo -e "${YELLOW}[WARN] 当前没有已部署的域名${NC}"
                             read -r -p "按回车键返回..."
                             break
                         fi
-                        # 还有域名，继续循环
-                    elif [[ $exit_code -eq 0 ]]; then
-                        # 用户选择返回上一级，退出循环
-                        break
                     fi
                 done
             else
