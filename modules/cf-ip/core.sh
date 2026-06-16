@@ -1031,7 +1031,7 @@ for ((retry=0; retry<=MAX_RETRY; retry++)); do
         else
             # 数据无效，继续重试
             if [[ ${retry} -lt ${MAX_RETRY} ]]; then
-                local attempt_label=""
+                attempt_label=""
                 if [[ ${retry} -eq 0 ]]; then
                     attempt_label="首次"
                 else
@@ -1061,7 +1061,7 @@ for ((retry=0; retry<=MAX_RETRY; retry++)); do
     else
         # 测速程序执行失败
         if [[ ${retry} -lt ${MAX_RETRY} ]]; then
-            local attempt_label=""
+            attempt_label=""
             if [[ ${retry} -eq 0 ]]; then
                 attempt_label="首次"
             else
