@@ -87,7 +87,24 @@ MENU_BORDER_BOTTOM="+-----------------------------------------------------------
 # shellcheck disable=SC2034
 SMALL_BORDER="+--------------------------------------------------+"
 
-CONFIG_FILE="$ROOT_DIR/conf/dnspod.json"  # 仅在菜单显示时使用，实际运行时由 core.sh 动态加载
+# 支持多域名配置：优先使用 conf/dnspod/{domain}.json，否则使用 conf/dnspod.json
+CONFIG_FILE=""
+# 检查多域名目录
+_dnspod_dir="$ROOT_DIR/conf/dnspod"
+if [[ -d "$_dnspod_dir" ]]; then
+    _first_json=$(find "$_dnspod_dir" -maxdepth 1 -name "*.json" -type f 2>/dev/null | head -1)
+    if [[ -n "$_first_json" ]]; then
+        CONFIG_FILE="$_first_json"
+    fi
+fi
+# 回退到单文件配置
+if [[ -z "$CONFIG_FILE" ]] && [[ -f "$ROOT_DIR/conf/dnspod.json" ]]; then
+    CONFIG_FILE="$ROOT_DIR/conf/dnspod.json"
+fi
+# 最终回退
+if [[ -z "$CONFIG_FILE" ]]; then
+    CONFIG_FILE="$ROOT_DIR/conf/dnspod.json"
+fi
 # 【修复】统一锁文件命名规范：.${module_name}_${type}.lock
 LOCK_FILE="$ROOT_DIR/modules/dnspod-dns/.dnspod-dns_setup.lock"
 
@@ -125,6 +142,46 @@ json_get() {
         echo "$default"
     else
         echo "$value"
+    fi
+}
+
+# 更新配置文件字段
+update_config_field() {
+    local field_path="$1"
+    local new_value="$2"
+    
+    if ! command -v jq &>/dev/null; then
+        echo -e "${RED}[ERROR] jq 未安装，无法更新配置${NC}"
+        return 1
+    fi
+    
+    # 确保配置文件存在（支持多域名目录结构）
+    if [[ ! -f "$CONFIG_FILE" ]]; then
+        # 确保目录存在
+        mkdir -p "$(dirname "$CONFIG_FILE")" 2>/dev/null || true
+        echo '{"enabled":false,"api":{"id":"","token":""},"dns":{"domain":"","sub_domain":"dns","mode":"single","ttl":600,"max_ips_per_record":2,"isp_lines":"默认","subdomain_strategy":"separate","sub_domain_unified":"dns","sub_domains":{"default":"default","unicom":"unicom","mobile":"mobile","telecom":"telecom"}},"ip_source":{"file_path":"","files":{"default":"","unicom":"","mobile":"","telecom":""}}}' > "$CONFIG_FILE"
+        chmod 600 "$CONFIG_FILE"
+    fi
+    
+    local temp_file
+    temp_file=$(mktemp /tmp/cfopt-dnspod.XXXXXX)
+    chmod 600 "${temp_file}"
+    
+    # 自动判断值类型：纯数字用 --argjson，其他用 --arg
+    local jq_arg="--arg"
+    if [[ "$new_value" =~ ^[0-9]+$ ]]; then
+        jq_arg="--argjson"
+    fi
+    
+    if jq $jq_arg val "$new_value" "${field_path} = \$val" "$CONFIG_FILE" > "$temp_file" 2>/dev/null; then
+        mv "$temp_file" "$CONFIG_FILE"
+        chmod 600 "$CONFIG_FILE"
+        echo -e "${GREEN}[OK] 配置已更新: ${field_path} = ${new_value}${NC}"
+        return 0
+    else
+        rm -f "$temp_file"
+        echo -e "${RED}[ERROR] 更新配置失败: ${field_path}${NC}"
+        return 1
     fi
 }
 
@@ -2248,22 +2305,42 @@ log_message() {
 
 # 检查配置并决定是否进入菜单或向导
 config_check_result=0
-check_config_valid || true
-config_check_result=$?
+if [ ! -f "$CONFIG_FILE" ]; then
+    config_check_result=1
+else
+    check_config_valid || true
+    config_check_result=$?
+fi
 
 if [ $config_check_result -eq 0 ]; then
     # 配置有效,直接进入菜单模式
     :
 elif [ $config_check_result -eq 1 ]; then
-    # 配置文件不存在,显示首次配置提示后继续进入菜单
+    # 配置文件不存在,自动进入配置向导
     echo -e "\n${CYAN}${MENU_BORDER}"
     echo -e " ${YELLOW}DNSPod DNS 更新器 - 首次配置"
     echo -e "${CYAN}${MENU_BORDER_BOTTOM}"
     echo ""
     echo -e "${YELLOW}[INFO] 检测到您尚未配置 DNSPod 模块${NC}"
-    echo -e "${YELLOW}[INFO] 请使用菜单中的 1. 完整配置向导 进行配置${NC}"
     echo ""
-    read -r -p "按回车键进入主菜单..."
+    echo -e "${CYAN}您可以选择：${NC}"
+    echo -e "  ${GREEN}1)${NC} 立即运行配置向导（推荐）"
+    echo -e "  ${RED}0)${NC} 退出程序"
+    echo ""
+    read -r -p "请选择 [0-1] (默认 1): " first_choice
+    first_choice=${first_choice:-1}
+    
+    if [[ "$first_choice" == "0" ]]; then
+        echo -e "${CYAN}[INFO] 已取消配置${NC}"
+        exit 0
+    fi
+    
+    echo -e "${YELLOW}将自动启动配置向导...${NC}"
+    echo ""
+    sleep 1
+    
+    # 设置标志跳过菜单，直接进入配置向导
+    skip_menu=true
 elif [ $config_check_result -eq 2 ]; then
     # 配置不完整(多线路模式缺少必要配置)
     echo -e "\n${CYAN}${MENU_BORDER}"
@@ -3327,7 +3404,7 @@ while true; do
     
     case "$choice" in
         1)
-            # 完整配置向导
+            # 完整配置向导 - 跳出循环执行
             clear
             break
             ;;
@@ -3354,7 +3431,7 @@ while true; do
             ;;
         4)
             clear
-            toggle_module_status
+            toggle_module_status || true
             echo ""
             read -r -p "按回车键返回主菜单..."
             clear
@@ -3362,14 +3439,14 @@ while true; do
         5)
             clear
             echo -e "${GREEN}正在调用 IP 同步组件..."
-            bash "$ROOT_DIR/modules/ip-sync/sync.sh"
+            bash "$ROOT_DIR/modules/ip-sync/sync.sh" || true
             echo ""
             read -r -p "按回车键返回主菜单..."
             clear
             ;;
         6)
             clear
-            modify_ip_limit
+            modify_ip_limit || true
             echo ""
             read -r -p "按回车键返回主菜单..."
             clear
@@ -3403,7 +3480,7 @@ while true; do
         8)
             # 日志管理
             clear
-            manage_logs
+            manage_logs || true
             clear
             ;;
         0)
@@ -3419,6 +3496,81 @@ while true; do
             ;;
     esac
 done
+
+# 如果用户选择完整配置向导，执行配置
+if [[ "${RECONFIGURE_ALL:-}" == "true" ]]; then
+    # 清屏并显示配置向导标题
+    clear
+    echo -e "${CYAN}${MENU_BORDER}"
+    echo -e " ${YELLOW}DNSPod DNS 更新器 - 完整配置向导"
+    echo -e "${CYAN}${MENU_BORDER_BOTTOM}"
+    echo ""
+    
+    # 1. 域名配置
+    echo -e "${CYAN}步骤 1/4: 域名配置${NC}"
+    echo ""
+    read -r -p "请输入主域名 (例如: example.com): " domain
+    if [[ -z "$domain" ]]; then
+        echo -e "${RED}[ERROR] 域名不能为空${NC}"
+        exit 1
+    fi
+    
+    # 2. 子域名配置
+    echo ""
+    echo -e "${CYAN}步骤 2/4: 子域名配置${NC}"
+    echo ""
+    read -r -p "请输入子域名 (例如: www, @, dns): " sub_domain
+    sub_domain=${sub_domain:-dns}
+    
+    # 3. API 配置
+    echo ""
+    echo -e "${CYAN}步骤 3/4: API 配置${NC}"
+    echo ""
+    read -r -p "请输入 DNSPod API ID: " api_id
+    if [[ -z "$api_id" ]]; then
+        echo -e "${RED}[ERROR] API ID 不能为空${NC}"
+        exit 1
+    fi
+    
+    echo ""
+    read -r -p "请输入 DNSPod API Token: " api_token
+    if [[ -z "$api_token" ]]; then
+        echo -e "${RED}[ERROR] API Token 不能为空${NC}"
+        exit 1
+    fi
+    
+    # 4. 工作模式
+    echo ""
+    echo -e "${CYAN}步骤 4/4: 工作模式${NC}"
+    echo ""
+    echo -e "  1) 单线路模式 - 适用于简单场景"
+    echo -e "  2) 多线路模式 - 为不同运营商设置不同的 IP"
+    echo ""
+    read -r -p "请选择工作模式 [1-2] (默认 1): " mode_choice
+    mode_choice=${mode_choice:-1}
+    
+    # 使用多域名目录结构
+    CONFIG_FILE="$ROOT_DIR/conf/dnspod/${domain}.json"
+    
+    if [[ "$mode_choice" == "2" ]]; then
+        update_config_field ".dns.mode" "multi"
+    else
+        update_config_field ".dns.mode" "single"
+    fi
+    
+    # 写入其他配置
+    update_config_field ".dns.domain" "$domain"
+    update_config_field ".dns.sub_domain" "$sub_domain"
+    update_config_field ".api.id" "$api_id"
+    update_config_field ".api.token" "$api_token"
+    update_config_field ".enabled" "true"
+    
+    echo ""
+    echo -e "${GREEN}[OK] 配置完成!${NC}"
+    echo -e "配置文件已保存到: ${CONFIG_FILE}"
+    echo ""
+    read -r -p "按回车键返回主菜单..."
+fi
 
 # 正常情况下不会到达这里，但为了安全起见
 exit 0

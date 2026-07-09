@@ -649,7 +649,7 @@ generate_signature() {
     # 【修复】使用 $'\n' 生成真正的换行符，而非字面字符串 \n
     local newline=$'\n'
     local canonical_headers
-    canonical_headers="content-type:${content_type}${newline}host:dnspod.tencentcloudapi.com${newline}x-tc-action:$(echo "${action}" | tr '[:upper:]' '[:lower:]')${newline}"
+    canonical_headers="content-type:${content_type}${newline}host:dnspod.tencentcloudapi.com${newline}x-tc-action:$(echo "${action}" | tr '[:upper:]' '[:lower:]')"
     local signed_headers="content-type;host;x-tc-action"
     
     local canonical_request="${http_method}${newline}${canonical_uri}${newline}${canonical_querystring}${newline}${canonical_headers}${newline}${signed_headers}${newline}${hashed_payload}"
