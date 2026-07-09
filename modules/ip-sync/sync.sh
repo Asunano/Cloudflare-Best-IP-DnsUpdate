@@ -559,9 +559,35 @@ sync_dnspod_ips() {
     local single_file="${ROOT_DIR}/conf/dnspod.json"
     
     # 【修复】支持两种架构：多域名目录和单文件
+    # 优先检查多域名目录（需要目录存在且包含 JSON 文件）
     if [[ -d "${config_dir}" ]]; then
-        # 多域名架构：扫描 conf/dnspod/*.json
-        echo -e "${CYAN}[INFO] 检测到 DNSPod 多域名配置目录${NC}"
+        # 检查目录下是否有 JSON 配置文件
+        local json_count
+        json_count=$(find "${config_dir}" -maxdepth 1 -name "*.json" -type f 2>/dev/null | wc -l)
+        
+        if [[ "${json_count}" -gt 0 ]]; then
+            # 多域名架构：扫描 conf/dnspod/*.json
+            echo -e "${CYAN}[INFO] 检测到 DNSPod 多域名配置目录 (${json_count} 个配置)${NC}"
+        elif [[ -f "${single_file}" ]]; then
+            # 目录为空但有单文件配置
+            echo -e "${CYAN}[INFO] 检测到 DNSPod 单文件配置${NC}"
+            local json_file="${single_file}"
+            local domain_name
+            domain_name=$(basename "$json_file" .json)
+            
+            local enabled
+            enabled=$(jq -r '.enabled // false' "$json_file")
+            if [[ "${enabled}" != "true" ]]; then
+                echo -e "  ${YELLOW}[WARN]${NC} DNSPod 模块未启用，跳过"
+                return
+            fi
+            
+            _sync_single_dnspod_config "$json_file" "$domain_name"
+            return
+        else
+            echo -e "${GRAY}[INFO] 未找到 DNSPod 配置文件，跳过${NC}"
+            return
+        fi
     elif [[ -f "${single_file}" ]]; then
         # 单文件架构：使用 conf/dnspod.json
         echo -e "${CYAN}[INFO] 检测到 DNSPod 单文件配置${NC}"
@@ -569,7 +595,6 @@ sync_dnspod_ips() {
         local domain_name
         domain_name=$(basename "$json_file" .json)
         
-        # 检查模块是否启用
         local enabled
         enabled=$(jq -r '.enabled // false' "$json_file")
         if [[ "${enabled}" != "true" ]]; then
@@ -577,11 +602,9 @@ sync_dnspod_ips() {
             return
         fi
         
-        # 执行同步逻辑
         _sync_single_dnspod_config "$json_file" "$domain_name"
         return
     else
-        # 既没有目录也没有文件
         echo -e "${GRAY}[INFO] 未找到 DNSPod 配置文件，跳过${NC}"
         return
     fi
