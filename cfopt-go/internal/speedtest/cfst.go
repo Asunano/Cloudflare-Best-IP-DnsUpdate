@@ -61,7 +61,7 @@ func NewCFSTTester(cfg *config.CFIPConfig) (*CFSTTester, error) {
 }
 
 // buildCmd 构造 cfst 命令参数（最简 cfst -o output.csv，按 threads/colo/port/dd 加参）。
-// 注意：IP 文件（-c）不在本函数内拼装，而是交由 Run 通过 resolveIPFile 解析后追加，
+// 注意：IP 文件（-f）不在本函数内拼装，而是交由 Run 通过 resolveIPFile 解析后追加，
 // 以统一处理「配置指定 / 默认缓存 / 从 Cloudflare 官方拉取」三种来源。
 func (t *CFSTTester) buildCmd(cfg *config.CFIPConfig, output string) []string {
 	args := []string{"-o", output}
@@ -82,7 +82,7 @@ func (t *CFSTTester) buildCmd(cfg *config.CFIPConfig, output string) []string {
 	return args
 }
 
-// resolveIPFile 决定传给 cfst -c 的 IP 数据文件：
+// resolveIPFile 决定传给 cfst -f 的 IP 数据文件：
 //  1. 配置了 cfst.ip_file 则直接用（不存在报错）；
 //  2. 否则在 outputDir 下准备默认 ip.txt：已存在即用，不存在则从 Cloudflare 官方地址拉取并缓存。
 func (t *CFSTTester) resolveIPFile(ctx context.Context, cfg *config.CFIPConfig, outputDir string) (string, error) {
@@ -149,14 +149,14 @@ func (t *CFSTTester) Run(ctx context.Context, cfg *config.CFIPConfig) ([]SpeedRe
 	}
 	output := filepath.Join(outputDir, fmt.Sprintf("result_%s.csv", time.Now().Format("20060102_150405")))
 
-	// 先解析 IP 数据文件（配置指定 / 默认缓存 / 官方拉取），再交给 cfst -c。
+	// 先解析 IP 数据文件（配置指定 / 默认缓存 / 官方拉取），再交给 cfst -f。
 	ipFile, err := t.resolveIPFile(ctx, cfg, outputDir)
 	if err != nil {
 		return nil, err
 	}
 	args := t.buildCmd(cfg, output)
 	if ipFile != "" {
-		args = append(args, "-c", ipFile)
+		args = append(args, "-f", ipFile)
 	}
 	cmd := exec.CommandContext(ctx, t.binPath, args...)
 

@@ -108,11 +108,14 @@ func TestFetchCloudflareRanges_HTTPError(t *testing.T) {
 	require.Error(t, err, "HTTP 非 200 时应返回错误")
 }
 
-// TestBuildCmd_NoIPFileFlag 验证：ip_file 为空时 buildCmd 不再拼装 -c（IP 分支已移出 buildCmd）。
+// TestBuildCmd_NoIPFileFlag 验证：ip_file 为空时 buildCmd 不再拼装 IP 文件 flag
+//（-c / -f 改由 Run 通过 resolveIPFile 解析后追加）。
 func TestBuildCmd_NoIPFileFlag(t *testing.T) {
 	tester := &CFSTTester{binPath: "dummy"}
 	cfg := &config.CFIPConfig{} // IPFile 默认空
 	args := tester.buildCmd(cfg, "o.csv")
 	assert.NotContains(t, args, "-c",
-		"buildCmd 不应再拼装 IP 文件分支（-c 改由 Run 通过 resolveIPFile 解析后追加）")
+		"buildCmd 不应拼装 IP 文件分支（-c 改由 Run 通过 resolveIPFile 解析后追加）")
+	assert.NotContains(t, args, "-f",
+		"buildCmd 不应拼装 IP 文件分支（-f 改由 Run 通过 resolveIPFile 解析后追加）")
 }
