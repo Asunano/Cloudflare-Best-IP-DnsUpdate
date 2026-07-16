@@ -1,0 +1,11 @@
+{
+  "_comment": "全局配置文件 (Go 重写版)",
+  "root_dir": "",
+  "log_dir": "./logs",
+  "log_level": "INFO",
+  "lock_dir": "./locks",
+  "data_dir": "./assets/data",
+  "cache_dir": "./cache",
+  "bin_dir": "./assets/bin",
+  "schedule": { "interval": "6h" }
+}
