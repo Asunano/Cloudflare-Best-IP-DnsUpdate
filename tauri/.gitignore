@@ -1,0 +1,5 @@
+# Rust / Cargo
+/target
+
+# Tauri 生成的 schema 与上下文
+/gen

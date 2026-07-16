@@ -1,0 +1,19 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "default",
+  "description": "主窗口默认能力：调用 IPC 命令并拉起 Go sidecar（cfopt-go）",
+  "windows": ["main"],
+  "permissions": [
+    "core:default",
+    {
+      "identifier": "shell:allow-execute",
+      "allow": [{ "name": "cfopt-go", "cmd": "cfopt-go", "args": true, "sidecar": true }]
+    },
+    {
+      "identifier": "shell:allow-spawn",
+      "allow": [{ "name": "cfopt-go", "cmd": "cfopt-go", "args": true, "sidecar": true }]
+    },
+    "shell:allow-sidecar",
+    "shell:allow-kill"
+  ]
+}
