@@ -208,10 +208,10 @@ func (s *daemonService) Stop() error {
 }
 
 func (s *daemonService) Status() (ipc.DaemonStatus, error) {
-	d, err := s.build()
-	if err != nil {
-		return ipc.DaemonStatus{State: "unknown"}, err
-	}
+	// 仅查询系统服务状态（running/stopped/unknown）无需构建 Syncer，
+	// 因此使用 NewDaemonStatusOnly 避免无谓地解析 cfst 二进制路径
+	// （缺 cfst 时 BuildSyncerFromConfig 会报 “cfst 二进制不存在”，与服务状态查询无关）。
+	d := scheduler.NewDaemonStatusOnly()
 	st, err := d.Status()
 	if err != nil {
 		return ipc.DaemonStatus{State: "unknown"}, err

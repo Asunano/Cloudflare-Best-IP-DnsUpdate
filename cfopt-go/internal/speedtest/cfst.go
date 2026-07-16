@@ -2,6 +2,7 @@ package speedtest
 
 import (
 	"bufio"
+	"bytes"
 	"context"
 	"fmt"
 	"io"
@@ -86,8 +87,12 @@ func (t *CFSTTester) Run(ctx context.Context, cfg *config.CFIPConfig) ([]SpeedRe
 
 	// 合并 stdout/stderr 到同一管道，统一解析 cfst 进度日志（cfst 用 \r 覆盖同一行）。
 	pr, pw := io.Pipe()
-	cmd.Stdout = pw
-	cmd.Stderr = pw
+	// errBuf 同时捕获 cfst 的全部输出（含 stderr 报错文本），便于 cfst 以非 0 退出码
+	// 失败时回传其真实报错（否则 cmd.Wait 只会给出 "exit status N" 而丢失真实原因）。
+	var errBuf bytes.Buffer
+	mw := io.MultiWriter(pw, &errBuf)
+	cmd.Stdout = mw
+	cmd.Stderr = mw
 
 	common.Info("speedtest: 启动 cfst 测速", "bin", t.binPath, "output", output)
 	if err := cmd.Start(); err != nil {
@@ -116,6 +121,10 @@ func (t *CFSTTester) Run(ctx context.Context, cfg *config.CFIPConfig) ([]SpeedRe
 	if err := cmd.Wait(); err != nil {
 		_ = pw.Close()
 		<-done
+		// 回传 cfst 真实输出，避免用户只看到 "exit status N" 而看不到根因。
+		if msg := strings.TrimSpace(errBuf.String()); msg != "" {
+			return nil, common.Wrap("speedtest:cfst:wait", fmt.Errorf("%w: %s", err, msg))
+		}
 		return nil, common.Wrap("speedtest:cfst:wait", err)
 	}
 	_ = pw.Close()

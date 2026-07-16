@@ -35,6 +35,21 @@ func NewDaemon(sched *Scheduler, cfg *config.Config, interval time.Duration, onc
 	return &Daemon{scheduler: sched, cfg: cfg, interval: interval, once: once}
 }
 
+// NewDaemonStatusOnly 构造一个仅用于查询系统服务状态的 Daemon：
+// scheduler 与 cfg 均为 nil，interval=0，once=false。
+//
+// 该构造用于 `daemon.status` IPC 方法——查询系统服务（Windows Service / systemd /
+// launchd）运行状态（running/stopped/unknown）本就无需构建 Syncer，自然也不应触碰
+// cfst 二进制路径。以 nil scheduler/cfg 构造可避免无谓地构建 Syncer（缺 cfst 时
+// BuildSyncerFromConfig 会报 “cfst 二进制不存在”，而那与服务状态查询无关）。
+//
+// 注意：Status() 仅调用 service.New(d, serviceConfig()) 与 svc.Status()，并不会访问
+// d.scheduler 或 d.cfg，因此 sched/cfg 为 nil 时是安全的；但若意外走到依赖
+// scheduler/cfg 的路径（如 RunService 的 run 分支），将触发空指针，便于测试与回归发现。
+func NewDaemonStatusOnly() *Daemon {
+	return &Daemon{scheduler: nil, cfg: nil, interval: 0, once: false}
+}
+
 // Start 由 service 框架调用：启动后台循环（非阻塞），立即返回。
 func (d *Daemon) Start(s service.Service) error {
 	ctx, cancel := context.WithCancel(context.Background())
