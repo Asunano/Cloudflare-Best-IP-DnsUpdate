@@ -1,11 +1,12 @@
-# ipc-smoke.ps1 - 向本地 cfopt IPC 服务发送 JSON-RPC 请求并打印响应（Windows / PowerShell）
+# ipc-smoke.ps1 - send a JSON-RPC request to the local cfopt IPC server (Windows / PowerShell)
 #
-# 用法:
+# Usage:
 #   powershell -ExecutionPolicy Bypass -File scripts/ipc-smoke.ps1
 #   powershell -ExecutionPolicy Bypass -File scripts/ipc-smoke.ps1 -Method version
 #   powershell -ExecutionPolicy Bypass -File scripts/ipc-smoke.ps1 -Method sync.run -ParamsJson '{"providers":["cf"]}'
 #
-# 前置: 先在另一个窗口运行 `go run . serve --ipc-port-file cfopt.ipc`
+# Prereq: start the server in another window first:
+#   go run . serve --ipc-port-file cfopt.ipc
 param(
   [string]$PortFile = "cfopt.ipc",
   [string]$Method = "ping",
@@ -15,42 +16,56 @@ param(
 $ErrorActionPreference = "Stop"
 
 if (-not (Test-Path $PortFile)) {
-  Write-Error "端口文件不存在: $PortFile`n请先在另一个窗口运行: go run . serve --ipc-port-file $PortFile"
+  Write-Error "Port file not found: $PortFile. Start the server first: go run . serve --ipc-port-file $PortFile"
   exit 1
 }
 
 $port = ([string](Get-Content $PortFile)).Trim()
-Write-Host ">> 连接到 127.0.0.1:$port  方法=$Method"
+Write-Host ">> connect 127.0.0.1:$port  method=$Method"
 
-$req = [ordered]@{
-  jsonrpc = "2.0"
-  id      = 1
-  method  = $Method
-}
+# Build the JSON-RPC request as a raw string (no ConvertTo-Json / ConvertFrom-Json,
+# which are finicky on PowerShell 5.1). ParamsJson is inserted verbatim.
+$body = "{""jsonrpc"":""2.0"",""id"":1,""method"":""$Method"""
 if ($ParamsJson -ne "") {
-  $req.params = ($ParamsJson | ConvertFrom-Json)
+  $body += ",""params"":$ParamsJson"
+}
+$body += "}`n"
+
+Write-Host ">> send: $body"
+
+try {
+  $tcp = New-Object System.Net.Sockets.TcpClient('127.0.0.1', [int]$port)
+} catch {
+  Write-Error "Cannot connect to 127.0.0.1:$port - is the server running?"
+  exit 1
 }
 
-$body = (ConvertTo-Json -InputObject $req -Compress -Depth 4) + "`n"
-Write-Host ">> 发送: $body"
-
-$tcp = New-Object System.Net.Sockets.TcpClient('127.0.0.1', [int]$port)
 try {
   $ns = $tcp.GetStream()
   $sw = New-Object System.IO.StreamWriter($ns)
   $sw.AutoFlush = $true
   $sw.Write($body)
+  $sw.Flush()
 
-  # 读取 3 秒内的所有响应行（含 sync.run 期间穿插的 progress 事件）
   $sr = New-Object System.IO.StreamReader($ns)
-  $deadline = [datetime]::Now.AddSeconds(3)
-  while ([datetime]::Now -lt $deadline) {
-    if ($ns.DataAvailable) {
+  if ($null -eq $sr) {
+    Write-Error "Failed to create stream reader"
+    exit 1
+  }
+
+  # Read every response line within a 3s window (covers sync.run progress events
+  # which the server interleaves before the final result on the same connection).
+  $ns.ReadTimeout = 3000
+  try {
+    while ($true) {
       $line = $sr.ReadLine()
-      if ($line) { Write-Output $line }
-    } else {
-      Start-Sleep -Milliseconds 50
+      if ($null -eq $line) { break }
+      if ($line.Length -gt 0) { Write-Output $line }
     }
+  } catch [System.TimeoutException] {
+    # no more data within the window -> done
+  } catch [System.IO.IOException] {
+    # connection closed by server -> done
   }
 } finally {
   $tcp.Close()
