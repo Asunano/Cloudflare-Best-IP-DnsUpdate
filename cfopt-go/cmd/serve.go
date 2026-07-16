@@ -7,6 +7,7 @@ import (
 	"net"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"strconv"
 	"syscall"
 
@@ -230,6 +231,13 @@ func (s *versionService) Info() ipc.VersionInfo {
 
 // writePortFile 将端口原子写入文件（tmp + rename），供 Rust sidecar 轮询发现。
 func writePortFile(path string, port int) error {
+	// 自动创建父目录，避免 Windows 上 "/tmp/..." 解析为 "D:\tmp" 但目录不存在导致写入失败、
+	// 进而 serve 直接退出（连带 IPC 服务一起被杀）的问题。
+	if dir := filepath.Dir(path); dir != "" && dir != "." {
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			return err
+		}
+	}
 	tmp := path + ".tmp"
 	if err := os.WriteFile(tmp, []byte(strconv.Itoa(port)+"\n"), 0o644); err != nil {
 		return err

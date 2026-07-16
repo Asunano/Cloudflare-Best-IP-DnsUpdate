@@ -7,6 +7,12 @@
 
 > **一句话**：终端能做的 GUI 都能做，反之亦然。两者走的是同一份业务逻辑，只是入口不同。
 
+> **🪟 平台提示（Windows 用户必读）**：本仓库命令默认给出**跨平台写法**。在 Windows 上请使用 **cmd / PowerShell**，注意：
+> - 没有 `pwsh`？用系统自带的 `powershell`（Win10/11 内置 5.1 即可），加 `-ExecutionPolicy Bypass`。
+> - 没有 `python3`？用 `python`。
+> - 没有 `nc`(netcat)？用仓库根 `scripts/ipc-smoke.ps1` 做冒烟测试（已封装读端口 + 发送 + 打印）。
+> - 别直接复制 bash 的 `$(...)` / `printf` 到 cmd，会报"不是内部或外部命令"。
+
 完整架构与 13 个 IPC 方法契约见 [`../docs/system_design.md`](../docs/system_design.md)；新增 DNS 商接入见 [`../docs/providers-guide.zh.md`](../docs/providers-guide.zh.md)。
 
 ---
@@ -67,35 +73,55 @@ go build -o cfopt-go .      # 产出 cfopt-go（或 cfopt-go.exe）
 
 ### 3.3 IPC / serve 模式（供 GUI 与冒烟测试）
 
-GUI 启动时会自动拉起 `serve`。你也可以手动拉起，用它测试 13 个 IPC 方法：
+GUI 启动时会自动拉起 `serve`。你也可以手动拉起，用它测试 13 个 IPC 方法。
+
+> **⚠️ 端口文件路径**：`--ipc-port-file` 现在会自动创建父目录。建议用**当前目录的相对路径** `cfopt.ipc`，最直观（Windows 下 `/tmp/...` 会解析成 `D:\tmp\...`，虽然也能自动创建但较隐蔽）。
+
+**启动 serve（CLI）**
 
 ```bash
-# 监听随机端口，把实际端口原子写入 --ipc-port-file
-./cfopt-go serve --ipc-port-file /tmp/cfopt.ipc
-# 可选：--ipc-addr 127.0.0.1:0   --config-dir <dir>
+# Linux / macOS / Git Bash
+./cfopt-go serve --ipc-port-file cfopt.ipc
+# Windows cmd / PowerShell（保持此窗口运行，不要关、不要 Ctrl+C）
+go run . serve --ipc-port-file cfopt.ipc
 ```
-
-> 你此前已验证该命令可正常监听随机端口（`addr=127.0.0.1:65343`），命令正确。
 
 **快速冒烟测试**（读端口 → 发 JSON-RPC）。协议为 JSON-RPC 2.0 + JSON Lines（每行一个 JSON，以 `\n` 结尾）：
 
-```bash
-PORT=$(cat /tmp/cfopt.ipc)
+- **推荐（跨平台脚本）**：仓库根 `scripts/ipc-smoke.{ps1,sh}` 已封装好读端口 + 发请求 + 打印响应（含 `sync.run` 的 progress 事件流）：
 
-# 心跳
-printf '{"jsonrpc":"2.0","id":1,"method":"ping"}\n' | nc 127.0.0.1 "$PORT"
-# => {"jsonrpc":"2.0","id":1,"result":{"pong":true}}
+  ```bash
+  # Windows PowerShell
+  powershell -ExecutionPolicy Bypass -File scripts/ipc-smoke.ps1
+  powershell -ExecutionPolicy Bypass -File scripts/ipc-smoke.ps1 -Method version
+  powershell -ExecutionPolicy Bypass -File scripts/ipc-smoke.ps1 -Method sync.run -ParamsJson '{"providers":["cf"]}'
 
-# 版本
-printf '{"jsonrpc":"2.0","id":2,"method":"version"}\n' | nc 127.0.0.1 "$PORT"
+  # Linux / macOS / Git Bash
+  bash scripts/ipc-smoke.sh
+  bash scripts/ipc-smoke.sh version
+  bash scripts/ipc-smoke.sh sync.run '{"providers":["cf"]}'
+  ```
 
-# 仅同步 Cloudflare（providers 过滤，等价 CLI 的 dns cf）
-printf '{"jsonrpc":"2.0","id":3,"method":"sync.run","params":{"providers":["cf"]}}\n' | nc 127.0.0.1 "$PORT"
-# sync.run 期间会在最终响应前穿插 progress 事件：{"method":"progress","params":{...}}
-```
+- **手动（Windows PowerShell，无 netcat 时）**：
 
-> 没有 `nc`？用任意 TCP 客户端（如 `ncat`、`socat`，或 Python `socket`）发送同样的单行 JSON 即可。
-> Windows PowerShell 下端口文件路径可用 `$env:TEMP\cfopt.ipc`。
+  ```powershell
+  $port = (Get-Content cfopt.ipc).Trim()
+  $tcp = New-Object System.Net.Sockets.TcpClient('127.0.0.1', [int]$port)
+  $ns = $tcp.GetStream()
+  $sw = New-Object System.IO.StreamWriter($ns); $sw.AutoFlush = $true
+  $sw.WriteLine('{"jsonrpc":"2.0","id":1,"method":"ping"}')
+  Start-Sleep -Milliseconds 500
+  $sr = New-Object System.IO.StreamReader($ns); $sr.ReadLine(); $tcp.Close()
+  # => {"jsonrpc":"2.0","id":1,"result":{"pong":true}}
+  ```
+
+- **手动（Linux / macOS / Git Bash，有 netcat）**：
+
+  ```bash
+  PORT=$(cat cfopt.ipc)
+  printf '{"jsonrpc":"2.0","id":1,"method":"ping"}\n' | nc 127.0.0.1 "$PORT"
+  # => {"jsonrpc":"2.0","id":1,"result":{"pong":true}}
+  ```
 
 **13 个 IPC 方法一览**
 
@@ -125,12 +151,14 @@ printf '{"jsonrpc":"2.0","id":3,"method":"sync.run","params":{"providers":["cf"]
 
 ```bash
 # 1) 生成占位图标（纯 Python 标准库，无需 Pillow / ImageMagick）
-python3 scripts/gen-icons.py
+#    Windows 上 Python 命令通常是 python（不是 python3）
+python scripts/gen-icons.py          # 或 python3 scripts/gen-icons.py
 #    => tauri/icons/{32x32,128x128,128x128@2x,icon}.png + icon.ico + icon.icns
 
 # 2) 构建并放置 Go sidecar 到 tauri/binaries/
-#    Windows（产出 x86_64-pc-windows-msvc.exe）：
-pwsh scripts/setup-sidecar.ps1
+#    Windows（产出 x86_64-pc-windows-msvc.exe）：用系统自带 powershell 即可
+powershell -ExecutionPolicy Bypass -File scripts/setup-sidecar.ps1
+#    （若你装了 PowerShell 7，也可：pwsh scripts/setup-sidecar.ps1）
 #    Linux / macOS：
 #    bash scripts/setup-sidecar.sh
 
@@ -140,7 +168,7 @@ npm --prefix src install && npm --prefix src run build
 
 > `setup-sidecar` 会把二进制命名为 `cfopt-go-<target-triple>[.exe]`，与
 > `tauri/tauri.conf.json` 中 `externalBin: ["binaries/cfopt-go"]` 配套，Tauri 据此按平台选取。
-> 交叉编译示例：`pwsh scripts/setup-sidecar.ps1 -Target macos`。
+> 交叉编译示例：`powershell -ExecutionPolicy Bypass -File scripts/setup-sidecar.ps1 -Target macos`。
 
 ### 4.2 运行 / 打包
 
@@ -172,10 +200,10 @@ cargo tauri build    # 打包为安装包
 ## 6. 测试清单（方便你本地验证）
 
 - [ ] **Go 核心**：`cd cfopt-go && go build ./... && go test ./...`（应全绿）
-- [ ] **终端冒烟**：`go run . serve --ipc-port-file /tmp/cfopt.ipc`，另开终端 `nc` 发 `ping` 收到 `{"pong":true}`
+- [ ] **终端冒烟**：`go run . serve --ipc-port-file cfopt.ipc`（保持运行），另开窗口 `powershell -ExecutionPolicy Bypass -File scripts/ipc-smoke.ps1` 收到 `{"pong":true}`
 - [ ] **CLI 对等**：`go run . dns cf` 与 `sync.run {"providers":["cf"]}` 结果一致
-- [ ] **图标生成**：`python3 scripts/gen-icons.py` 后 `tauri/icons/` 含 6 个文件
-- [ ] **sidecar 放置**：`pwsh scripts/setup-sidecar.ps1` 后 `tauri/binaries/` 含 `cfopt-go-x86_64-pc-windows-msvc.exe`
+- [ ] **图标生成**：`python scripts/gen-icons.py` 后 `tauri/icons/` 含 6 个文件
+- [ ] **sidecar 放置**：`powershell -ExecutionPolicy Bypass -File scripts/setup-sidecar.ps1` 后 `tauri/binaries/` 含 `cfopt-go-x86_64-pc-windows-msvc.exe`
 - [ ] **GUI 启动**：`cd tauri && cargo tauri dev`，主页一键同步进度条实时更新
 
 ---
