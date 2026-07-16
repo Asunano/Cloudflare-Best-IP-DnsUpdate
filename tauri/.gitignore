@@ -3,3 +3,6 @@
 
 # Tauri 生成的 schema 与上下文
 /gen
+
+# sidecar 二进制（由 scripts/setup-sidecar 生成，不入库）
+/binaries

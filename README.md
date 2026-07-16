@@ -4,6 +4,22 @@
 > 
 > **强烈建议不要在生产环境中使用！仅供测试和技术交流。**
 
+---
+
+## 🆕 Go 重写版（cfopt-go）：终端 / GUI 双形态
+
+项目正在用 **Go** 重写核心（`cfopt-go/`），并提供**两种对等操控方式**，共用同一套纯 Go 领域层：
+
+- **终端模式（CLI）**：`cfopt-go` 子命令（`sync` / `speedtest` / `dns cf` / `dns dnspod` / `config` / `schedule` / `serve` …）。
+- **GUI 模式（Tauri v2 + SvelteKit）**：桌面应用，经本地 IPC 调用同一套核心，功能与终端完全一致。
+
+> 测试与双形态用法详见 **[`cfopt-go/README.md`](cfopt-go/README.md)**（含图标生成、sidecar 放置、IPC 冒烟测试与构建步骤）。
+> 架构与 13 个 IPC 方法契约见 [`docs/system_design.md`](docs/system_design.md)；新增 DNS 商接入见 [`docs/providers-guide.zh.md`](docs/providers-guide.zh.md)。
+
+> ⚠️ Bash 原版（`cfopt.sh` / `modules/*.sh`）仍保留在此仓库，但已进入维护态；新功能优先在 Go 版落地。
+
+---
+
 [![License](https://img.shields.io/badge/License-GPL--3.0-blue.svg)](LICENSE)
 [![Shell](https://img.shields.io/badge/Shell-Bash-green.svg)](https://www.gnu.org/software/bash/)
 [![Status](https://img.shields.io/badge/Status-Developing-orange.svg)]()
@@ -37,7 +53,7 @@ Cloudflare-Best-IP-DnsUpdate 是一款**全新重构**的自动化 Cloudflare IP
 
 ### 一键安装（请勿使用，还在开发中，正在测试部署步骤......）
 
-使用go重构中
+使用 Go 重构中，新版终端 / GUI 双形态用法与测试见 [`cfopt-go/README.md`](cfopt-go/README.md)。
 
 安装完成后，脚本会自动：
 1. ✅ 迁移至标准目录（`/root/cfopt` 或 `$HOME/cfopt`）

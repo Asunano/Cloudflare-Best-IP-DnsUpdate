@@ -12,18 +12,46 @@ classDiagram
     class Registry {
         -modules map~string,SyncModule~
         -order []string
+        +NewRegistry() *Registry
         +Register(m SyncModule)
         +RegisterAll([]SyncModule)
         +Modules() []SyncModule
+        +Get(id string) (SyncModule, bool)
     }
     class BuiltinModules {
         <<var>>
-        +[]SyncModule = [cfModule, dnspodModule]
+        +[]SyncModule = [cfModule{}, dnspodModule{}]
+    }
+    class cfModule {
+        +ID() string
+        +Enabled(cfg *Config) bool
+        +IPSourceFiles(cfg *Config) []string
+        +Sync(ctx, cfg) (*SyncResult, error)
+    }
+    class dnspodModule {
+        +ID() string
+        +Enabled(cfg *Config) bool
+        +IPSourceFiles(cfg *Config) []string
+        +Sync(ctx, cfg) (*SyncResult, error)
+    }
+    class DNSProvider {
+        <<interface>>
+        +ListRecords(ctx, domain) ([]Record, error)
+        +UpsertRecord(ctx, domain, rec) error
+        +DeleteRecord(ctx, domain, id) error
+    }
+    class CloudflareProvider {
+        +Sync(ctx, *config.CFDNSConfig) (*SyncResult, error)
+    }
+    class DNSPodProvider {
+        +Sync(ctx, *config.DNSPodConfig) (*SyncResult, error)
     }
     class Syncer {
         -tester SpeedTester
         -registry *Registry
         -history HistoryStore
+        +NewSyncer(tester, registry, hist) *Syncer
+        +BuildSyncerFromConfig(cfg, hist) (*Syncer, error)
         +SyncAll(ctx, cfg, onProgress, providers... ) (*SyncSummary, error)
         -selectModules(cfg, providers) []SyncModule
     }
@@ -49,15 +77,24 @@ classDiagram
         +Append(e HistoryEntry) error
         +ReadLatest(n int) ([]HistoryEntry, error)
     }
+    class Config {
+        +global / cf_ip / cf_dns / dnspod / modules
+    }
 
-    SyncModule <|.. cfModule
-    SyncModule <|.. dnspodModule
-    BuiltinModules ..> SyncModule : 持有
-    Syncer --> Registry
-    Syncer --> SpeedTester
-    Syncer --> HistoryStore
-    Syncer ..> SyncSummary : 产出
-    Syncer ..> SyncResult : 累加
+    SyncModule <|.. cfModule : implements
+    SyncModule <|.. dnspodModule : implements
+    Registry o-- SyncModule : holds(ordered)
+    BuiltinModules ..> cfModule : contains
+    BuiltinModules ..> dnspodModule : contains
+    DNSProvider <|.. CloudflareProvider : implements
+    DNSProvider <|.. DNSPodProvider : implements
+    Syncer --> Registry : iterates Modules()
+    Syncer --> SyncSummary : returns
+    Syncer ..> SyncModule : calls Sync()
+    cfModule ..> CloudflareProvider : NewCloudflareProvider().Sync
+    dnspodModule ..> DNSPodProvider : NewDNSPodProvider().Sync
+    SyncModule ..> SyncResult : returns
+    Syncer ..> Config : reads
 
     %% ---------- IPC 服务端（Go） ----------
     class Server {
@@ -92,9 +129,6 @@ classDiagram
         +cur i64
         +total i64
         +message String
-    }
-    class Config {
-        +global / cf_ip / cf_dns / dnspod / modules
     }
     IpcClient ..> ProgressEvent : 解析
     IpcClient ..> Config : 解析/序列化

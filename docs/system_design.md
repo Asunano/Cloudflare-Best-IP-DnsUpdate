@@ -158,14 +158,62 @@ repo/
 cd cfopt-go && go build ./... && go test ./...
 
 # 桌面端 GUI（需 Rust + Node 工具链，沙箱未提供，源码先行）
-# 1) 放置 Go sidecar 二进制到 tauri/binaries/cfopt-go-<target-triple>[.exe]
+# 0) 生成占位图标（纯 Python 标准库，无需 Pillow / ImageMagick）
+python3 scripts/gen-icons.py     # 产出 tauri/icons/{32x32,128x128,128x128@2x,icon}.png + icon.ico + icon.icns
+# 1) 构建并放置 Go sidecar → tauri/binaries/cfopt-go-<target-triple>[.exe]
 #    （externalBin 在 tauri.conf.json 中声明为 "binaries/cfopt-go"）
-# 2) 添加应用图标到 tauri/icons/（tauri icon <png> 生成）
-# 3) 安装前端依赖并构建
+pwsh scripts/setup-sidecar.ps1   # Windows（默认产出 x86_64-pc-windows-msvc.exe）
+# bash scripts/setup-sidecar.sh  # Linux / macOS
+# 2) 安装前端依赖并构建
 npm --prefix src install && npm --prefix src run build
-# 4) Tauri 开发 / 打包
+# 3) Tauri 开发 / 打包
 cd tauri && cargo tauri dev      # 或 cargo tauri build
 ```
 
 > 说明：本仓库此前未提交的 `docs/system_design.md` / `docs/class-diagram.mermaid` /
 > `docs/sequence-diagram.mermaid` 在本轮由工程师依据**实际落地代码**补齐，确保文档与实现一致。
+
+---
+
+## 6. 功能对等矩阵（CLI ↔ IPC ↔ GUI）
+
+> 13 个 IPC 方法：`ping, version, config.get, config.validate, config.save, sync.run, speedtest.run, history.list, daemon.install, daemon.uninstall, daemon.start, daemon.stop, daemon.status`
+
+| 能力 | CLI 命令 | IPC 方法 | GUI 操作入口 | 对等性 |
+|---|---|---|---|---|
+| 启动 daemon/IPC | `cfopt-go serve --ipc-port-file` | （server 本身） | 应用启动拉起 Go sidecar (`serve`) | GUI 隐式等价 ✓ |
+| 心跳/连通 | — | `ping` | 连接状态指示灯 | GUI 独有监控 ✓ |
+| 版本 | `cfopt-go version` | `version` | 关于页 | 双向 ✓ |
+| 配置读取/生成 | `cfopt-go config init` / `config validate` | `config.get` | 设置页加载 | `init` 由 GUI `save` 替代（可接受） |
+| 配置校验 | `cfopt-go config validate` | `config.validate` | 保存前校验 | 双向 ✓ |
+| 配置保存 | （编辑文件） | `config.save` | 设置页保存 | 双向 ✓ |
+| 单 DNS 商同步 | `cfopt-go dns cf` / `cfopt-go dns dnspod` | `sync.run` `{providers:["cf"\|"dnspod"]}` | 高级→仅同步 CF / 仅同步 DNSPod | **经 `providers` 过滤实现对等** ✓ |
+| 一键全同步 | `cfopt-go sync` | `sync.run`（默认全量） | 主页「一键同步」 | 双向 ✓ |
+| 测速 | `cfopt-go speedtest [--output]` | `speedtest.run` | 测速页 | CLI 额外写 `.iplist`；IPC 端已补写 `.iplist`（一致） |
+| 历史 | （日志文件） | `history.list` | 历史页 | 双向 ✓ |
+| 服务注册 | `cfopt-go schedule install` | `daemon.install` | 服务管理→安装 | 双向 ✓ |
+| 服务注销 | `cfopt-go schedule uninstall` | `daemon.uninstall` | 服务管理→卸载 | 双向 ✓ |
+| 服务启动 | `cfopt-go schedule start` | `daemon.start` | 服务管理→启动 | 双向 ✓ |
+| 服务停止 | `cfopt-go schedule stop` | `daemon.stop` | 服务管理→停止 | 双向 ✓ |
+| 服务状态 | — | `daemon.status` | 服务管理→状态 | GUI 独有监控 ✓ |
+| 前台调度 | `cfopt-go schedule run [--once]` | （daemon 前台，GUI 不暴露） | — | GUI 用系统服务+sidecar 替代前台 `run` |
+
+**结论**：CLI 的每条命令/子命令均有对应 IPC 方法或 GUI 入口；GUI 经 `sync.run {providers:[...]}` 可精确复现 CLI 的 `dns cf` / `dns dnspod` 细分；CLI 无直接 `daemon.status` / `ping` 等价（GUI 监控增强，不削弱 CLI）。**终端能做的 GUI 都能做，反之亦然**（仅 `config init` / `wizard` 为 TTY/文件便捷工具，GUI 以 `save` 覆盖其"生成配置"语义）。
+
+---
+
+## 7. 已确认决策（用户拍板，2026-07-16，均已 resolved）
+
+1. **测速实现路径**：继续用 `cfst` 外部 sidecar（放弃原生重写）。
+2. **GUI 方案**：Tauri v2 + Go sidecar（Rust 仅做 UI + IPC 桥接）。
+3. **前端技术栈**：SvelteKit（轻量、最小依赖）。
+4. **调度形态**：常驻轻量 daemon + 系统服务注册（Windows Service / systemd / launchd）。
+5. **cfst 二进制来源**：各平台二进制置于 `assets/cfst/`，运行时按 `GOOS/GOARCH` 选择。
+6. **配置/日志/锁目录**：沿用既有默认位置约定（模块化）。
+7. **代码落位**：Go 代码放在 `cfopt-go/`，不直接替换 Bash 代码。
+8. **协议命名统一**：`config.Config` 顶部字段补 snake_case 标签（`global/cf_ip/cf_dns/dnspod`）+ `modules` 扩展钩子；`pkg/ipc` 既有 snake_case 契约以测试锁死。
+9. **模块化 Provider**：中心 `internal/sync` 仅依赖 `SyncModule` 接口与 `Registry`；新增 DNS 商（如阿里云）只需实现 `SyncModule` + 在 `BuiltinModules` 追加一行（或运行时 `Registry.Register`），GUI 零改动。
+10. **`sync.run` 的 `providers` 过滤**：接受此轻量协议扩展（仍在 13 方法边界内），用于对等于 CLI `dns cf` / `dns dnspod`。
+11. **`speedtest.run` 写文件**：IPC 端补写 `.iplist`，与 CLI 行为保持一致。
+12. **新增 provider 配置校验位置**：因 `config` 包不可 import `dns`，校验下沉到 `SyncModule`（模块内 `Sync` 中校验）。
+13. **接入文档**：不写阿里云示例实现，改交付中/英双语接入文档 `docs/providers-guide.zh.md` / `docs/providers-guide.en.md`，指导开发者自行扩展。

@@ -37,4 +37,15 @@ Thumbs.db
 .lingma/
 .vscode/
 .idea/
+
+# ===== Go 重写版（cfopt-go）与 Tauri GUI 构建产物 =====
+# Go 编译产物（cfopt-go 目录下）
+/cfopt-go/cfopt-go
+/cfopt-go/cfopt-go.exe
+
+# Tauri sidecar 二进制（由 scripts/setup-sidecar 生成，不入库）
+/tauri/binaries/
+
+# SvelteKit 前端构建产物
+/src/build/
 .codebuddy/
