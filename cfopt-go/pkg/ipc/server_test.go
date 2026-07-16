@@ -298,3 +298,162 @@ func TestSyncRunProvidersFilter(t *testing.T) {
 		t.Fatalf("expected providers [cf], got %v", fakeSync.gotProviders)
 	}
 }
+
+// TestConfigValidateNoParams 回归：无 params 调用 config.validate 不应再报
+// "unexpected end of JSON input"，而应校验当前已加载配置并返回 ok:true。
+func TestConfigValidateNoParams(t *testing.T) {
+	port, _, stop := startTestServer(t)
+	defer stop()
+
+	enc, dec := dialTest(t, port)
+	if err := enc.Encode(Request{JSONRPC: ProtocolVersion, ID: json.RawMessage("10"), Method: "config.validate"}); err != nil {
+		t.Fatalf("encode: %v", err)
+	}
+	var env rpcEnvelope
+	if err := dec.Decode(&env); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if env.Error != nil {
+		t.Fatalf("unexpected error: %+v", env.Error)
+	}
+	var res map[string]bool
+	if err := json.Unmarshal(env.Result, &res); err != nil {
+		t.Fatalf("unmarshal result: %v", err)
+	}
+	if res["ok"] != true {
+		t.Fatalf("expected ok==true, got %v", res["ok"])
+	}
+}
+
+// TestConfigValidateWithParams 确认带 params 时仍正常校验传入配置。
+func TestConfigValidateWithParams(t *testing.T) {
+	port, _, stop := startTestServer(t)
+	defer stop()
+
+	enc, dec := dialTest(t, port)
+	params, err := json.Marshal(map[string]interface{}{"global": map[string]interface{}{}})
+	if err != nil {
+		t.Fatalf("marshal params: %v", err)
+	}
+	if err := enc.Encode(Request{JSONRPC: ProtocolVersion, ID: json.RawMessage("12"), Method: "config.validate", Params: params}); err != nil {
+		t.Fatalf("encode: %v", err)
+	}
+	var env rpcEnvelope
+	if err := dec.Decode(&env); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if env.Error != nil {
+		t.Fatalf("unexpected error: %+v", env.Error)
+	}
+	var res map[string]bool
+	if err := json.Unmarshal(env.Result, &res); err != nil {
+		t.Fatalf("unmarshal result: %v", err)
+	}
+	if res["ok"] != true {
+		t.Fatalf("expected ok==true, got %v", res["ok"])
+	}
+}
+
+// TestConfigSaveNoParams 确认无 params 时不再崩在 json.Unmarshal，而是返回无效参数错误。
+func TestConfigSaveNoParams(t *testing.T) {
+	port, _, stop := startTestServer(t)
+	defer stop()
+
+	enc, dec := dialTest(t, port)
+	if err := enc.Encode(Request{JSONRPC: ProtocolVersion, ID: json.RawMessage("13"), Method: "config.save"}); err != nil {
+		t.Fatalf("encode: %v", err)
+	}
+	var env rpcEnvelope
+	if err := dec.Decode(&env); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if env.Error == nil {
+		t.Fatalf("expected invalid params error, got nil")
+	}
+	if env.Error.Code != CodeInvalidParams {
+		t.Fatalf("expected code %d, got %d", CodeInvalidParams, env.Error.Code)
+	}
+}
+
+// TestHistoryListNoParams 回归：无 params 调用 history.list 不应崩溃，
+// 应沿用默认 n=20 并返回列表。
+func TestHistoryListNoParams(t *testing.T) {
+	port, _, stop := startTestServer(t)
+	defer stop()
+
+	enc, dec := dialTest(t, port)
+	if err := enc.Encode(Request{JSONRPC: ProtocolVersion, ID: json.RawMessage("11"), Method: "history.list"}); err != nil {
+		t.Fatalf("encode: %v", err)
+	}
+	var env rpcEnvelope
+	if err := dec.Decode(&env); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if env.Error != nil {
+		t.Fatalf("unexpected error: %+v", env.Error)
+	}
+	var entries []history.HistoryEntry
+	if err := json.Unmarshal(env.Result, &entries); err != nil {
+		t.Fatalf("unmarshal entries: %v", err)
+	}
+	if len(entries) == 0 {
+		t.Fatalf("expected non-empty history list, got %d", len(entries))
+	}
+}
+
+// TestConfigValidateCorruptedParams 边界：带 params 但 JSON 为合法但类型错误的
+// 值（此处为字符串而非 Config 对象），json.Unmarshal 应失败并返回 CodeInvalidParams
+// （-32602），而非 panic / 500。覆盖「可选 params」分支的损坏输入路径。
+func TestConfigValidateCorruptedParams(t *testing.T) {
+	port, _, stop := startTestServer(t)
+	defer stop()
+
+	enc, dec := dialTest(t, port)
+	// 注意：必须是「合法 JSON 值」，否则请求整体无法解析（会变成 parse error）。
+	// 这里用 JSON 字符串（合法 JSON），但无法 unmarshal 进 config.Config。
+	if err := enc.Encode(Request{
+		JSONRPC: ProtocolVersion,
+		ID:      json.RawMessage("14"),
+		Method:  "config.validate",
+		Params:  json.RawMessage(`"this is not a config object"`),
+	}); err != nil {
+		t.Fatalf("encode: %v", err)
+	}
+	var env rpcEnvelope
+	if err := dec.Decode(&env); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if env.Error == nil {
+		t.Fatalf("expected invalid params error, got nil")
+	}
+	if env.Error.Code != CodeInvalidParams {
+		t.Fatalf("expected code %d (-32602), got %d", CodeInvalidParams, env.Error.Code)
+	}
+}
+
+// TestConfigSaveCorruptedParams 边界：config.save 必填 params，但传入合法 JSON 却
+// 非 Config 对象时，应返回 CodeInvalidParams（-32602）而非崩溃/500。
+func TestConfigSaveCorruptedParams(t *testing.T) {
+	port, _, stop := startTestServer(t)
+	defer stop()
+
+	enc, dec := dialTest(t, port)
+	if err := enc.Encode(Request{
+		JSONRPC: ProtocolVersion,
+		ID:      json.RawMessage("15"),
+		Method:  "config.save",
+		Params:  json.RawMessage(`"this is not a config object"`),
+	}); err != nil {
+		t.Fatalf("encode: %v", err)
+	}
+	var env rpcEnvelope
+	if err := dec.Decode(&env); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if env.Error == nil {
+		t.Fatalf("expected invalid params error, got nil")
+	}
+	if env.Error.Code != CodeInvalidParams {
+		t.Fatalf("expected code %d (-32602), got %d", CodeInvalidParams, env.Error.Code)
+	}
+}

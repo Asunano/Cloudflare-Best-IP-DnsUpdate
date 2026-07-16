@@ -159,15 +159,33 @@ func (s *Server) dispatch(enc *json.Encoder, req Request, reqID int64) (interfac
 	case "config.get":
 		return s.svc.Config.Get()
 	case "config.validate":
-		var cfg config.Config
-		if err := json.Unmarshal(req.Params, &cfg); err != nil {
-			return nil, &RPCError{Code: CodeInvalidParams, Message: err.Error()}
-		}
-		if err := s.svc.Config.Validate(&cfg); err != nil {
-			return nil, err
+		// params 可选：提供则校验传入配置；缺省（nil/空）则校验当前已加载配置。
+		if len(req.Params) > 0 {
+			var cfg config.Config
+			if err := json.Unmarshal(req.Params, &cfg); err != nil {
+				return nil, &RPCError{Code: CodeInvalidParams, Message: err.Error()}
+			}
+			if err := s.svc.Config.Validate(&cfg); err != nil {
+				return nil, err
+			}
+		} else {
+			loaded, err := s.svc.Config.Get()
+			if err != nil {
+				return nil, err
+			}
+			if loaded == nil {
+				return nil, &RPCError{Code: CodeInternalError, Message: "no config loaded"}
+			}
+			if err := s.svc.Config.Validate(loaded); err != nil {
+				return nil, err
+			}
 		}
 		return map[string]bool{"ok": true}, nil
 	case "config.save":
+		// params 必填：必须提供一个 Config 对象，缺省视为无效参数。
+		if len(req.Params) == 0 {
+			return nil, &RPCError{Code: CodeInvalidParams, Message: "config.save requires a config object"}
+		}
 		var cfg config.Config
 		if err := json.Unmarshal(req.Params, &cfg); err != nil {
 			return nil, &RPCError{Code: CodeInvalidParams, Message: err.Error()}
@@ -181,15 +199,18 @@ func (s *Server) dispatch(enc *json.Encoder, req Request, reqID int64) (interfac
 	case "speedtest.run":
 		return s.handleSpeedtestRun(ctx)
 	case "history.list":
-		var p struct {
-			N int `json:"n"`
-		}
-		if err := json.Unmarshal(req.Params, &p); err != nil {
-			return nil, &RPCError{Code: CodeInvalidParams, Message: err.Error()}
-		}
-		n := p.N
-		if n <= 0 {
-			n = 20
+		// params 可选：提供 n 则使用；缺省（nil/空）沿用默认 n = 20。
+		n := 20
+		if len(req.Params) > 0 {
+			var p struct {
+				N int `json:"n"`
+			}
+			if err := json.Unmarshal(req.Params, &p); err != nil {
+				return nil, &RPCError{Code: CodeInvalidParams, Message: err.Error()}
+			}
+			if p.N > 0 {
+				n = p.N
+			}
 		}
 		return s.svc.History.List(n)
 	case "daemon.install":

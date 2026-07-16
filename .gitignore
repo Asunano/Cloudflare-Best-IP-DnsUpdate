@@ -46,6 +46,11 @@ Thumbs.db
 # Tauri sidecar 二进制（由 scripts/setup-sidecar 生成，不入库）
 /tauri/binaries/
 
+# cfopt-go 运行时配置（用户自定义，含凭据，不入库）
+/cfopt-go/conf/*.json
+# cfopt-go IPC 端口发现文件
+/cfopt-go/cfopt.ipc
+
 # SvelteKit 前端构建产物
 /src/build/
 .codebuddy/

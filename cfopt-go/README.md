@@ -135,7 +135,7 @@ go run . serve --ipc-port-file cfopt.ipc
 | `ping` | — | `{"pong":true}` |
 | `version` | — | `VersionInfo{version,commit,built_at}` |
 | `config.get` | — | `Config` |
-| `config.validate` | `Config` | `{"ok":true}` |
+| `config.validate` | `Config`（可选；缺省校验当前已加载配置） | `{"ok":true}` |
 | `config.save` | `Config` | `{"ok":true}` |
 | `sync.run` | `{"providers":[...]}`（可选） | `SyncSummary`（含 progress 事件流） |
 | `speedtest.run` | — | `[]SpeedResult`（同时补写 `.iplist`） |
