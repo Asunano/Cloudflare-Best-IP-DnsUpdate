@@ -88,19 +88,24 @@ go run . serve --ipc-port-file cfopt.ipc
 
 **快速冒烟测试**（读端口 → 发 JSON-RPC）。协议为 JSON-RPC 2.0 + JSON Lines（每行一个 JSON，以 `\n` 结尾）：
 
-- **推荐（跨平台脚本）**：仓库根 `scripts/ipc-smoke.{ps1,sh}` 已封装好读端口 + 发请求 + 打印响应（含 `sync.run` 的 progress 事件流）：
+- **推荐（跨平台脚本）**：仓库根 `scripts/ipc-smoke.{ps1,sh}` 已封装好读端口 + 发请求 + 打印响应（含 `sync.run` 的 progress 事件流）。脚本默认读**当前目录**下的 `cfopt.ipc`，所以要在写好端口文件的 `cfopt-go/` 目录里运行：
 
   ```bash
+  cd cfopt-go          # 端口文件 cfopt.ipc 就在这里
+
   # Windows PowerShell
-  powershell -ExecutionPolicy Bypass -File scripts/ipc-smoke.ps1
-  powershell -ExecutionPolicy Bypass -File scripts/ipc-smoke.ps1 -Method version
-  powershell -ExecutionPolicy Bypass -File scripts/ipc-smoke.ps1 -Method sync.run -ParamsJson '{"providers":["cf"]}'
+  powershell -ExecutionPolicy Bypass -File ..\scripts\ipc-smoke.ps1
+  powershell -ExecutionPolicy Bypass -File ..\scripts\ipc-smoke.ps1 -Method version
+  powershell -ExecutionPolicy Bypass -File ..\scripts\ipc-smoke.ps1 -Method sync.run -ParamsJson '{"providers":["cf"]}'
 
   # Linux / macOS / Git Bash
-  bash scripts/ipc-smoke.sh
-  bash scripts/ipc-smoke.sh version
-  bash scripts/ipc-smoke.sh sync.run '{"providers":["cf"]}'
+  bash ../scripts/ipc-smoke.sh
+  bash ../scripts/ipc-smoke.sh version
+  bash ../scripts/ipc-smoke.sh sync.run '{"providers":["cf"]}'
   ```
+
+  > 不想切目录？用绝对路径（把 `D:\code\...` 换成你的实际仓库路径）：
+  > `powershell -ExecutionPolicy Bypass -File D:\code\Cloudflare-Best-IP-DnsUpdate\scripts\ipc-smoke.ps1 -PortFile D:\code\Cloudflare-Best-IP-DnsUpdate\cfopt-go\cfopt.ipc`
 
 - **手动（Windows PowerShell，无 netcat 时）**：
 
