@@ -1,0 +1,119 @@
+classDiagram
+    direction LR
+
+    %% ---------- 核心领域层：模块化 Provider ----------
+    class SyncModule {
+        <<interface>>
+        +ID() string
+        +Enabled(cfg *Config) bool
+        +IPSourceFiles(cfg *Config) []string
+        +Sync(ctx, cfg *Config) (*SyncResult, error)
+    }
+    class Registry {
+        -modules map~string,SyncModule~
+        -order []string
+        +Register(m SyncModule)
+        +RegisterAll([]SyncModule)
+        +Modules() []SyncModule
+    }
+    class BuiltinModules {
+        <<var>>
+        +[]SyncModule = [cfModule, dnspodModule]
+    }
+    class Syncer {
+        -tester SpeedTester
+        -registry *Registry
+        -history HistoryStore
+        +SyncAll(ctx, cfg, onProgress, providers... ) (*SyncSummary, error)
+        -selectModules(cfg, providers) []SyncModule
+    }
+    class SyncSummary {
+        +best_ip_count int
+        +updated int
+        +created int
+        +deleted int
+        +errors []string
+    }
+    class SyncResult {
+        +Updated int
+        +Created int
+        +Deleted int
+        +Errors []string
+    }
+    class SpeedTester {
+        <<interface>>
+        +Run(ctx, cfg) ([]SpeedResult, error)
+    }
+    class HistoryStore {
+        <<interface>>
+        +Append(e HistoryEntry) error
+        +ReadLatest(n int) ([]HistoryEntry, error)
+    }
+
+    SyncModule <|.. cfModule
+    SyncModule <|.. dnspodModule
+    BuiltinModules ..> SyncModule : 持有
+    Syncer --> Registry
+    Syncer --> SpeedTester
+    Syncer --> HistoryStore
+    Syncer ..> SyncSummary : 产出
+    Syncer ..> SyncResult : 累加
+
+    %% ---------- IPC 服务端（Go） ----------
+    class Server {
+        -svc Services
+        -ln net.Listener
+        +Listen(addr) (int, error)
+        +Serve()
+        +ServeConn(conn)
+        -dispatch(enc, req, reqID) (interface{}, error)
+    }
+    class Services {
+        +Config ConfigService
+        +Sync SyncService
+        +Speedtest SpeedtestService
+        +History HistoryService
+        +Daemon DaemonService
+        +Version VersionService
+    }
+    Server --> Services
+
+    %% ---------- IPC 客户端（Rust / Tauri） ----------
+    class IpcClient {
+        -addr String
+        -next_id AtomicI64
+        +call(method, params) Result~Value~
+        +call_with_progress(method, params, on_progress) Result~Value~
+        +ping() / version() / config_get() / ... 13 方法
+    }
+    class ProgressEvent {
+        +req_id i64
+        +phase String
+        +cur i64
+        +total i64
+        +message String
+    }
+    class Config {
+        +global / cf_ip / cf_dns / dnspod / modules
+    }
+    IpcClient ..> ProgressEvent : 解析
+    IpcClient ..> Config : 解析/序列化
+
+    %% ---------- GUI 前端（SvelteKit） ----------
+    class api {
+        <<module>>
+        +syncRun(providers?) Promise~SyncSummary~
+        +configGet() Promise~Config~
+        +speedtestRun() Promise~SpeedResult[]~
+        +historyList(n) Promise~HistoryEntry[]~
+        +daemonStatus() Promise~DaemonStatus~
+    }
+    class ipc_types {
+        <<typescript types>>
+        +VersionInfo / SyncSummary / SpeedResult / ProgressEvent / Config ...
+    }
+    api ..> ipc_types : 使用
+
+    %% ---------- 跨层关系 ----------
+    IpcClient ..> Server : TCP JSON-RPC (JSON Lines)
+    api ..> IpcClient : invoke('ipc_request') 经 Rust
