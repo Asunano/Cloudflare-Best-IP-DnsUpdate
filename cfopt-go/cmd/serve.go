@@ -96,7 +96,7 @@ func (s *configService) Save(cfg *config.Config) error { return config.Save(s.cf
 
 type syncService struct{ cfgDir string }
 
-func (s *syncService) Run(ctx context.Context, onProgress sync.ProgressFunc) (*sync.SyncSummary, error) {
+func (s *syncService) Run(ctx context.Context, onProgress sync.ProgressFunc, providers ...string) (*sync.SyncSummary, error) {
 	cfg, err := config.LoadFresh(s.cfgDir)
 	if err != nil {
 		return nil, err
@@ -109,7 +109,7 @@ func (s *syncService) Run(ctx context.Context, onProgress sync.ProgressFunc) (*s
 	if err != nil {
 		return nil, err
 	}
-	return syncer.SyncAll(ctx, cfg, onProgress)
+	return syncer.SyncAll(ctx, cfg, onProgress, providers...)
 }
 
 // ---------------------------------------------------------------------------

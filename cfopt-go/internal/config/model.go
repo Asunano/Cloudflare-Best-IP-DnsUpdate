@@ -2,6 +2,8 @@
 // 配置结构字段与 conf/*.example 示例 JSON 严格对齐（见各结构体 json tag）。
 package config
 
+import "encoding/json"
+
 // ===== 全局配置（global.json） =====
 
 // GlobalConfig 系统级设置。
@@ -142,9 +144,15 @@ type DNSPodConfig struct {
 }
 
 // Config 聚合全部配置。
+// 顶层字段统一使用 snake_case 标签，与 IPC（Rust/Svelte 端）约定一致；
+// 缺标签时 Go 序列化会回退为 PascalCase，故此处显式固定为小写。
 type Config struct {
-	Global *GlobalConfig
-	CFIP   *CFIPConfig
-	CFDNS  *CFDNSConfig
-	DNSPod *DNSPodConfig
+	Global *GlobalConfig                    `json:"global,omitempty"`
+	CFIP   *CFIPConfig                      `json:"cf_ip,omitempty"`
+	CFDNS  *CFDNSConfig                     `json:"cf_dns,omitempty"`
+	DNSPod *DNSPodConfig                    `json:"dnspod,omitempty"`
+	// Modules 扩展钩子：各外部 DNS 提供方（如 aliyun）的自有配置。
+	// 由 loadDir 从 modules.json 增量读取填充；config 包不感知具体 provider 结构
+	// （因 config 严禁 import internal/dns，新 provider 的校验下沉到模块自身）。
+	Modules map[string]json.RawMessage `json:"modules,omitempty"`
 }

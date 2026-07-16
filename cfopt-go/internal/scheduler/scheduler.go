@@ -31,7 +31,7 @@ func (s *Scheduler) RunOnce(ctx context.Context, cfg *config.Config) error {
 	wd := NewWatchdog(timeout)
 	common.Info("scheduler: 开始调度", "timeout", timeout.String())
 	return wd.Guard(ctx, func() error {
-		_, err := s.syncer.SyncAll(ctx, cfg)
+		_, err := s.syncer.SyncAll(ctx, cfg, nil)
 		return err
 	})
 }

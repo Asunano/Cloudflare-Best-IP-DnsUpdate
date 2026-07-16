@@ -28,7 +28,7 @@ func newSyncCmd() *cobra.Command {
 			if err != nil {
 				return common.Wrap("cmd:sync:build", err)
 			}
-			if _, err := syncer.SyncAll(context.Background(), cfg); err != nil {
+			if _, err := syncer.SyncAll(context.Background(), cfg, nil); err != nil {
 				return common.Wrap("cmd:sync", err)
 			}
 			fmt.Println("sync: 完成")

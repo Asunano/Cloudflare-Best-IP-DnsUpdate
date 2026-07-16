@@ -6,9 +6,11 @@ import (
 	"errors"
 	"io"
 	"net"
+	"path/filepath"
 	"strings"
 	"sync/atomic"
 
+	"cfopt/internal/common"
 	"cfopt/internal/config"
 	"cfopt/internal/history"
 	"cfopt/internal/speedtest"
@@ -34,8 +36,9 @@ type ConfigService interface {
 }
 
 // SyncService 一键同步能力。Run 的 onProgress 直接复用 sync.ProgressFunc（签名一致）。
+// providers 为可选过滤：为空→全部启用模块；非空→仅指定且 Enabled 的 ID（向后兼容）。
 type SyncService interface {
-	Run(ctx context.Context, onProgress sync.ProgressFunc) (*sync.SyncSummary, error)
+	Run(ctx context.Context, onProgress sync.ProgressFunc, providers ...string) (*sync.SyncSummary, error)
 }
 
 // SpeedtestService 测速能力。
@@ -174,9 +177,9 @@ func (s *Server) dispatch(enc *json.Encoder, req Request, reqID int64) (interfac
 		}
 		return map[string]bool{"ok": true}, nil
 	case "sync.run":
-		return s.handleSyncRun(ctx, enc, reqID)
+		return s.handleSyncRun(ctx, enc, req, reqID)
 	case "speedtest.run":
-		return s.svc.Speedtest.Run(ctx)
+		return s.handleSpeedtestRun(ctx)
 	case "history.list":
 		var p struct {
 			N int `json:"n"`
@@ -218,7 +221,17 @@ func (s *Server) dispatch(enc *json.Encoder, req Request, reqID int64) (interfac
 
 // handleSyncRun 执行同步；在最终响应之前，于同一连接上穿插推送 progress 事件。
 // onProgress 闭包即 sync.ProgressFunc，直接复用 Sync 层的进度回调签名。
-func (s *Server) handleSyncRun(ctx context.Context, enc *json.Encoder, reqID int64) (interface{}, error) {
+// 解析 params.providers（string 数组，可空）并透传给 SyncService.Run，实现按 provider 过滤。
+func (s *Server) handleSyncRun(ctx context.Context, enc *json.Encoder, req Request, reqID int64) (interface{}, error) {
+	var params struct {
+		Providers []string `json:"providers"`
+	}
+	if len(req.Params) > 0 {
+		if err := json.Unmarshal(req.Params, &params); err != nil {
+			return nil, &RPCError{Code: CodeInvalidParams, Message: err.Error()}
+		}
+	}
+
 	onProgress := func(phase string, cur, total int) {
 		_ = enc.Encode(Event{
 			JSONRPC: ProtocolVersion,
@@ -232,7 +245,39 @@ func (s *Server) handleSyncRun(ctx context.Context, enc *json.Encoder, reqID int
 			},
 		})
 	}
-	return s.svc.Sync.Run(ctx, onProgress)
+	return s.svc.Sync.Run(ctx, onProgress, params.Providers...)
+}
+
+// handleSpeedtestRun 执行测速；与 CLI `cfopt speedtest --output` 默认行为一致，
+// 在返回结果的同时把最优 IP 补写一份 .iplist 文件（路径同 CLI 默认：<output_dir>/best_ips.iplist）。
+// 写文件失败仅告警，不影响结果返回（IPC 首要契约是返回测速结果）。
+func (s *Server) handleSpeedtestRun(ctx context.Context) (interface{}, error) {
+	results, err := s.svc.Speedtest.Run(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if wErr := s.writeSpeedtestIPList(ctx, results); wErr != nil {
+		common.Warn("speedtest.run: 补写 .iplist 失败", "err", wErr.Error())
+	}
+	return results, nil
+}
+
+// writeSpeedtestIPList 将测速结果转换为 IPRecord 并写入默认 .iplist 文件。
+// 无 cf-ip 配置（CLI 同样需要）或 OutputDir 为空时跳过，不视为错误。
+func (s *Server) writeSpeedtestIPList(_ context.Context, results []speedtest.SpeedResult) error {
+	cfg, err := s.svc.Config.Get()
+	if err != nil {
+		return common.Wrap("speedtest:cfg", err)
+	}
+	if cfg == nil || cfg.CFIP == nil {
+		return nil
+	}
+	recs := speedtest.ToIPList(results)
+	output := filepath.Join(cfg.CFIP.Paths.OutputDir, "best_ips.iplist")
+	if err := sync.WriteIPList(recs, output); err != nil {
+		return common.Wrap("speedtest:write", err)
+	}
+	return nil
 }
 
 // parseID 将原始 id 解析为 int64（解析失败保持 0）。

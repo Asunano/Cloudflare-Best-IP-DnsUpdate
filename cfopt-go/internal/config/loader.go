@@ -64,6 +64,19 @@ func loadDir(dir string) (*Config, error) {
 	if cfg.DNSPod, err = readJSON[DNSPodConfig](filepath.Join(dir, "dnspod.json")); err != nil {
 		return nil, common.Wrap("config:load dnspod.json", err)
 	}
+
+	// T-D：增量读取 modules.json（扩展钩子），additive，完全不触碰 cf/dnspod 分支。
+	// 文件不存在时跳过（可选）；其余错误（如 JSON 语法错误）向上返回。
+	if raw, mErr := os.ReadFile(filepath.Join(dir, "modules.json")); mErr == nil {
+		var mods map[string]json.RawMessage
+		if uErr := json.Unmarshal(raw, &mods); uErr != nil {
+			return nil, common.Wrap("config:load modules.json", uErr)
+		}
+		cfg.Modules = mods
+	} else if !os.IsNotExist(mErr) {
+		return nil, common.Wrap("config:load modules.json", mErr)
+	}
+
 	applyDefaults(cfg)
 	return cfg, nil
 }

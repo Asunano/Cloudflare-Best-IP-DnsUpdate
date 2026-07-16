@@ -13,26 +13,22 @@ import (
 	"cfopt/internal/speedtest"
 )
 
-// Syncer 编排「测速 → 提取最优 IP → 同步 CF/DNSPod → 写入历史」主链路。
+// Syncer 编排「测速 → 提取最优 IP → 写入各模块 IP 源文件 → 遍历 Registry 同步 → 写历史」主链路。
 //
-// providers 需包含键：
-//   - "cf"      : *dns.CloudflareProvider
-//   - "dnspod"  : *dns.DNSPodProvider
-//
-// 由于两个 Provider 的 Sync 方法配置参数类型不同（*config.CFDNSConfig / *config.DNSPodConfig），
-// 无法统一进 DNSProvider 接口，故此处用 map 持有并以类型断言调用具体实现（详见设计 §T7）。
+// 中心只依赖 dns.SyncModule 接口与 dns.Registry，完全不感知具体 DNS 商；
+// 新增 provider 只需实现 SyncModule 并注册进 Registry，本文件逻辑零改动。
 type Syncer struct {
-	tester    speedtest.SpeedTester
-	providers map[string]dns.DNSProvider
-	history   history.HistoryStore
+	tester   speedtest.SpeedTester
+	registry *dns.Registry
+	history  history.HistoryStore
 }
 
-// NewSyncer 构造 Syncer。providers 需包含 "cf" 与 "dnspod" 两个键。
-func NewSyncer(tester speedtest.SpeedTester, providers map[string]dns.DNSProvider, hist history.HistoryStore) *Syncer {
-	return &Syncer{tester: tester, providers: providers, history: hist}
+// NewSyncer 构造 Syncer。registry 通常由 BuildSyncerFromConfig 内部用 dns.BuiltinModules 构建。
+func NewSyncer(tester speedtest.SpeedTester, registry *dns.Registry, hist history.HistoryStore) *Syncer {
+	return &Syncer{tester: tester, registry: registry, history: hist}
 }
 
-// BuildSyncerFromConfig 从配置构造 Syncer（自动构建 CFSTTester 与启用中的 Provider）。
+// BuildSyncerFromConfig 从配置构造 Syncer（自动构建 CFSTTester 并以 BuiltinModules 注册 Registry）。
 func BuildSyncerFromConfig(cfg *config.Config, hist history.HistoryStore) (*Syncer, error) {
 	if cfg == nil {
 		return nil, common.New("sync", "配置为空")
@@ -44,14 +40,9 @@ func BuildSyncerFromConfig(cfg *config.Config, hist history.HistoryStore) (*Sync
 	if err != nil {
 		return nil, common.Wrap("sync:build:tester", err)
 	}
-	providers := map[string]dns.DNSProvider{}
-	if cfg.CFDNS != nil && cfg.CFDNS.Enabled {
-		providers["cf"] = dns.NewCloudflareProvider(cfg.CFDNS)
-	}
-	if cfg.DNSPod != nil && cfg.DNSPod.Enabled {
-		providers["dnspod"] = dns.NewDNSPodProvider(cfg.DNSPod)
-	}
-	return NewSyncer(tester, providers, hist), nil
+	reg := dns.NewRegistry()
+	reg.RegisterAll(dns.BuiltinModules)
+	return NewSyncer(tester, reg, hist), nil
 }
 
 // SyncSummary 汇总一次 SyncAll 的执行结果，供 CLI/GUI 展示与历史记录。
@@ -67,35 +58,53 @@ type SyncSummary struct {
 // ProgressFunc 进度回调：phase 为阶段名，cur/total 为已完成/总阶段计数。
 type ProgressFunc func(phase string, cur, total int)
 
+// selectModules 确定本次要同步的模块：按注册顺序，要求 Enabled(cfg) 且（providers 为空 或 ID 命中 providers）。
+func (s *Syncer) selectModules(cfg *config.Config, providers []string) []dns.SyncModule {
+	filter := make(map[string]bool, len(providers))
+	for _, p := range providers {
+		if p = strings.TrimSpace(p); p != "" {
+			filter[p] = true
+		}
+	}
+	onlyFilter := len(filter) > 0
+
+	out := make([]dns.SyncModule, 0, len(s.registry.Modules()))
+	for _, m := range s.registry.Modules() {
+		if !m.Enabled(cfg) {
+			continue
+		}
+		if onlyFilter && !filter[m.ID()] {
+			continue
+		}
+		out = append(out, m)
+	}
+	return out
+}
+
 // SyncAll 执行完整主链路，返回汇总结果（即使部分失败也尽量返回汇总）。
 //  1. tester.Run 测速（失败自动重测一次）
 //  2. ExtractBestIPs 取最优 N
-//  3. 将最优 IP 写入各 Provider 配置的 IP 源文件
-//  4. 依次 CloudflareProvider.Sync / DNSPodProvider.Sync（DNSPod 按 isp_lines 各线路）
-//  5. 把每次 Sync 的 SyncResult 写入 history.Append
+//  3. 将最优 IP 写入各选中模块的 IP 源文件
+//  4. 依次遍历选中模块并 Sync（各模块按 ID 作为 phase 推送进度、以 sync.<id> 写历史）
+//  5. 把每次 Sync 的 SyncResult 累加进 summary
 //
-// onProgress 为可选进度回调（变参，支持 0 或 1 个），用于向 CLI/GUI 上报阶段进度。
-// 任一 Provider 同步失败均返回错误（对应原 sync.sh exit 1）。
-func (s *Syncer) SyncAll(ctx context.Context, cfg *config.Config, onProgress ...ProgressFunc) (*SyncSummary, error) {
+// onProgress 为可选进度回调（单参，可传 nil）。
+// providers 为可选过滤：为空→全部启用模块；非空→仅指定且 Enabled 的 ID（向后兼容）。
+func (s *Syncer) SyncAll(ctx context.Context, cfg *config.Config, onProgress ProgressFunc, providers ...string) (*SyncSummary, error) {
 	if cfg == nil {
 		return nil, common.New("sync", "配置为空")
 	}
 
-	// 计算总阶段数（测速/提取/写入 + 启用的 Provider 同步）
-	total := 3
-	if cfg.CFDNS != nil && cfg.CFDNS.Enabled {
-		total++
-	}
-	if cfg.DNSPod != nil && cfg.DNSPod.Enabled {
-		total++
-	}
+	// 确定本次要同步的模块（注册顺序；Enabled 且命中 providers 过滤）。
+	selected := s.selectModules(cfg, providers)
+
+	// 总阶段数 = 测速/提取/写入 + 启用且命中的模块数。
+	total := 3 + len(selected)
 	cur := 0
 	progress := func(phase string) {
 		cur++
-		for _, fn := range onProgress {
-			if fn != nil {
-				fn(phase, cur, total)
-			}
+		if onProgress != nil {
+			onProgress(phase, cur, total)
 		}
 	}
 
@@ -124,29 +133,21 @@ func (s *Syncer) SyncAll(ctx context.Context, cfg *config.Config, onProgress ...
 	summary.BestIPCount = len(best)
 	common.Info("sync: 提取最优 IP", "count", len(best))
 
-	// ③ 将最优 IP 写入各 Provider 配置的 IP 源文件，供 Sync 读取
+	// ③ 将最优 IP 写入各选中模块的 IP 源文件，供 Sync 读取
 	progress("write")
-	if err := s.writeBestIPs(cfg, best); err != nil {
+	if err := s.writeBestIPs(cfg, best, selected); err != nil {
 		return summary, common.Wrap("sync:write", err)
 	}
 
-	// ④ 依次同步 CF / DNSPod，并写入历史
-	if cfg.CFDNS != nil && cfg.CFDNS.Enabled {
-		progress("cloudflare")
-		res, err := s.syncCloudflare(ctx, cfg)
+	// ④ 依次同步选中模块，并写入历史
+	for _, m := range selected {
+		progress(m.ID())
+		res, err := m.Sync(ctx, cfg)
 		accumulate(summary, res)
+		s.appendHistory("sync."+m.ID(), res, err)
 		if err != nil {
-			summary.Errors = append(summary.Errors, "cloudflare: "+err.Error())
-			return summary, common.Wrap("sync:cf", err)
-		}
-	}
-	if cfg.DNSPod != nil && cfg.DNSPod.Enabled {
-		progress("dnspod")
-		res, err := s.syncDNSPod(ctx, cfg)
-		accumulate(summary, res)
-		if err != nil {
-			summary.Errors = append(summary.Errors, "dnspod: "+err.Error())
-			return summary, common.Wrap("sync:dnspod", err)
+			summary.Errors = append(summary.Errors, m.ID()+": "+err.Error())
+			return summary, common.Wrap("sync:"+m.ID(), err)
 		}
 	}
 
@@ -179,61 +180,19 @@ func (s *Syncer) runSpeedtest(ctx context.Context, cfg *config.Config) ([]speedt
 	return results, nil
 }
 
-// writeBestIPs 将最优 IP 列表写入 Cloudflare / DNSPod 配置的 IP 源文件。
-func (s *Syncer) writeBestIPs(cfg *config.Config, best []ipsource.IPRecord) error {
-	if cfg.CFDNS != nil && cfg.CFDNS.Enabled {
-		if p := strings.TrimSpace(cfg.CFDNS.IPSource.FilePath); p != "" {
-			if err := WriteIPList(best, p); err != nil {
-				return common.Wrap("sync:write:cf", err)
+// writeBestIPs 将最优 IP 列表写入各选中模块的 IP 源文件（模块未声明文件或路径为空则跳过）。
+func (s *Syncer) writeBestIPs(cfg *config.Config, best []ipsource.IPRecord, modules []dns.SyncModule) error {
+	for _, m := range modules {
+		for _, f := range m.IPSourceFiles(cfg) {
+			if strings.TrimSpace(f) == "" {
+				continue
 			}
-		}
-	}
-	if cfg.DNSPod != nil && cfg.DNSPod.Enabled {
-		if strings.EqualFold(cfg.DNSPod.Mode, "isp_lines") {
-			for _, conf := range cfg.DNSPod.ISP {
-				if f := firstFile(conf); strings.TrimSpace(f) != "" {
-					if err := WriteIPList(best, f); err != nil {
-						return common.Wrap("sync:write:dnspod:"+f, err)
-					}
-				}
-			}
-		} else if p := strings.TrimSpace(cfg.DNSPod.IPFilePath); p != "" {
-			if err := WriteIPList(best, p); err != nil {
-				return common.Wrap("sync:write:dnspod", err)
+			if err := WriteIPList(best, f); err != nil {
+				return common.Wrap("sync:write:"+m.ID()+":"+f, err)
 			}
 		}
 	}
 	return nil
-}
-
-// syncCloudflare 调用 CloudflareProvider.Sync 并写历史，返回同步结果。
-func (s *Syncer) syncCloudflare(ctx context.Context, cfg *config.Config) (*dns.SyncResult, error) {
-	if cfg.CFDNS == nil || !cfg.CFDNS.Enabled {
-		common.Info("sync: Cloudflare 模块未启用，跳过")
-		return nil, nil
-	}
-	prov, ok := s.providers["cf"].(*dns.CloudflareProvider)
-	if !ok {
-		return nil, common.New("sync:cf", "未注册 CloudflareProvider")
-	}
-	res, err := prov.Sync(ctx, cfg.CFDNS)
-	s.appendHistory("sync.cf", res, err)
-	return res, err
-}
-
-// syncDNSPod 调用 DNSPodProvider.Sync 并写历史（按 isp_lines 各线路），返回同步结果。
-func (s *Syncer) syncDNSPod(ctx context.Context, cfg *config.Config) (*dns.SyncResult, error) {
-	if cfg.DNSPod == nil || !cfg.DNSPod.Enabled {
-		common.Info("sync: DNSPod 模块未启用，跳过")
-		return nil, nil
-	}
-	prov, ok := s.providers["dnspod"].(*dns.DNSPodProvider)
-	if !ok {
-		return nil, common.New("sync:dnspod", "未注册 DNSPodProvider")
-	}
-	res, err := prov.Sync(ctx, cfg.DNSPod)
-	s.appendHistory("sync.dnspod", res, err)
-	return res, err
 }
 
 // appendHistory 将一次 Sync 统计写入历史（成功/失败均记录）。
@@ -255,12 +214,4 @@ func (s *Syncer) appendHistory(action string, res *dns.SyncResult, syncErr error
 	if err := s.history.Append(entry); err != nil {
 		common.Warn("sync: 写入历史失败", "err", err.Error())
 	}
-}
-
-// firstFile 取 ISPConf.IPSource.Files 中首个文件路径。
-func firstFile(conf config.ISPConf) string {
-	for _, v := range conf.IPSource.Files {
-		return v
-	}
-	return ""
 }

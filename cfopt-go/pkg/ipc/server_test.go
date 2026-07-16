@@ -25,9 +25,12 @@ func (f *fakeConfigService) Get() (*config.Config, error) {
 func (f *fakeConfigService) Validate(cfg *config.Config) error { return nil }
 func (f *fakeConfigService) Save(cfg *config.Config) error     { return nil }
 
-type fakeSyncService struct{}
+type fakeSyncService struct {
+	gotProviders []string
+}
 
-func (f *fakeSyncService) Run(ctx context.Context, onProgress sync.ProgressFunc) (*sync.SyncSummary, error) {
+func (f *fakeSyncService) Run(ctx context.Context, onProgress sync.ProgressFunc, providers ...string) (*sync.SyncSummary, error) {
+	f.gotProviders = append(f.gotProviders, providers...)
 	onProgress("speedtest", 1, 3)
 	onProgress("extract", 2, 3)
 	onProgress("write", 3, 3)
@@ -244,5 +247,54 @@ func TestHistoryList(t *testing.T) {
 	}
 	if len(entries) != 2 {
 		t.Fatalf("expected 2 entries, got %d", len(entries))
+	}
+}
+
+// TestSyncRunProvidersFilter 验证 sync.run 收到 params.providers 后透传给 SyncService.Run。
+func TestSyncRunProvidersFilter(t *testing.T) {
+	fakeSync := &fakeSyncService{}
+	srv := NewServer(Services{Sync: fakeSync})
+	port, err := srv.Listen("127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("listen: %v", err)
+	}
+	go func() { _ = srv.Serve() }()
+	defer func() { _ = srv.Shutdown(context.Background()) }()
+
+	enc, dec := dialTest(t, port)
+	params, err := json.Marshal(map[string][]string{"providers": {"cf"}})
+	if err != nil {
+		t.Fatalf("marshal params: %v", err)
+	}
+	if err := enc.Encode(Request{JSONRPC: ProtocolVersion, ID: json.RawMessage("9"), Method: "sync.run", Params: params}); err != nil {
+		t.Fatalf("encode: %v", err)
+	}
+
+	// 读取所有帧直到最终响应（progress 事件 + 最终 result）。
+	var lastResult map[string]interface{}
+	found := false
+	for {
+		var env rpcEnvelope
+		if err := dec.Decode(&env); err != nil {
+			t.Fatalf("decode: %v", err)
+		}
+		if env.Result != nil {
+			if err := json.Unmarshal(env.Result, &lastResult); err != nil {
+				t.Fatalf("unmarshal result: %v", err)
+			}
+			found = true
+			break
+		}
+		if env.Error != nil {
+			t.Fatalf("unexpected error: %+v", env.Error)
+		}
+	}
+	if !found {
+		t.Fatalf("missing final result line")
+	}
+
+	// 断言 fake 收到的 providers == ["cf"]。
+	if len(fakeSync.gotProviders) != 1 || fakeSync.gotProviders[0] != "cf" {
+		t.Fatalf("expected providers [cf], got %v", fakeSync.gotProviders)
 	}
 }
