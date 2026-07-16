@@ -13,6 +13,22 @@ param(
   [string]$ParamsJson = ""
 )
 
+function Repair-ParamsJson {
+  param([string]$s)
+  # Shells sometimes strip the double quotes from inline JSON (PowerShell -File
+  # quoting quirks, etc.). If keys/string values are unquoted, re-quote them so
+  # the request is valid JSON. Best-effort normalization for smoke testing.
+  if ($s -notmatch '"') {
+    $s = [regex]::Replace($s, '(?<![\\"\w])([A-Za-z_][\w-]*)(?![\\"\w])', {
+      param($m)
+      $t = $m.Groups[1].Value
+      if ($t -match '^(true|false|null)$') { return $t }
+      return '"' + $t + '"'
+    })
+  }
+  return $s
+}
+
 $ErrorActionPreference = "Stop"
 
 if (-not (Test-Path $PortFile)) {
@@ -27,6 +43,7 @@ Write-Host ">> connect 127.0.0.1:$port  method=$Method"
 # which are finicky on PowerShell 5.1). ParamsJson is inserted verbatim.
 $body = "{""jsonrpc"":""2.0"",""id"":1,""method"":""$Method"""
 if ($ParamsJson -ne "") {
+  $ParamsJson = Repair-ParamsJson $ParamsJson
   $body += ",""params"":$ParamsJson"
 }
 $body += "}`n"
