@@ -43,6 +43,12 @@ func TestCFSTRun_ReturnsStderrOnFailure(t *testing.T) {
 		Paths: config.PathConfig{OutputDir: dir},
 	}
 
+	// 预置 outputDir/ip.txt，使 resolveIPFile 命中本地缓存分支而短路，
+	// 不再回退到真实访问 cloudflare.com 拉取 IP 段。
+	// 本测试只验证 Run 对 cfst 失败 stderr 的回传行为，与 IP 文件来源无关；
+	// 预置后即便在无外网 CI 下也不会因 30s 超时/网络错误而变慢或 flaky。
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "ip.txt"), []byte("203.0.113.0/24\n"), 0o644))
+
 	_, err := tester.Run(context.Background(), cfg)
 	require.Error(t, err, "cfst 以退出码 2 失败时 Run() 应返回错误")
 	assert.Contains(t, err.Error(), marker,
