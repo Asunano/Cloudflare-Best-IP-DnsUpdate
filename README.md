@@ -37,11 +37,7 @@ Cloudflare-Best-IP-DnsUpdate 是一款**全新重构**的自动化 Cloudflare IP
 
 ### 一键安装（请勿使用，还在开发中，正在测试部署步骤......）
 
-```bash
-curl -sL https://gh-proxy.org/https://raw.githubusercontent.com/Asunano/Cloudflare-Best-IP-DnsUpdate/main/cfopt.sh -o cfopt.sh && bash cfopt.sh
-```
-
-> **提示**：已默认启用 gh-proxy 镜像加速，中国大陆用户无需额外配置。
+使用go重构中
 
 安装完成后，脚本会自动：
 1. ✅ 迁移至标准目录（`/root/cfopt` 或 `$HOME/cfopt`）
