@@ -57,7 +57,9 @@ func (t *CFSTTester) buildCmd(cfg *config.CFIPConfig, output string) []string {
 		args = append(args, "-t", fmt.Sprintf("%d", cfg.CFST.Threads))
 	}
 	if colo := strings.TrimSpace(cfg.CFST.Colo); colo != "" {
-		args = append(args, "-cf", colo)
+		// cfst v2.3.5 的地区过滤 flag 是 -cfcolo，且只在 HTTPing 模式下生效；
+		// 因此配了 colo 时一并开启 -httping，否则 -cfcolo 会被忽略。
+		args = append(args, "-httping", "-cfcolo", colo)
 	}
 	if ip := strings.TrimSpace(cfg.CFST.IPFile); ip != "" {
 		args = append(args, "-c", ip)

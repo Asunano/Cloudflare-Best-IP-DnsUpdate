@@ -50,3 +50,51 @@ func TestCFSTRun_ReturnsStderrOnFailure(t *testing.T) {
 	assert.Contains(t, err.Error(), "speedtest:cfst:wait",
 		"应保留原始错误包装信息")
 }
+
+// TestCFSTBuildCmd_ColoFlag 验证 buildCmd 在配置了地区码（colo）时，
+// 使用 cfst v2.3.5 合法的 flag：-httping -cfcolo <colo>，而不再使用错误的 -cf。
+//
+// 背景：cfopt-go 依赖外部 sidecar cfst（CloudflareSpeedTest）做测速，
+// v2.3.5 没有 -cf 这个 flag（会报 "flag provided but not defined: -cf"），
+// 正确的地区过滤 flag 是 -cfcolo，且它仅在 HTTPing 模式下生效，因此需一并开启 -httping。
+func TestCFSTBuildCmd_ColoFlag(t *testing.T) {
+	// buildCmd 是包私有方法，同包内可直接调用；binPath 不参与参数拼装，填占位即可。
+	tester := &CFSTTester{binPath: "dummy"}
+	cfg := &config.CFIPConfig{
+		CFST: config.CFSTConfig{
+			Colo:    "HKG,NRT",
+			Threads: 0, // 不影响本次断言，但保持默认不触发其它分支
+		},
+	}
+
+	args := tester.buildCmd(cfg, "out.csv")
+
+	// 1) 不应再出现错误的 -cf flag。
+	assert.NotContains(t, args, "-cf", "cfst v2.3.5 不存在 -cf flag，不应被拼入")
+
+	// 2) 应包含 -httping 与 -cfcolo。
+	assert.Contains(t, args, "-httping", "colo 配置下应开启 HTTPing 模式")
+	assert.Contains(t, args, "-cfcolo", "colo 配置下应使用 -cfcolo 地区过滤 flag")
+
+	// 3) -cfcolo 之后必须紧邻地区码 "HKG,NRT"。
+	idx := indexOf(args, "-cfcolo")
+	require.NotEqual(t, -1, idx, "-cfcolo 应存在于 args 中")
+	require.Less(t, idx+1, len(args), "-cfcolo 后应紧跟地区码参数")
+	assert.Equal(t, "HKG,NRT", args[idx+1],
+		"-cfcolo 之后应紧邻配置的地区码 HKG,NRT")
+
+	// 4) -httping 应在 -cfcolo 之前（顺序：先开 HTTPing 模式，再给地区过滤）。
+	httpingIdx := indexOf(args, "-httping")
+	require.NotEqual(t, -1, httpingIdx, "-httping 应存在于 args 中")
+	assert.Less(t, httpingIdx, idx, "-httping 应出现在 -cfcolo 之前")
+}
+
+// indexOf 返回 target 在切片中首次出现的下标，未找到返回 -1。
+func indexOf(slice []string, target string) int {
+	for i, v := range slice {
+		if v == target {
+			return i
+		}
+	}
+	return -1
+}
