@@ -1,0 +1,38 @@
+{
+  "_comment": "DNSPod 多域名配置模板：文件名即域名（example.com.conf），文件内 domain 字段可覆盖 key。内容结构与 dnspod.json 单值一致，内部仍走 isp_lines 多线路。",
+  "enabled": true,
+  "secret_id": "your_api_id_here",
+  "secret_key": "your_api_token_here",
+  "domain": "example.com",
+  "mode": "isp_lines",
+  "sub_domain_unified": "dns",
+  "sub_domain_unified_mode": "first_line",
+  "unified_global_best_file": "./assets/data/cf-ip/best.iplist",
+  "default_line": "默认",
+  "delete_mode": "none",
+  "isp_lines": {
+    "默认": {
+      "ip_source": { "files": { "default": "./assets/data/dnspod-dns/example.com/default.iplist" } }
+    },
+    "联通": {
+      "ip_source": { "files": { "unicom": "./assets/data/dnspod-dns/example.com/unicom.iplist" } },
+      "speed_test": { "colo": "HKG,NRT", "threads": 16, "ip_file": "./assets/data/dnspod-dns/example.com/unicom.ip.txt" }
+    },
+    "移动": {
+      "ip_source": { "files": { "mobile": "./assets/data/dnspod-dns/example.com/mobile.iplist" } }
+    },
+    "电信": {
+      "ip_source": { "files": { "telecom": "./assets/data/dnspod-dns/example.com/telecom.iplist" } }
+    }
+  },
+  "log_dir": "./logs/dnspod-dns/example.com",
+  "timeout": 10,
+  "max_retries": 5,
+  "ttl_by_line": {
+    "默认": 600,
+    "联通": 300,
+    "移动": 300,
+    "电信": 300
+  },
+  "speed_test_per_isp": false
+}

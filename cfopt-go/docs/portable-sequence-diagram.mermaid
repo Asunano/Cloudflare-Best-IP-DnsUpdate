@@ -1,0 +1,68 @@
+sequenceDiagram
+    participant U as 用户
+    participant CMD as cmd/install.go
+    participant INS as install.RunInstall
+    participant EXE as os.Executable
+    participant FS as 文件系统
+    participant CFST as cfst.Fetch
+    participant CFG as config.WriteDefaults
+
+    Note over U,CFG: (a) 便携 install 闭环
+    U->>CMD: cfopt install [--dir T]
+    CMD->>CMD: if GOOS==windows: printWindowsGuiHint()
+    CMD->>CMD: mode=portable; dir=--dir | Dir(Exe); cfgDir=dir/conf
+    CMD->>CMD: if --schedule(便携): 忽略并提示「调度为系统级能力...」
+    CMD->>INS: RunInstall(ctx, {Mode:portable, Dir:dir, CfgDir:cfgDir})
+    INS->>EXE: os.Executable()
+    INS->>FS: if dir≠exeDir: SelfPlace(exe,dir) else 跳过(幂等)
+    INS--xFS: GlobalCommandInstaller 不调用（便携跳过）
+    INS->>CFG: ProvisionConf(cfgDir) → conf/cf-dns/dnspod/assets/data/global.json
+    INS->>CFST: ensureCFST(filepath.Join(dir,"assets","cfst"))
+    INS->>INS: HealthPing()（仅告警）
+    INS-->>CMD: InstallResult{Mode:portable, GlobalCommandInstalled:false, ...}
+    CMD->>CMD: printInstallResult(res)
+    Note over CMD: 不调 runSchedule（便携无调度）
+
+    Note over U,CFG: (b) 系统级 install（含可选 schedule）
+    U->>CMD: cfopt install --system [--schedule]
+    CMD->>CMD: mode=system; if --dir 设过: 忽略--dir 并警告(Q-C2)
+    CMD->>CMD: dir=defaultInstallDir(); cfgDir=global
+    CMD->>INS: RunInstall(ctx, {Mode:system, Dir:dir, CfgDir:cfgDir, WithSchedule})
+    INS->>EXE: os.Executable()
+    INS->>FS: SelfPlace(exe,dir) → LOCALAPPDATA\cfopt
+    INS->>FS: GlobalCommandInstaller(dir) → 写用户 PATH / 软链
+    INS->>CFG: ProvisionConf(cfgDir)
+    INS->>CFST: ensureCFST(filepath.Join(dir,"assets","cfst"))
+    INS->>INS: HealthPing()
+    INS-->>CMD: InstallResult{Mode:system, ...}
+    alt WithSchedule
+        CMD->>CMD: runSchedule("install") + runSchedule("start")
+    end
+    CMD->>CMD: printInstallResult(res)
+
+    Note over U,FS: (c) 便携 uninstall（删目录即干净）
+    U->>CMD: cfopt uninstall [--dir T] [--force]
+    CMD->>CMD: mode=portable; dir=--dir | Dir(Exe)
+    CMD->>CMD: 非交互且无 --force? 拒绝并打印手动步骤
+    CMD->>CMD: 交互且无 --force? Confirm(默认 No)
+    CMD->>INS: RunUninstall(ctx, {Mode:portable, Dir:dir, RemoveData:true})
+    INS->>INS: validateInstallDir(dir)
+    INS->>FS: os.RemoveAll(dir) best-effort
+    INS->>INS: 列出删除失败项(如运行中 exe 被锁定)
+    INS-->>CMD: UninstallResult{Removed, Failed}
+    CMD->>CMD: printUninstallResult()
+    Note over CMD: 不调 GlobalCommandRemover / runSchedule
+
+    Note over U,FS: (d) 系统级 uninstall（清 PATH + 调度）
+    U->>CMD: cfopt uninstall --system [--force]
+    CMD->>CMD: mode=system; dir=defaultInstallDir()
+    CMD->>CMD: 交互且无 --force? Confirm(默认 No) + 选[保留配置|全清]
+    CMD->>CMD: runSchedule("uninstall")  // 停止并注销调度(cmd 层)
+    CMD->>INS: RunUninstall(ctx, {Mode:system, Dir:dir, CfgDir:cfgDir, RemoveData:choice})
+    INS->>INS: validateInstallDir(dir)
+    INS->>FS: GlobalCommandRemover(dir) // 清 PATH / 删软链
+    alt RemoveData
+        INS->>FS: RemoveDataDir(dir, cfgDir)
+    end
+    INS-->>CMD: UninstallResult{Removed, Failed}
+    CMD->>CMD: printUninstallResult()

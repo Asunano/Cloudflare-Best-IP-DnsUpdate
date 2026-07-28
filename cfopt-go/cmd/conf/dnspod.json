@@ -1,0 +1,40 @@
+{
+  "_comment": "DNSPod DNS 更新模块配置 (Go 重写版, 支持单线路与多运营商分流)",
+  "enabled": true,
+  "secret_id": "your_api_id_here",
+  "secret_key": "your_api_token_here",
+  "mode": "single",
+  "domain": "example.com",
+  "ttl": 600,
+  "max_ips_per_record": 2,
+  "sub_domain": "www",
+  "sub_domain_unified": "dns",
+  "sub_domains": {
+    "默认": "default",
+    "联通": "unicom",
+    "移动": "mobile",
+    "电信": "telecom"
+  },
+  "isp_lines": {
+    "默认": {
+      "domains": ["example.com"],
+      "ip_source": { "files": { "default": "./assets/data/dnspod-dns/default.iplist" } }
+    },
+    "联通": {
+      "domains": ["example.com"],
+      "ip_source": { "files": { "unicom": "./assets/data/dnspod-dns/unicom.iplist" } }
+    },
+    "移动": {
+      "domains": ["example.com"],
+      "ip_source": { "files": { "mobile": "./assets/data/dnspod-dns/mobile.iplist" } }
+    },
+    "电信": {
+      "domains": ["example.com"],
+      "ip_source": { "files": { "telecom": "./assets/data/dnspod-dns/telecom.iplist" } }
+    }
+  },
+  "ip_file": "./assets/data/dnspod-dns/ip_list.iplist",
+  "log_dir": "./logs/dnspod-dns",
+  "timeout": 10,
+  "max_retries": 5
+}

@@ -175,6 +175,30 @@ cd tauri && cargo tauri dev      # 或 cargo tauri build
 
 ---
 
+## 5.1 安装/卸载二态（CLI）
+
+`cfopt install` / `cfopt uninstall` 采用**便携优先、系统级可选**的二态设计（详见增量 PRD/设计 `docs/prd-portable-install-2026-07-17.md` 与 `docs/design-portable-install-2026-07-17.md`）。
+
+| 维度 | 便携模式（默认） | 系统级模式（`--system`） |
+|---|---|---|
+| 二进制落点 | 当前二进制所在目录（`--dir` 可显式指定） | `%LOCALAPPDATA%\cfopt`（Win）/ `/usr/local/bin`（其他） |
+| 配置目录 | `dir/conf`（与默认 `--config-dir=conf` 从 `dir` 运行天然对齐） | 全局 `--config-dir`（默认 `conf`，cwd 相对） |
+| 全局命令（PATH/软链） | **不写** | 写用户级 PATH / 软链 |
+| 调度（系统服务） | **不注册**（Q-C1：便携忽略 `--schedule` 并提示） | `--schedule` 时由 `cmd` 层调 `runSchedule` 注册并启动 |
+| cfst 落点 | `dir/assets/cfst` | `dir/assets/cfst` |
+| 卸载 | 删除便携目录即干净退出（best-effort，列出失败项） | 停止调度 → 移除全局命令 → 删除安装目录（可选全清配置） |
+| 互斥 | `--system` 优先于 `--dir`（Q-C2：忽略 `--dir` 并警告） | — |
+
+**分层职责边界（铁律）**：
+
+- `internal/install`：安置（SelfPlace）+ 配置骨架（ProvisionConf）+ cfst 就绪（ensureCFST）+ 网络体检（HealthPing）+ 卸载（RunUninstall）；**不得 `import ".../cmd"`、不得调用 `runSchedule`**（调度仅由 `cmd` 层在系统级时注册/卸载）。
+- `cmd/install.go`、`cmd/uninstall.go`：编排层——解析 `--system/--dir/--schedule/--force`、判定便携/系统级、调用 `internal/install`、仅在系统级调 `runSchedule`、打印 Windows GUI 推荐提示（纯 CLI 文案，不改 IPC/GUI 契约）。
+- `internal/deploy`：部署/校验编排保持不动；部署逻辑不回退到 `cmd` 内联。
+
+> 注：Windows 下 `cfopt install` 与无参主菜单会打印「推荐用 GUI 完成安装」提示；该提示为纯 CLI 输出，13 个 IPC 方法契约不变。
+
+---
+
 ## 6. 功能对等矩阵（CLI ↔ IPC ↔ GUI）
 
 > 13 个 IPC 方法：`ping, version, config.get, config.validate, config.save, sync.run, speedtest.run, history.list, daemon.install, daemon.uninstall, daemon.start, daemon.stop, daemon.status`

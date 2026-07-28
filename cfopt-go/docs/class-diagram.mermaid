@@ -1,0 +1,61 @@
+classDiagram
+    class Prompt {
+        +Ask(prompt, def string) string
+        +AskSecret(prompt string) (string, error)
+        +AskChoice~T~(prompt string, items []T, toLabel func(T) string) (T, error)
+        +Confirm(prompt string, def bool) bool
+        +MenuLoop(title string, items []MenuItem) error
+        +IsInteractive() bool
+    }
+    class MenuItem {
+        +Label string
+        +Run func() error
+    }
+    class DeployPlan {
+        +Provider string
+        +Token string
+        +SecretID string
+        +SecretKey string
+        +ZoneID string
+        +Domain string
+        +RecordName string
+        +SubDomain string
+        +Lines []string
+        +ScheduleInterval string
+        +BuildConf() any
+    }
+    class Validator {
+        +ValidateCloudflare(ctx, token) []Zone
+        +ValidateDNSPod(ctx, secretID, secretKey) []string
+    }
+    class Zone {
+        +ID string
+        +Name string
+    }
+    class InstallResult {
+        +SelfPlaced bool
+        +GlobalCommandInstalled bool
+        +CFSTInstalled bool
+        +ConfInit bool
+        +ScheduleInstalled bool
+        +Warnings []string
+        +Errors []string
+    }
+    class UninstallPlan {
+        +RemoveSchedule bool
+        +RemoveGlobalCmd bool
+        +RemoveData bool
+    }
+    class CloudflareProvider {
+        +ValidateToken(ctx) error
+        +ListZones(ctx) []Zone
+    }
+    class DNSPodProvider {
+        +ValidateCredentials(ctx) error
+        +ListDomains(ctx) []string
+    }
+    Prompt ..> MenuItem : builds
+    DeployPlan ..> Validator : uses
+    Validator ..> CloudflareProvider : reuses client
+    Validator ..> DNSPodProvider : reuses client
+    DeployPlan ..> Zone : lists

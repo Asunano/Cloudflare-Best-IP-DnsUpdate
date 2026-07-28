@@ -1,0 +1,58 @@
+sequenceDiagram
+    participant U as 用户
+    participant M as menu.RunMenu
+    participant Q as quickdeploy.Run
+    participant V as deploy.Validator
+    participant CF as dns.(Cloudflare|DNSPod)Provider
+    participant Cfg as config.LoadFresh
+    participant S as sync.Syncer
+    participant Sch as runSchedule
+
+    U->>M: cfopt（无参）
+    M->>M: MenuLoop 打印菜单
+    U->>M: 选 1 (快速部署)
+    M->>Q: runQuickdeploy()
+    Q->>U: 选服务商 (1=CF/2=DNSPod)
+    Q->>U: 静默输入 Token/Secret
+    Q->>V: ValidateCloudflare/ValidateDNSPod(ctx, creds)
+    V->>CF: ValidateToken/ValidateCredentials + ListZones/ListDomains
+    CF-->>V: Zones / Domains
+    V-->>Q: 列表
+    Q->>U: 选域名 (默认首域名)
+    Q->>U: 选线路 (单/多；多=逗号编号)
+    Q->>Q: BuildConf() → 写 conf/<provider>/<domain>.conf (权限600)
+    Q->>Cfg: config.LoadFresh(cfgDir)
+    Cfg-->>Q: 最新 *config.Config
+    Q->>S: BuildSyncerFromConfig(cfg, hist)
+    Q->>S: SyncAll(ctx, cfg, onProgress)
+    S-->>Q: SyncSummary
+    Q->>Sch: runSchedule("install") + runSchedule("start")
+    Sch-->>Q: 调度已装
+    Q->>U: 打印部署摘要（域名/线路/调度状态）
+    Q-->>M: 返回主菜单循环
+
+---
+
+sequenceDiagram
+    participant U as 用户
+    participant I as install.RunInstall
+    participant EX as os.Executable
+    participant FS as 文件系统
+    participant CFST as cfst.Fetch
+    participant Cfg as config.WriteDefaults
+    participant Sch as runSchedule
+
+    U->>I: cfopt install
+    I->>EX: 取当前二进制路径
+    I->>FS: 自安置到 %LOCALAPPDATA%\cfopt\cfopt.exe（已存在且相同则跳过）
+    I->>FS: 写用户级 PATH（Windows PowerShell；其他 os.Symlink /usr/local/bin/cfopt）
+    I->>CFST: cfst.Fetch(ctx, opts)
+    CFST-->>I: cfst 已装
+    I->>Cfg: WriteDefaults(cfgDir)
+    I->>FS: MkdirAll conf/cf-dns, conf/dnspod, assets/data
+    I->>I: HealthPing() 失败仅 warn
+    I->>U: Confirm("是否安装计划任务式调度?") 默认 N
+    alt 用户确认
+        I->>Sch: runSchedule("install") + runSchedule("start")
+    end
+    I-->>U: 打印 InstallResult 摘要（幂等：已存在项跳过）

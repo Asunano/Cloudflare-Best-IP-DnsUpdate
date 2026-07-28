@@ -1,0 +1,25 @@
+{
+  "_comment": "Cloudflare DNS 多域名配置模板：文件名即域名（example.com.conf），文件内 dns.domain 字段可覆盖 key。内容结构与 cf-dns.json 单值一致。",
+  "enabled": true,
+  "api": {
+    "token": "your_api_token_here",
+    "zone_id": "your_zone_id_here",
+    "timeout": 10,
+    "max_retries": 5
+  },
+  "dns": {
+    "record_name": "your_dns_name_here",
+    "domain": "example.com",
+    "max_ips_per_record": 2
+  },
+  "ip_source": {
+    "file_path": "./assets/data/cf-dns/example.com/ip_list.iplist",
+    "auto_refresh": true,
+    "refresh_interval_hours": 6
+  },
+  "logging": {
+    "log_dir": "./logs/cf-dns/example.com",
+    "log_rotation_days": 7,
+    "verbose": false
+  }
+}

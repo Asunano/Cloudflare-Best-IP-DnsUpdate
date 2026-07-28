@@ -131,7 +131,13 @@ func (s *speedtestService) Run(ctx context.Context) ([]speedtest.SpeedResult, er
 	if err != nil {
 		return nil, err
 	}
-	return tester.Run(ctx, cfg.CFIP)
+	results, runErr := tester.Run(ctx, cfg.CFIP)
+	// P1-5：speedtest 结束后同样写 speedtest 历史。
+	if hist, herr := newHistoryStore(cfg); herr == nil && hist != nil {
+		detail := fmt.Sprintf("count=%d", len(results))
+		_ = hist.Append(history.HistoryEntry{Action: "speedtest", Detail: detail, Success: runErr == nil})
+	}
+	return results, runErr
 }
 
 // ---------------------------------------------------------------------------

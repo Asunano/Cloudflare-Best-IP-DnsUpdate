@@ -8,18 +8,19 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"sort"
 	"strings"
 	"time"
 
 	"cfopt/internal/common"
 	"cfopt/internal/config"
-	"cfopt/internal/ipsource"
 )
 
-// dnspodBaseURL DNSPod API 基地址。
-const dnspodBaseURL = "https://dnspod.tencentcloudapi.com"
+// dnspodBaseURL DNSPod API 基地址。声明为 var 以便测试注入 httptest 地址。
+var dnspodBaseURL = "https://dnspod.tencentcloudapi.com"
 
 // DNSPodProvider DNSPod DNS 提供方（支持单线路与多运营商分流）。
+// 实现 DNSProvider（全局接口）与 LineAwareProvider（多线路接口）。
 type DNSPodProvider struct {
 	secretID   string
 	secretKey  string
@@ -29,7 +30,68 @@ type DNSPodProvider struct {
 	domain     string
 	subDomain  string
 	ttl        int
+	ttlByLine  map[string]int // 线路名 → TTL 覆盖
+	defaultLine string
 	subDomains map[string]string
+	baseURL    string // API 基地址（默认 dnspodBaseURL，可注入用于测试）
+}
+
+// 编译期接口实现断言：确保 DNSPodProvider 完整实现 LineAwareProvider。
+var _ LineAwareProvider = (*DNSPodProvider)(nil)
+
+// NewDNSPodProviderWithCredentials 仅用 SecretID/SecretKey 构造 DNSPodProvider（供校验/取域名，不依赖完整配置）。
+func NewDNSPodProviderWithCredentials(secretID, secretKey string) *DNSPodProvider {
+	return &DNSPodProvider{
+		secretID:   secretID,
+		secretKey:  secretKey,
+		client:     NewHTTPClient(10 * time.Second),
+		timeout:    10 * time.Second,
+		maxRetry:   5,
+		ttl:        600,
+		baseURL:    dnspodBaseURL,
+	}
+}
+
+// ValidateCredentials 校验 DNSPod 凭证是否有效（调用 DescribeDomainList，复用 sign/call）。
+func (p *DNSPodProvider) ValidateCredentials(ctx context.Context) error {
+	if strings.TrimSpace(p.secretID) == "" {
+		return common.New("dnspod:validate", "secret_id 不能为空")
+	}
+	if strings.TrimSpace(p.secretKey) == "" {
+		return common.New("dnspod:validate", "secret_key 不能为空")
+	}
+	payload := mustJSON(map[string]any{"Limit": 1})
+	if _, err := p.call(ctx, "DescribeDomainList", payload); err != nil {
+		return common.Wrap("dnspod:validate", err)
+	}
+	return nil
+}
+
+// ListDomains 列出当前凭证可访问的域名（分页拉取），供快速部署自动选择。
+func (p *DNSPodProvider) ListDomains(ctx context.Context) ([]string, error) {
+	out := make([]string, 0, 8)
+	offset := 0
+	for {
+		payload := mustJSON(map[string]any{"Offset": offset, "Limit": 100})
+		resp, err := p.call(ctx, "DescribeDomainList", payload)
+		if err != nil {
+			return nil, common.Wrap("dnspod:list-domains", err)
+		}
+		if len(resp.Response.DomainList) == 0 {
+			break
+		}
+		for _, d := range resp.Response.DomainList {
+			if d.DomainName != "" {
+				out = append(out, d.DomainName)
+			}
+		}
+		offset += len(resp.Response.DomainList)
+		total := resp.Response.TotalCount
+		if total > 0 && int64(offset) >= total {
+			break
+		}
+	}
+	return out, nil
 }
 
 // NewDNSPodProvider 从配置构造 DNSPodProvider。
@@ -42,6 +104,10 @@ func NewDNSPodProvider(cfg *config.DNSPodConfig) *DNSPodProvider {
 	if maxRetry <= 0 {
 		maxRetry = 5
 	}
+	ttl := cfg.TTL
+	if ttl <= 0 {
+		ttl = 600
+	}
 	return &DNSPodProvider{
 		secretID:   cfg.SecretID,
 		secretKey:  cfg.SecretKey,
@@ -50,8 +116,24 @@ func NewDNSPodProvider(cfg *config.DNSPodConfig) *DNSPodProvider {
 		maxRetry:   maxRetry,
 		domain:     cfg.Domain,
 		subDomain:  cfg.SubDomain,
-		ttl:        cfg.TTL,
+		ttl:        ttl,
+		ttlByLine:  cfg.TTLByLine,
+		defaultLine: cfg.DefaultLine,
 		subDomains: cfg.SubDomains,
+		baseURL:    dnspodBaseURL,
+	}
+}
+
+// NewDNSPodProviderWithCredentialsAndBaseURL 同 NewDNSPodProviderWithCredentials，但可注入 baseURL（用于 httptest 单测）。
+func NewDNSPodProviderWithCredentialsAndBaseURL(secretID, secretKey, baseURL string) *DNSPodProvider {
+	return &DNSPodProvider{
+		secretID:   secretID,
+		secretKey:  secretKey,
+		client:     NewHTTPClient(10 * time.Second),
+		timeout:    10 * time.Second,
+		maxRetry:   5,
+		ttl:        600,
+		baseURL:    baseURL,
 	}
 }
 
@@ -103,6 +185,7 @@ func hmacSHA256(key []byte, data string) []byte {
 }
 
 // call 调用 DNSPod API，带重试（认证错误 AuthFailure/Unauthorized 不重试）。
+// 遇「无数据」错误码（记录不存在，确定性错误）返回特型 dnspodNoDataError（不重试）。
 func (p *DNSPodProvider) call(ctx context.Context, action string, payload string) (*dnspodResp, error) {
 	var last *dnspodResp
 	for attempt := 0; attempt < p.maxRetry; attempt++ {
@@ -115,7 +198,7 @@ func (p *DNSPodProvider) call(ctx context.Context, action string, payload string
 			}
 		}
 		headers := p.sign(action, payload)
-		body, _, err := p.client.DoRequest(ctx, http.MethodPost, dnspodBaseURL, []byte(payload), headers)
+		body, _, err := p.client.DoRequest(ctx, http.MethodPost, p.baseURL, []byte(payload), headers)
 		if err != nil {
 			// DoRequest 已处理 429/5xx 重试与 401 不重试；网络错误在此继续重试
 			last = nil
@@ -126,9 +209,14 @@ func (p *DNSPodProvider) call(ctx context.Context, action string, payload string
 			return nil, common.Wrap("dnspod:decode", e)
 		}
 		if resp.Response.Error.Code != "" {
-			if strings.HasPrefix(resp.Response.Error.Code, "AuthFailure") ||
-				strings.HasPrefix(resp.Response.Error.Code, "Unauthorized") {
-				return nil, common.New("dnspod:auth", resp.Response.Error.Code+": "+resp.Response.Error.Message)
+			code := resp.Response.Error.Code
+			if noDataCodes[code] {
+				// 无数据（记录不存在）：确定性错误，不重试，返回特型错误供上层识别。
+				return nil, &dnspodNoDataError{code: code, msg: resp.Response.Error.Message}
+			}
+			if strings.HasPrefix(code, "AuthFailure") ||
+				strings.HasPrefix(code, "Unauthorized") {
+				return nil, common.New("dnspod:auth", code+": "+resp.Response.Error.Message)
 			}
 			last = &resp
 			continue
@@ -147,6 +235,7 @@ func mustJSON(v map[string]any) string {
 }
 
 // listRecords 按子域名与线路列出 A 记录。
+// 遇「无数据」特型错误时视为空列表返回（P0-1 修复：避免把“记录不存在”当失败）。
 func (p *DNSPodProvider) listRecords(ctx context.Context, domain, subDomain, line string) ([]Record, error) {
 	payload := mustJSON(map[string]any{
 		"Domain":     domain,
@@ -157,6 +246,9 @@ func (p *DNSPodProvider) listRecords(ctx context.Context, domain, subDomain, lin
 	})
 	resp, err := p.call(ctx, "DescribeRecordList", payload)
 	if err != nil {
+		if IsNoDataError(err) {
+			return []Record{}, nil
+		}
 		return nil, common.Wrap("dnspod:list", err)
 	}
 	records := make([]Record, 0, len(resp.Response.RecordList))
@@ -206,6 +298,45 @@ func (p *DNSPodProvider) deleteRecord(ctx context.Context, domain string, record
 	return common.Wrap("dnspod:delete", err)
 }
 
+// ---- LineAwareProvider 实现（供 SyncMultiLine 复用） ----
+
+// ListLineRecords 列出指定子域名+线路的 A 记录。
+func (p *DNSPodProvider) ListLineRecords(ctx context.Context, domain, subDomain, line string) ([]Record, error) {
+	return p.listRecords(ctx, domain, subDomain, line)
+}
+
+// UpsertLineRecord 创建或更新一条记录：按 value 查找已有记录修改，否则新建（建或改）。
+// ttl 为默认 TTL；若该线路在 TTLByLine 中配置覆盖，则使用覆盖值。
+func (p *DNSPodProvider) UpsertLineRecord(ctx context.Context, domain, subDomain, line, value string, ttl int) error {
+	effTTL := ttl
+	if p.ttlByLine != nil {
+		if v, ok := p.ttlByLine[line]; ok && v > 0 {
+			effTTL = v
+		}
+	}
+	existing, err := p.listRecords(ctx, domain, subDomain, line)
+	if err != nil {
+		return common.Wrap("dnspod:upsert:list", err)
+	}
+	for _, r := range existing {
+		if r.Content == value {
+			// 记录已存在：仅在 TTL 变化时修改，避免无谓写。
+			if r.TTL != effTTL {
+				return common.Wrap("dnspod:upsert:modify", p.modifyRecord(ctx, domain, subDomain, line, value, effTTL, r.ID))
+			}
+			return nil
+		}
+	}
+	return common.Wrap("dnspod:upsert:create", p.createRecord(ctx, domain, subDomain, line, value, effTTL))
+}
+
+// DeleteLineRecord 删除指定 ID 的记录。
+func (p *DNSPodProvider) DeleteLineRecord(ctx context.Context, domain, recordID string) error {
+	return p.deleteRecord(ctx, domain, recordID)
+}
+
+// ---- DNSProvider 接口实现（全局模块兼容） ----
+
 // ListRecords 列出指定子域名的默认线路 A 记录（满足 DNSProvider 接口）。
 func (p *DNSPodProvider) ListRecords(ctx context.Context, _ string) ([]Record, error) {
 	return p.listRecords(ctx, p.domain, p.subDomain, "默认")
@@ -230,142 +361,65 @@ func (p *DNSPodProvider) DeleteRecord(ctx context.Context, _ string, id string) 
 }
 
 // Sync 智能同步：根据 mode 执行单线路或多运营商分流，返回统计结果 SyncResult。
+// 内部统一走 SyncMultiLine（公共多线路抽象），不再保留 syncLine 散落逻辑。
 func (p *DNSPodProvider) Sync(ctx context.Context, cfg *config.DNSPodConfig) (*SyncResult, error) {
 	res := &SyncResult{}
 	if cfg == nil || !cfg.Enabled {
 		common.Info("dnspod: 模块未启用，跳过同步")
 		return res, nil
 	}
-	if strings.EqualFold(cfg.Mode, "isp_lines") {
-		return p.syncMulti(ctx, cfg)
+	resv := NewDNSPodLineResolver(cfg)
+	opts := MultiLineOptions{
+		UnifiedSubDomain: cfg.SubDomainUnified,
+		DefaultLine:      cfg.DefaultLine,
+		DeleteMode:       cfg.DeleteMode,
+		UnifiedMode:      cfg.SubDomainUnifiedMode,
+		GlobalBestFile:   cfg.UnifiedGlobalBestFile,
 	}
-	return p.syncSingle(ctx, cfg)
+	lineRes := SyncMultiLine(ctx, resv, p, cfg.Domain, p.ttl, cfg.MaxIPsPerRecord, opts)
+	if lineRes == nil {
+		return res, nil
+	}
+	res.Updated = lineRes.Updated
+	res.Created = lineRes.Created
+	res.Deleted = lineRes.Deleted
+	res.Errors = append(res.Errors, lineRes.Errors...)
+	return res, nil
 }
 
 func (p *DNSPodProvider) syncSingle(ctx context.Context, cfg *config.DNSPodConfig) (*SyncResult, error) {
-	ipFile := cfg.IPFilePath
-	if strings.TrimSpace(ipFile) == "" {
+	if strings.TrimSpace(cfg.IPFilePath) == "" {
 		return &SyncResult{}, common.New("dnspod:sync", "单线路模式未配置 ip_file")
 	}
-	sub := p.subDomain
-	if sub == "" {
-		sub = "www"
+	resv := NewDNSPodLineResolver(cfg)
+	opts := MultiLineOptions{
+		UnifiedSubDomain: cfg.SubDomainUnified,
+		DefaultLine:      cfg.DefaultLine,
+		DeleteMode:       cfg.DeleteMode,
+		UnifiedMode:      cfg.SubDomainUnifiedMode,
+		GlobalBestFile:   cfg.UnifiedGlobalBestFile,
 	}
-	return p.syncLine(ctx, cfg.Domain, sub, "默认", ipFile, cfg.MaxIPsPerRecord, cfg.TTL)
+	return SyncMultiLine(ctx, resv, p, cfg.Domain, p.ttl, cfg.MaxIPsPerRecord, opts), nil
 }
 
 func (p *DNSPodProvider) syncMulti(ctx context.Context, cfg *config.DNSPodConfig) (*SyncResult, error) {
-	res := &SyncResult{}
 	if len(cfg.ISP) == 0 {
-		return res, common.New("dnspod:sync", "多线路模式未配置 isp_lines")
+		return &SyncResult{}, common.New("dnspod:sync", "多线路模式未配置 isp_lines")
 	}
-	var aggErr error
-	for line, conf := range cfg.ISP {
-		ipFile := firstIPFile(conf)
-		if strings.TrimSpace(ipFile) == "" {
-			common.Warn("dnspod: 线路无 IP 文件，跳过", "line", line)
-			continue
-		}
-		sub := p.subDomainForLine(line)
-		lineRes, err := p.syncLine(ctx, cfg.Domain, sub, line, ipFile, cfg.MaxIPsPerRecord, cfg.TTL)
-		if err != nil {
-			res.Errors = append(res.Errors, line+": "+err.Error())
-			if aggErr == nil {
-				aggErr = err
-			}
-			continue
-		}
-		res.Updated += lineRes.Updated
-		res.Created += lineRes.Created
-		res.Deleted += lineRes.Deleted
+	resv := NewDNSPodLineResolver(cfg)
+	opts := MultiLineOptions{
+		UnifiedSubDomain: cfg.SubDomainUnified,
+		DefaultLine:      cfg.DefaultLine,
+		DeleteMode:       cfg.DeleteMode,
+		UnifiedMode:      cfg.SubDomainUnifiedMode,
+		GlobalBestFile:   cfg.UnifiedGlobalBestFile,
 	}
-	if aggErr != nil {
-		return res, common.Wrap("dnspod:sync:multi", aggErr)
-	}
-	return res, nil
+	return SyncMultiLine(ctx, resv, p, cfg.Domain, p.ttl, cfg.MaxIPsPerRecord, opts), nil
 }
 
-// syncLine 单条线路智能同步（记录数一致就地更新，否则删+建），忠实移植原 core.sh 逻辑。
-// 返回统计结果 SyncResult（累计 updated/created/deleted）。
-func (p *DNSPodProvider) syncLine(ctx context.Context, domain, subDomain, line, ipFile string, maxPerRecord, ttl int) (*SyncResult, error) {
-	res := &SyncResult{}
-	raw, err := ipsource.Read(ipFile)
-	if err != nil {
-		return res, common.Wrap("dnspod:sync:read", err)
-	}
-	targetIPs := dedupeAndValidate(raw, maxPerRecord)
-	if len(targetIPs) == 0 {
-		return res, common.New("dnspod:sync", "未解析到有效 IP: "+ipFile)
-	}
-
-	existing, err := p.listRecords(ctx, domain, subDomain, line)
-	if err != nil {
-		return res, common.Wrap("dnspod:sync:list", err)
-	}
-
-	if needsUpdate(existingIPs(existing), targetIPs) {
-		if len(existing) == len(targetIPs) && len(existing) > 0 {
-			for i, rec := range existing {
-				if rec.Content != targetIPs[i] {
-					if err := p.modifyRecord(ctx, domain, subDomain, line, targetIPs[i], ttl, rec.ID); err != nil {
-						return res, common.Wrap("dnspod:sync:modify", err)
-					}
-					res.Updated++
-				}
-			}
-		} else {
-			// 删除多余(旧∩¬目标) + 创建缺失(目标∩¬旧)。集合法，不索引复用已删除记录。
-			existingSet := make(map[string]string, len(existing)) // content -> id
-			for _, rec := range existing {
-				existingSet[rec.Content] = rec.ID
-			}
-			targetSet := make(map[string]bool, len(targetIPs))
-			for _, ip := range targetIPs {
-				targetSet[ip] = true
-			}
-			// 删除多余
-			for content, id := range existingSet {
-				if !targetSet[content] {
-					if err := p.deleteRecord(ctx, domain, id); err != nil {
-						return res, common.Wrap("dnspod:sync:delete", err)
-					}
-					res.Deleted++
-				}
-			}
-			// 创建缺失
-			for _, ip := range targetIPs {
-				if _, ok := existingSet[ip]; !ok {
-					if err := p.createRecord(ctx, domain, subDomain, line, ip, ttl); err != nil {
-						return res, common.Wrap("dnspod:sync:create", err)
-					}
-					res.Created++
-				}
-			}
-		}
-	}
-
-	common.Info("dnspod: 线路同步完成", "line", line, "updated", res.Updated, "created", res.Created, "deleted", res.Deleted)
-	return res, nil
-}
-
+// subDomainForLine 通用「线路 → 子域名」映射（迁至 multiline.resolveSubDomain 的薄封装，保留测试兼容）。
 func (p *DNSPodProvider) subDomainForLine(line string) string {
-	if p.subDomains != nil {
-		if s, ok := p.subDomains[line]; ok && s != "" {
-			return s
-		}
-	}
-	if p.subDomain != "" {
-		return p.subDomain
-	}
-	return strings.ToLower(line)
-}
-
-// firstIPFile 取 ISPConf.IPSource.Files 中首个文件路径。
-func firstIPFile(conf config.ISPConf) string {
-	for _, v := range conf.IPSource.Files {
-		return v
-	}
-	return ""
+	return resolveSubDomain(line, p.subDomain, p.subDomains)
 }
 
 // existingIPs 从记录列表提取 Content 集合。
@@ -375,4 +429,53 @@ func existingIPs(records []Record) []string {
 		out = append(out, r.Content)
 	}
 	return out
+}
+
+// DNSPodLineResolver 把 DNSPodConfig 包装为 LineResolver，供 SyncMultiLine 复用。
+// 同时支持单线路（mode=single）与多运营商分流（mode=isp_lines）。
+type DNSPodLineResolver struct {
+	cfg *config.DNSPodConfig
+}
+
+// NewDNSPodLineResolver 构造 DNSPodLineResolver。
+func NewDNSPodLineResolver(cfg *config.DNSPodConfig) *DNSPodLineResolver {
+	return &DNSPodLineResolver{cfg: cfg}
+}
+
+// Lines 返回全部待测线路名：isp_lines 取 ISP map 的 key（排序保证确定性）；
+// 单线路返回合成线路 "默认"。
+func (r *DNSPodLineResolver) Lines() []string {
+	if r.cfg != nil && strings.EqualFold(r.cfg.Mode, "isp_lines") {
+		lines := make([]string, 0, len(r.cfg.ISP))
+		for line := range r.cfg.ISP {
+			lines = append(lines, line)
+		}
+		sort.Strings(lines)
+		return lines
+	}
+	return []string{"默认"}
+}
+
+// ResolveSubDomain 返回某线路对应的子域名。
+func (r *DNSPodLineResolver) ResolveSubDomain(line string) string {
+	if r.cfg != nil && strings.EqualFold(r.cfg.Mode, "isp_lines") {
+		return resolveSubDomain(line, r.cfg.SubDomain, r.cfg.SubDomains)
+	}
+	sub := r.cfg.SubDomain
+	if sub == "" {
+		sub = "www"
+	}
+	return sub
+}
+
+// IPFilesForLine 返回某线路对应的 IP 源文件集合。
+func (r *DNSPodLineResolver) IPFilesForLine(line string) []string {
+	if r.cfg != nil && strings.EqualFold(r.cfg.Mode, "isp_lines") {
+		conf, ok := r.cfg.ISP[line]
+		if !ok {
+			return nil
+		}
+		return ipFilesOfISP(conf)
+	}
+	return []string{r.cfg.IPFilePath}
 }

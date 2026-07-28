@@ -1,0 +1,81 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: Build (${{ matrix.goos }}/${{ matrix.goarch }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        goos: [linux, windows, darwin]
+        goarch: [amd64, arm64]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.22'
+          cache-dependency-path: cfopt-go/go.sum
+
+      - name: Build
+        working-directory: cfopt-go
+        env:
+          GOOS: ${{ matrix.goos }}
+          GOARCH: ${{ matrix.goarch }}
+          CGO_ENABLED: '0'
+        run: |
+          VERSION="${GITHUB_REF_NAME}"
+          BIN="cfopt-${{ matrix.goos }}-${{ matrix.goarch }}"
+          if [ "${{ matrix.goos }}" = "windows" ]; then BIN="${BIN}.exe"; fi
+          go build -trimpath -ldflags "-s -w -X main.version=${VERSION}" -o "../dist/${BIN}" .
+          echo "built ${BIN}"
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          # 红线：仅上传 cfopt 二进制本身，绝不打包 cfst（cfst 由 `cfopt cfst fetch` 运行时下载）。
+          name: cfopt-${{ matrix.goos }}-${{ matrix.goarch }}
+          path: dist/cfopt-*
+
+  release:
+    name: Release & SHA256SUMS
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+
+      - name: Generate SHA256SUMS
+        working-directory: dist
+        run: |
+          sha256sum * > SHA256SUMS
+          cat SHA256SUMS
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          # 红线：release 资产仅含 cfopt 二进制 + SHA256SUMS，不打包 assets/cfst 任何文件。
+          files: |
+            dist/cfopt-*
+            dist/SHA256SUMS
+          body: |
+            Automated release for ${{ github.ref_name }}.
+
+            ### 校验
+            - 下载后请比对 `SHA256SUMS` 中的哈希，`cfopt update` 会自动校验二进制完整性。
+            - 支持平台：linux/darwin/windows × amd64/arm64。
+          draft: false
+          prerelease: false

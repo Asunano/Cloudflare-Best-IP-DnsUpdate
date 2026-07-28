@@ -24,12 +24,16 @@ var (
 var rootCmd = &cobra.Command{
 	Use:           "cfopt",
 	Short:         "cfopt - Cloudflare 优选 IP 与 DNS 同步工具 (Go 重写版)",
-	Long:          "cfopt 提供测速、DNS 同步、一键同步、调度 daemon 与配置管理能力。",
+	Long:          "cfopt 提供测速、DNS 同步、一键同步、调度 daemon 与配置管理能力。无参数运行时进入主菜单。",
 	SilenceUsage:  true,
 	SilenceErrors: false,
 	PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
 		common.InitLogger(logLevel)
 		return nil
+	},
+	// 无参数运行即进入主菜单（问答循环）。
+	RunE: func(cmd *cobra.Command, args []string) error {
+		return runMenu()
 	},
 }
 
@@ -54,6 +58,12 @@ func init() {
 		newConfigCommand(),
 		newVersionCmd(),
 		newServeCmd(),
+		newUpdateCmd(),
+		newCFSTCmd(),
+		newInstallCmd(),
+		newQuickdeployCmd(),
+		newUninstallCmd(),
+		newHealthCmd(),
 	)
 }
 

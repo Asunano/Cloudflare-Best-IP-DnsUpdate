@@ -3,7 +3,7 @@
   "enabled": true,
   "cfst": {
     "directory": "./assets/cfst",
-    "binary": "cfst",
+    "binary": "",
     "threads": 200,
     "colo": "HKG,NRT",
     "ping_times": 4,

@@ -1,5 +1,7 @@
 {
   "_comment": "DNSPod DNS 更新模块配置 (Go 重写版, 支持单线路与多运营商分流)",
+  "_comment_multi_domain": "多域名：在 conf/dnspod/ 下放置 <域名>.conf（JSON 内容、扩展名 .conf），文件名即域名（文件内 domain 字段可覆盖）；各域名内部仍走 isp_lines 多线路。单值与多域名共存时 registry 遍历各启用域名。",
+  "_comment_unified_mode": "sub_domain_unified_mode: 统一子域取 IP 模式。first_line（默认）= 取 DefaultLine/首线路 IP；global_best = 取 unified_global_best_file（默认全局最优 IP 文件 best.iplist）首行 IP。",
   "enabled": true,
   "secret_id": "your_api_id_here",
   "secret_key": "your_api_token_here",
@@ -9,6 +11,8 @@
   "max_ips_per_record": 2,
   "sub_domain": "www",
   "sub_domain_unified": "dns",
+  "sub_domain_unified_mode": "first_line",
+  "unified_global_best_file": "./assets/data/cf-ip/best.iplist",
   "sub_domains": {
     "default": "default",
     "unicom": "unicom",
@@ -22,7 +26,8 @@
     },
     "联通": {
       "domains": ["example.com"],
-      "ip_source": { "files": { "unicom": "./assets/data/dnspod-dns/unicom.iplist" } }
+      "ip_source": { "files": { "unicom": "./assets/data/dnspod-dns/unicom.iplist" } },
+      "speed_test": { "colo": "HKG,NRT", "threads": 16, "ip_file": "./assets/data/dnspod-dns/unicom.ip.txt" }
     },
     "移动": {
       "domains": ["example.com"],
@@ -36,5 +41,14 @@
   "ip_file": "./assets/data/dnspod-dns/ip_list.iplist",
   "log_dir": "./logs/dnspod-dns",
   "timeout": 10,
-  "max_retries": 5
+  "max_retries": 5,
+  "default_line": "默认",
+  "ttl_by_line": {
+    "默认": 600,
+    "联通": 300,
+    "移动": 300,
+    "电信": 300
+  },
+  "delete_mode": "none",
+  "speed_test_per_isp": false
 }

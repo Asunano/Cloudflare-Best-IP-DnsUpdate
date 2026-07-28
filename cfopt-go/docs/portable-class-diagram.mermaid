@@ -1,0 +1,60 @@
+classDiagram
+    class InstallMode {
+        <<enumeration>>
+        portable
+        system
+    }
+    class InstallOptions {
+        +Mode InstallMode
+        +Dir string
+        +CfgDir string
+        +WithSchedule bool
+    }
+    class InstallResult {
+        +Mode InstallMode
+        +SelfPlaced bool
+        +GlobalCommandInstalled bool
+        +CFSTInstalled bool
+        +ConfInit bool
+        +ScheduleInstalled bool
+        +Warnings []string
+        +Errors []string
+    }
+    class UninstallOptions {
+        +Mode InstallMode
+        +Dir string
+        +CfgDir string
+        +RemoveData bool
+        +SkipConfirm bool
+    }
+    class UninstallResult {
+        +Mode InstallMode
+        +Removed []string
+        +Failed []string
+        +Warnings []string
+    }
+    class InstallAPI {
+        +RunInstall(ctx, opts InstallOptions) *InstallResult
+        +RunUninstall(ctx, opts UninstallOptions) *UninstallResult
+    }
+    class Seams {
+        +GlobalCommandInstaller(dir, goos string) error
+        +GlobalCommandRemover(dir, goos string) error
+    }
+    class Helpers {
+        +SelfPlace(srcExe, dir string) string
+        +ProvisionConf(cfgDir string) error
+        +ensureCFST(ctx, destDir string) error
+        +HealthPing(ctx) []string
+        +validateInstallDir(dir string) error
+        +RemoveDataDir(installDir, cfgDir string) error
+    }
+    InstallAPI ..> InstallOptions : takes
+    InstallAPI ..> UninstallOptions : takes
+    InstallAPI ..> InstallResult : returns
+    InstallAPI ..> UninstallResult : returns
+    InstallAPI ..> Seams : portable skips / system uses
+    InstallAPI ..> Helpers : orchestrates
+    InstallMode <.. InstallOptions : field
+    InstallMode <.. UninstallOptions : field
+    InstallMode <.. InstallResult : field

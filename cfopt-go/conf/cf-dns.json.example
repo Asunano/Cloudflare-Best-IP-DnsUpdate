@@ -1,5 +1,7 @@
 {
   "_comment": "Cloudflare DNS 更新模块配置 (Go 重写版)",
+  "_comment_multi_domain": "多域名：在 conf/cf-dns/ 下放置 <域名>.conf（JSON 内容、扩展名 .conf），文件名即域名（文件内 dns.domain 字段可覆盖）；结构与本文件单值一致。单值与多域名共存时 registry 遍历各启用域名。",
+  "_comment_global_best": "统一子域 global_best 模式（DNSPod 侧 sub_domain_unified_mode=global_best）读取的全局最优 IP 文件由 cf-ip.paths.global_best_file 控制（默认 ./assets/data/cf-ip/best.iplist），由 sync 阶段强制 .iplist 落盘。",
   "enabled": true,
   "api": {
     "token": "your_api_token_here",

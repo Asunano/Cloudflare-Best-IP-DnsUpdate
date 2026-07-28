@@ -63,6 +63,13 @@ type dnspodResp struct {
 			Line     string `json:"Line"`
 			LineId   string `json:"LineId"`
 		} `json:"RecordList"`
+		// DescribeDomainList 响应字段（仅 ListDomains 使用，对其他接口为 nil/零值，不影响既有逻辑）。
+		DomainList []struct {
+			DomainId   int64  `json:"DomainId"`
+			DomainName string `json:"DomainName"`
+			Status     string `json:"Status"`
+		} `json:"DomainList"`
+		TotalCount int64 `json:"TotalCount"`
 		Error struct {
 			Code    string `json:"Code"`
 			Message string `json:"Message"`

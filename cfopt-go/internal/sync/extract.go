@@ -42,7 +42,12 @@ func ExtractBestIPs(results []speedtest.SpeedResult, n int) []ipsource.IPRecord 
 }
 
 // WriteIPList 将 IPRecord 列表写入 .iplist 文件（格式：IP|延迟|速度|地区码），自动创建父目录。
+// 写入前若路径扩展名非 .iplist 则强制改写为 .iplist（保留目录与基名），防止 .txt 被误解析为优选结果。
 func WriteIPList(records []ipsource.IPRecord, path string) error {
+	if ext := filepath.Ext(path); ext != ".iplist" {
+		base := strings.TrimSuffix(path, ext)
+		path = base + ".iplist"
+	}
 	if dir := filepath.Dir(path); dir != "" {
 		if err := os.MkdirAll(dir, 0o755); err != nil {
 			return common.Wrap("sync:writeiplist:mkdir", err)

@@ -74,3 +74,16 @@ func Acquire(name string) (ReleaseFunc, error) {
 	}
 	return release, nil
 }
+
+// RunLockName 单飞运行锁名。cfopt sync 与 schedule run --once 共用此锁，
+// 确保同一时刻全局仅一个同步主链路在跑（避免重复测速/重复写 DNS）。
+// 锁路径为 global.lock_dir/cfopt-sync-run.lock。
+const RunLockName = "cfopt-sync-run"
+
+// AcquireRunLock 获取单飞运行锁（基于现有 os.Mkdir 原子目录锁 + 30min 残留清理），
+// 非阻塞 fast-fail：锁已被占用立即返回 error（不阻塞等待）。返回的 ReleaseFunc 删除锁目录。
+//
+// 该锁仅保证「跨进程单次运行」互斥；同一进程内的多个 goroutine 应通过其它手段串行化。
+func AcquireRunLock(name string) (ReleaseFunc, error) {
+	return Acquire(name)
+}

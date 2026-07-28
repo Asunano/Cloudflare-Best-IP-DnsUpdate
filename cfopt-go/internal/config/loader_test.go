@@ -216,3 +216,115 @@ func TestLoadModulesJSON(t *testing.T) {
 	_, ok = m["modules"]
 	assert.True(t, ok, "序列化结果应含 modules 顶层键")
 }
+
+// TestLoadFresh_MultiDomainConf 验证多域名 .conf 加载：key 取文件名、domain 字段可覆盖、与单值共存。
+// 为避免源码中文 key 的编码脆弱性，此处使用 ASCII 线路名。
+func TestLoadFresh_MultiDomainConf(t *testing.T) {
+	dir := t.TempDir()
+	// 四个基础文件（单值，enabled 均空）。
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "global.json"), []byte(`{}`), 0o644))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "cf-ip.json"), []byte(`{}`), 0o644))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "cf-dns.json"), []byte(`{}`), 0o644))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "dnspod.json"), []byte(`{}`), 0o644))
+
+	require.NoError(t, os.MkdirAll(filepath.Join(dir, "dnspod"), 0o755))
+	require.NoError(t, os.MkdirAll(filepath.Join(dir, "cf-dns"), 0o755))
+
+	// DNSPod 多域名：文件名 example.com.conf，domain 字段为空 → key=example.com。
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "dnspod", "example.com.conf"),
+		[]byte(`{"enabled":true,"domain":"example.com","mode":"single","ip_file":"./assets/data/dnspod-dns/example.com/ip.txt"}`), 0o644))
+	// 文件名 foo.conf，但 domain=bar.com → key 应被覆盖为 bar.com。
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "dnspod", "foo.conf"),
+		[]byte(`{"enabled":true,"domain":"bar.com","mode":"single","ip_file":"./a/b.txt"}`), 0o644))
+	// CFDNS 多域名。
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "cf-dns", "example.org.conf"),
+		[]byte(`{"enabled":true,"api":{"token":"t","zone_id":"z"},"dns":{"domain":"example.org"},"ip_source":{"file_path":"./assets/data/cf-dns/example.org/ip.txt"}}`), 0o644))
+
+	cfg, err := LoadFresh(dir)
+	require.NoError(t, err)
+
+	// 单值与多域名共存。
+	require.NotNil(t, cfg.DNSPod)
+	require.NotNil(t, cfg.CFDNS)
+
+	// DNSPod 多域名 key 取自文件名。
+	require.Contains(t, cfg.DNSPodDomains, "example.com")
+	// domain 字段覆盖 key。
+	require.Contains(t, cfg.DNSPodDomains, "bar.com")
+	require.NotContains(t, cfg.DNSPodDomains, "foo", "domain 字段应覆盖文件名为 key")
+	// CFDNS 多域名。
+	require.Contains(t, cfg.CFDNSDomains, "example.org")
+
+	// 输出型路径规整为 .iplist。
+	assert.Equal(t, "./assets/data/dnspod-dns/example.com/ip.iplist", cfg.DNSPodDomains["example.com"].IPFilePath)
+	assert.Equal(t, "./a/b.iplist", cfg.DNSPodDomains["bar.com"].IPFilePath)
+	assert.Equal(t, "./assets/data/cf-dns/example.org/ip.iplist", cfg.CFDNSDomains["example.org"].IPSource.FilePath)
+
+	// UnifiedGlobalBestFile 默认值归一。
+	assert.Equal(t, DefaultGlobalBestIPFile, cfg.DNSPodDomains["example.com"].UnifiedGlobalBestFile)
+}
+
+// TestLoadFresh_IPListNormalization 验证：输出型 IP 源路径规整为 .iplist，
+// 但输入型 speed_test.ip_file（cfst -f）保持不变。
+// 为避免手写 JSON 字面量引入不可见字符，此处用结构体经 json.Marshal 生成配置。
+func TestLoadFresh_IPListNormalization(t *testing.T) {
+	dir := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "global.json"), []byte(`{}`), 0o644))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "cf-ip.json"), []byte(`{}`), 0o644))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "cf-dns.json"), []byte(`{}`), 0o644))
+
+	// 构造 DNSPod 配置（含 isp_lines 多线路），经 json.Marshal 落盘，避免手写 JSON 编码问题。
+	type ipSrc struct {
+		Files map[string]string `json:"files"`
+	}
+	dp := DNSPodConfig{
+		Enabled:    true,
+		SecretID:   "s",
+		SecretKey:  "k",
+		Domain:     "x",
+		Mode:       "isp_lines",
+		IPFilePath: "./single.txt",
+		ISP: map[string]ISPConf{
+			"default_line": {
+				IPSource: ipSrc{Files: map[string]string{"default": "./x/default.txt"}},
+			},
+			"unicom": {
+				IPSource:  ipSrc{Files: map[string]string{"unicom": "./x/unicom.txt"}},
+				SpeedTest: &ISPSpeedTestConfig{Colo: "HKG", IPFile: "./x/unicom.ip.txt"},
+			},
+		},
+	}
+	dpJSON, err := json.Marshal(dp)
+	require.NoError(t, err)
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "dnspod.json"), dpJSON, 0o644))
+
+	cfg, err := LoadFresh(dir)
+	require.NoError(t, err)
+
+	// 输出型：单线路 ip_file 与各 isp ip_source.files 均改写为 .iplist。
+	assert.Equal(t, "./single.iplist", cfg.DNSPod.IPFilePath, "单线路输出 ip_file 应改写 .iplist")
+	assert.Equal(t, "./x/default.iplist", cfg.DNSPod.ISP["default_line"].IPSource.Files["default"])
+	assert.Equal(t, "./x/unicom.iplist", cfg.DNSPod.ISP["unicom"].IPSource.Files["unicom"])
+	// 输入型：speed_test.ip_file（cfst -f）保持不变。
+	assert.Equal(t, "./x/unicom.ip.txt", cfg.DNSPod.ISP["unicom"].SpeedTest.IPFile, "输入型 speed_test.ip_file 不应被改写")
+
+	// GlobalBestFile 默认值归一。
+	assert.Equal(t, DefaultGlobalBestIPFile, cfg.CFIP.Paths.GlobalBestFile)
+}
+
+// TestLoadFresh_ConfExampleNotLoaded 验证 .conf.example 等模板不会被当作多域名配置加载。
+func TestLoadFresh_ConfExampleNotLoaded(t *testing.T) {
+	dir := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "global.json"), []byte(`{}`), 0o644))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "cf-ip.json"), []byte(`{}`), 0o644))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "cf-dns.json"), []byte(`{}`), 0o644))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "dnspod.json"), []byte(`{}`), 0o644))
+	require.NoError(t, os.MkdirAll(filepath.Join(dir, "dnspod"), 0o755))
+	// 模板文件（扩展名非 .conf）应被忽略。
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "dnspod", "example.com.conf.example"),
+		[]byte(`{"enabled":true,"domain":"example.com"}`), 0o644))
+
+	cfg, err := LoadFresh(dir)
+	require.NoError(t, err)
+	assert.Empty(t, cfg.DNSPodDomains, ".conf.example 模板不应被加载")
+}

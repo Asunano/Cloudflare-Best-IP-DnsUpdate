@@ -71,7 +71,59 @@ go build -o cfopt-go .      # 产出 cfopt-go（或 cfopt-go.exe）
 ./cfopt-go schedule install|start|stop|status   # 守护进程（系统服务）管理
 ```
 
-### 3.3 IPC / serve 模式（供 GUI 与冒烟测试）
+### 3.3 安装（Install）与卸载（Uninstall）
+
+`cfopt install` / `cfopt uninstall` 采用**便携优先、系统级可选**的二态设计。
+
+#### 便携 vs 系统级对照表
+
+| 维度 | 便携模式（默认 `cfopt install`） | 系统级模式（`cfopt install --system`） |
+|---|---|---|
+| 二进制落点 | 当前二进制所在目录（可用 `--dir` 显式指定） | `%LOCALAPPDATA%\cfopt`（Win）/ `/usr/local/bin`（其他） |
+| 配置目录 | `dir/conf`（与默认 `--config-dir=conf` 从 `dir` 运行天然对齐） | 全局 `--config-dir`（默认 `conf`，cwd 相对） |
+| 全局命令（PATH/软链） | **不写** | 写用户级 PATH / 软链 |
+| 调度（系统服务） | **不注册**（`--schedule` 被忽略并提示） | `--schedule` 时注册并启动（默认每 6 小时） |
+| cfst 落点 | `dir/assets/cfst` | `dir/assets/cfst` |
+| 卸载 | 删除便携目录即干净退出 | 停止调度 → 移除全局命令 → 删除安装目录（可选全清配置） |
+| 互斥 | `--system` 优先于 `--dir`（忽略 `--dir` 并警告） | — |
+
+#### 常用安装/卸载命令
+
+```bash
+# 便携（默认）：二进制 + conf 骨架 + cfst 同目录落盘，不写系统目录
+cfopt-go install
+cfopt-go install --dir ./myportable     # 显式便携目录（沙箱/临时目录可端到端验证）
+
+# 系统级：自安置 + 用户级 PATH（+ 可选常驻调度）
+cfopt-go install --system
+cfopt-go install --system --schedule
+
+# 卸载
+cfopt-go uninstall                       # 便携：删当前二进制目录（默认防误删，Confirm 默认 No）
+cfopt-go uninstall --dir ./myportable --force   # 便携强制删目录
+cfopt-go uninstall --system              # 系统级：清 PATH 与调度（可选全清配置）
+```
+
+#### 标志说明
+
+- `--dir <路径>`：便携目标目录（仅便携模式有意义）；缺省取**当前二进制所在目录**。
+- `--system`：显式走系统级行为（自安置 + 写 PATH）。与 `--dir` 互斥，以 `--system` 为准并忽略 `--dir` 且警告。
+- `--schedule`：仅系统级生效，注册并启动常驻调度；便携模式传此标志会被**忽略并提示**（Q-C1）。
+- `--force`：跳过确认直接执行（适合脚本/CI）；卸载默认防误删（Confirm 默认 No）。
+
+#### Windows GUI 推荐提示
+
+在 **Windows** 下运行 `cfopt install`（含便携默认）与无参主菜单 `cfopt` 时，会打印一句纯 CLI 提示，引导优先使用 GUI 版本：
+
+> 💡 提示：在 Windows 上，推荐直接使用图形界面（GUI）版本完成安装与部署……您当前使用的是命令行（CLI）模式。
+
+非 Windows 不打印该提示（避免噪音）。该提示**不改任何 IPC/GUI 契约**；GUI 向导本身为前端后续项，本次仅在 CLI 侧输出文案。
+
+#### 便携 `conf` 默认路径含义
+
+`cfopt` 默认 `--config-dir=conf`（相对当前工作目录）。便携安装时 `cfgDir = dir/conf`，故**从便携目录 `dir` 直接运行 `cfopt`** 即可自动发现 `dir/conf/global.json` 等配置，无需额外参数——实现真正的「下载即用、删目录即走」。
+
+### 3.4 IPC / serve 模式（供 GUI 与冒烟测试）
 
 GUI 启动时会自动拉起 `serve`。你也可以手动拉起，用它测试 13 个 IPC 方法。
 

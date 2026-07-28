@@ -70,9 +70,11 @@ try {
     exit 1
   }
 
-  # Read every response line within a 3s window (covers sync.run progress events
-  # which the server interleaves before the final result on the same connection).
-  $ns.ReadTimeout = 3000
+  # Read every response line within a 180s window. speedtest.run / sync.run invoke
+  # cfst which can take 30s~2min (download speed test), so a short timeout would
+  # return before the server sends the final JSON-RPC result. Quick commands
+  # (ping/version) still return immediately when the server closes the connection.
+  $ns.ReadTimeout = 180000
   try {
     while ($true) {
       $line = $sr.ReadLine()

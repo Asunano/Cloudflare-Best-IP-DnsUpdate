@@ -69,6 +69,34 @@ cfopt
 
 首次运行时，系统会**智能引导**您完成各模块的配置。
 
+### 便携安装（推荐，默认不写系统目录）
+
+Go 重写版 `cfopt-go` 的 `cfopt install` **默认便携**：把二进制、配置骨架（`conf/`）与 cfst 测速二进制全部放在**同一目录**，不写 PATH、不写注册表、不自复制到系统目录。**删掉该目录即干净卸载**，无任何系统残留。
+
+```bash
+# 在任意目录运行（二进制所在目录即便携目录）
+cfopt install
+# 或显式指定便携目标目录（便于沙箱/临时目录验证）
+cfopt install --dir /path/to/portable
+# 卸载：删除该目录即干净退出
+cfopt uninstall            # 默认删当前二进制所在目录
+cfopt uninstall --dir /path/to/portable --force
+```
+
+> 💡 便携模式**不注册系统调度**（`--schedule` 会被忽略并提示改用 `cfopt install --system --schedule`）。Windows 用户推荐直接用 GUI 版本（基于 Tauri，自动封装本命令行核心），操作更直观。
+
+### 系统级安装（写全局命令，可选常驻调度）
+
+需要全局命令与常驻调度时，显式加 `--system`：二进制自安置到标准目录并写入用户级 PATH（`--schedule` 可注册并启动系统服务）。`--system` 与 `--dir` 互斥，以 `--system` 为准。
+
+```bash
+cfopt install --system                 # 自安置 + 写 PATH
+cfopt install --system --schedule      # 另注册并启动计划任务（默认每 6 小时）
+cfopt uninstall --system               # 清理 PATH 与调度（默认保留配置，可选全清）
+```
+
+> ⚠️ 当前终端/CLI 双形态用法与测试细节见 [`cfopt-go/README.md`](cfopt-go/README.md)。
+
 ---
 
 ## 🎯 功能模块

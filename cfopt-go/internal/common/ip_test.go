@@ -43,3 +43,31 @@ func TestValidateIP(t *testing.T) {
 		assert.Error(t, ValidateIP(ip), "期望拒绝非法 IP: %q", ip)
 	}
 }
+
+// TestValidateIP_SpecialAndLeadingZero 覆盖 P1-7 新增的拒绝项：
+// 回环 / 多播 / 链路本地 / 前导零。
+func TestValidateIP_SpecialAndLeadingZero(t *testing.T) {
+	invalid := []struct {
+		ip   string
+		desc string
+	}{
+		{"127.0.0.1", "回环地址"},
+		{"127.255.255.254", "回环地址段 127.0.0.0/8"},
+		{"224.0.0.1", "多播地址"},
+		{"239.255.255.255", "多播地址段 224.0.0.0/4"},
+		{"169.254.0.1", "链路本地地址 169.254.0.0/16"},
+		{"169.254.255.255", "链路本地地址上限"},
+		{"192.168.001.1", "前导零：001"},
+		{"01.02.03.04", "前导零：每段均带前导零"},
+		{"10.0.0.01", "前导零：末段 01"},
+	}
+	for _, c := range invalid {
+		assert.Error(t, ValidateIP(c.ip), "期望拒绝%s: %q", c.desc, c.ip)
+	}
+
+	// 否定用例：无前导零的合法地址应放行。
+	valid := []string{"192.168.1.1", "10.0.0.1", "100.200.10.20"}
+	for _, ip := range valid {
+		assert.NoError(t, ValidateIP(ip), "期望合法 IP 通过: %q", ip)
+	}
+}

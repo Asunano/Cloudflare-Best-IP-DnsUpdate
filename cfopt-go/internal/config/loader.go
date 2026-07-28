@@ -65,6 +65,11 @@ func loadDir(dir string) (*Config, error) {
 		return nil, common.Wrap("config:load dnspod.json", err)
 	}
 
+	// 多域名：扫描 conf/dnspod/*.conf 与 conf/cf-dns/*.conf（JSON 内容、扩展名 .conf），
+	// key 默认取文件名去 .conf，文件内 domain 字段非空以其为准。与单值 dnspod.json/cf-dns.json 共存。
+	cfg.DNSPodDomains = scanDNSPodConfDir(dir)
+	cfg.CFDNSDomains = scanCFDNSConfDir(dir)
+
 	// T-D：增量读取 modules.json（扩展钩子），additive，完全不触碰 cf/dnspod 分支。
 	// 文件不存在时跳过（可选）；其余错误（如 JSON 语法错误）向上返回。
 	if raw, mErr := os.ReadFile(filepath.Join(dir, "modules.json")); mErr == nil {
@@ -79,6 +84,65 @@ func loadDir(dir string) (*Config, error) {
 
 	applyDefaults(cfg)
 	return cfg, nil
+}
+
+// scanDNSPodConfDir 扫描 dir/dnspod 下所有 *.conf（JSON 内容），返回 map[域名]*DNSPodConfig。
+// key 取文件名去 .conf；若文件内 domain 字段非空，以其为准。可选目录缺失/读取失败则跳过该文件。
+// 注意：仅匹配 .conf 扩展名，.conf.example 等模板不会被加载。
+func scanDNSPodConfDir(dir string) map[string]*DNSPodConfig {
+	out := make(map[string]*DNSPodConfig)
+	entries, err := os.ReadDir(filepath.Join(dir, "dnspod"))
+	if err != nil {
+		return out // 目录缺失（可选）则视为无多域名配置
+	}
+	for _, e := range entries {
+		if e.IsDir() || !strings.HasSuffix(e.Name(), ".conf") {
+			continue
+		}
+		data, rerr := os.ReadFile(filepath.Join(dir, "dnspod", e.Name()))
+		if rerr != nil {
+			continue
+		}
+		var v DNSPodConfig
+		if jerr := json.Unmarshal(data, &v); jerr != nil {
+			continue
+		}
+		key := strings.TrimSuffix(e.Name(), ".conf")
+		if strings.TrimSpace(v.Domain) != "" {
+			key = v.Domain
+		}
+		out[key] = &v
+	}
+	return out
+}
+
+// scanCFDNSConfDir 扫描 dir/cf-dns 下所有 *.conf（JSON 内容），返回 map[域名]*CFDNSConfig。
+// 规则同 scanDNSPodConfDir（key 取文件名，文件内 dns.domain 非空以其为准）。
+func scanCFDNSConfDir(dir string) map[string]*CFDNSConfig {
+	out := make(map[string]*CFDNSConfig)
+	entries, err := os.ReadDir(filepath.Join(dir, "cf-dns"))
+	if err != nil {
+		return out
+	}
+	for _, e := range entries {
+		if e.IsDir() || !strings.HasSuffix(e.Name(), ".conf") {
+			continue
+		}
+		data, rerr := os.ReadFile(filepath.Join(dir, "cf-dns", e.Name()))
+		if rerr != nil {
+			continue
+		}
+		var v CFDNSConfig
+		if jerr := json.Unmarshal(data, &v); jerr != nil {
+			continue
+		}
+		key := strings.TrimSuffix(e.Name(), ".conf")
+		if strings.TrimSpace(v.DNS.Domain) != "" {
+			key = v.DNS.Domain
+		}
+		out[key] = &v
+	}
+	return out
 }
 
 // readJSON 泛型读取并解析 JSON 文件为 T。
@@ -143,6 +207,8 @@ func applyDefaults(cfg *Config) {
 		if cfg.CFDNS.IPSource.FilePath == "" {
 			cfg.CFDNS.IPSource.FilePath = "./assets/data/cf-dns/ip_list.iplist"
 		}
+		// 输出型 IP 源路径规整为 .iplist（防 .txt 误解析）；不动 speed_test.ip_file。
+		cfg.CFDNS.IPSource.FilePath = normalizeIPListExt(cfg.CFDNS.IPSource.FilePath)
 	}
 
 	if cfg.DNSPod != nil {
@@ -158,7 +224,65 @@ func applyDefaults(cfg *Config) {
 		if cfg.DNSPod.MaxRetries == 0 {
 			cfg.DNSPod.MaxRetries = 5
 		}
+		// 输出型 IP 源路径规整为 .iplist。
+		cfg.DNSPod.IPFilePath = normalizeIPListExt(cfg.DNSPod.IPFilePath)
+		for k, isp := range cfg.DNSPod.ISP {
+			for fk, f := range isp.IPSource.Files {
+				isp.IPSource.Files[fk] = normalizeIPListExt(f)
+			}
+			cfg.DNSPod.ISP[k] = isp
+		}
+		// 统一子域 global_best 文件默认值归一（空则 DefaultGlobalBestIPFile）。
+		if cfg.DNSPod.UnifiedGlobalBestFile == "" {
+			cfg.DNSPod.UnifiedGlobalBestFile = DefaultGlobalBestIPFile
+		}
 	}
+
+	// 多域名 DNSPod：逐域规整输出型路径（IPFilePath + 各 isp ip_source.files）+ 统一子域默认值。
+	for _, d := range cfg.DNSPodDomains {
+		if d == nil {
+			continue
+		}
+		d.IPFilePath = normalizeIPListExt(d.IPFilePath)
+		for k, isp := range d.ISP {
+			for fk, f := range isp.IPSource.Files {
+				isp.IPSource.Files[fk] = normalizeIPListExt(f)
+			}
+			d.ISP[k] = isp
+		}
+		if d.UnifiedGlobalBestFile == "" {
+			d.UnifiedGlobalBestFile = DefaultGlobalBestIPFile
+		}
+	}
+
+	// 多域名 CFDNS：逐域规整输出型路径。
+	for _, d := range cfg.CFDNSDomains {
+		if d == nil {
+			continue
+		}
+		d.IPSource.FilePath = normalizeIPListExt(d.IPSource.FilePath)
+	}
+
+	if cfg.CFIP != nil {
+		// 全局最优 IP 文件路径默认值归一（空则 DefaultGlobalBestIPFile）。
+		if cfg.CFIP.Paths.GlobalBestFile == "" {
+			cfg.CFIP.Paths.GlobalBestFile = DefaultGlobalBestIPFile
+		}
+	}
+}
+
+// normalizeIPListExt 将输出型 IP 源路径规整为 .iplist 扩展名（仅改写扩展名，保留目录与基名）。
+// 空串原样返回；已是 .iplist 原样返回；其余（.txt/.csv 等）替换为 .iplist。
+// 注意：仅供输出型路径使用，输入型 speed_test.ip_file 不应调用本函数。
+func normalizeIPListExt(p string) string {
+	if p == "" {
+		return p
+	}
+	if filepath.Ext(p) == ".iplist" {
+		return p
+	}
+	base := strings.TrimSuffix(p, filepath.Ext(p))
+	return base + ".iplist"
 }
 
 // validateConfigSchema 做字段存在性/类型/数值范围校验，返回结构化错误。
@@ -221,6 +345,15 @@ func validateConfigSchema(cfg *Config) error {
 		if mode == "isp_lines" && len(cfg.DNSPod.ISP) == 0 {
 			errs = append(errs, "dnspod.mode=isp_lines 但未配置 isp_lines")
 		}
+		// DeleteMode 校验：空视为 none；非空必须在白名单内。
+		if dm := strings.TrimSpace(cfg.DNSPod.DeleteMode); dm != "" {
+			switch dm {
+			case "none", "unified", "unified-non-default":
+			default:
+				errs = append(errs, fmt.Sprintf("dnspod.delete_mode 非法: %q (应为 none|unified|unified-non-default)", cfg.DNSPod.DeleteMode))
+			}
+		}
+		// SpeedTestPerISP 为布尔，无需范围校验；空按 false 处理（applyDefaults 已规整）。
 	}
 
 	if len(errs) > 0 {

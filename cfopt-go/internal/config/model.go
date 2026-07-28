@@ -4,6 +4,9 @@ package config
 
 import "encoding/json"
 
+// DefaultGlobalBestIPFile 全局最优 IP 文件默认路径（强制 .iplist 落盘，防 .txt 误解析）。
+const DefaultGlobalBestIPFile = "./assets/data/cf-ip/best.iplist"
+
 // ===== 全局配置（global.json） =====
 
 // GlobalConfig 系统级设置。
@@ -58,6 +61,8 @@ type SpeedTestConfig struct {
 type PathConfig struct {
 	OutputDir string `json:"output_dir"`
 	LogDir    string `json:"log_dir"`
+	// GlobalBestFile 全局最优 IP 文件路径（由 sync 阶段强制 .iplist 落盘，供 global_best 统一子域模式读取）。
+	GlobalBestFile string `json:"global_best_file,omitempty"`
 }
 
 // CFIPConfig Cloudflare IP 优选配置。
@@ -66,7 +71,7 @@ type CFIPConfig struct {
 	CFST      CFSTConfig      `json:"cfst"`
 	SpeedTest SpeedTestConfig `json:"speed_test"`
 	Paths     PathConfig      `json:"paths"`
-	// CFSTPath 可选：显式覆盖 cfst 二进制路径，优先级高于 assets/cfst/<goos>-<goarch> 探测。
+	// CFSTPath 可选：显式覆盖 cfst 二进制路径，优先级高于 assets/cfst/cfst[.exe] 探测。
 	CFSTPath string `json:"cfst_path,omitempty"`
 }
 
@@ -112,6 +117,15 @@ type CFDNSConfig struct {
 
 // ===== DNSPod 配置（dnspod.json） =====
 
+// ISPSpeedTestConfig 单运营商线路的独立测速参数（mode=isp_lines 且 speed_test_per_isp=true 时使用）。
+// 字段与 CFSTConfig 对应子集对齐，供 buildPerLineCFIP 合并进全局 CFIP 配置。
+type ISPSpeedTestConfig struct {
+	Colo           string `json:"colo,omitempty"`            // 地区码，逗号分隔，如 "HKG,NRT"
+	Threads        int    `json:"threads,omitempty"`         // 线程数（下限保护 >=1）
+	DisableDownload bool  `json:"disable_download,omitempty"` // 关闭下载测速
+	IPFile         string `json:"ip_file,omitempty"`         // 指定 IP 数据文件（覆盖全局默认拉取）
+}
+
 // ISPConf 单运营商线路配置（多运营商分流 mode=isp_lines 时使用）。
 type ISPConf struct {
 	Domains  []string `json:"domains"`
@@ -119,6 +133,8 @@ type ISPConf struct {
 		// Files: key=运营商(默认/联通/移动/电信) → IP 文件路径（.iplist/.csv/.txt）。
 		Files map[string]string `json:"files"`
 	} `json:"ip_source"`
+	// SpeedTest 该线路独立测速参数（可选；缺省时回退全局 CFIP 测速配置）。
+	SpeedTest *ISPSpeedTestConfig `json:"speed_test,omitempty"`
 }
 
 // DNSPodConfig DNSPod DNS 同步配置。
@@ -136,11 +152,21 @@ type DNSPodConfig struct {
 	MaxIPsPerRecord  int               `json:"max_ips_per_record"`
 	SubDomain        string            `json:"sub_domain"`
 	SubDomainUnified string            `json:"sub_domain_unified"`
+	// SubDomainUnifiedMode 统一子域取 IP 的模式："first_line"（默认，取 DefaultLine/首线路 IP）| "global_best"（取全局最优 IP 文件首行）。
+	SubDomainUnifiedMode string `json:"sub_domain_unified_mode,omitempty"`
+	// UnifiedGlobalBestFile 统一子域 global_best 模式读取的全局最优 IP 文件（空则归一到 DefaultGlobalBestIPFile）。
+	UnifiedGlobalBestFile string `json:"unified_global_best_file,omitempty"`
 	SubDomains       map[string]string `json:"sub_domains"` // 线路名 → 子域名
 	IPFilePath       string            `json:"ip_file"`
 	LogDir           string            `json:"log_dir"`
 	Timeout          int               `json:"timeout"`
 	MaxRetries       int               `json:"max_retries"`
+
+	// 多线路增强字段（mode=isp_lines 时使用）
+	DefaultLine    string            `json:"default_line,omitempty"`    // 统一子域取该线路 IP；空则取首线路
+	TTLByLine      map[string]int    `json:"ttl_by_line,omitempty"`     // 线路名 → TTL 覆盖
+	DeleteMode     string            `json:"delete_mode,omitempty"`     // none|unified|unified-non-default，空→none
+	SpeedTestPerISP bool             `json:"speed_test_per_isp,omitempty"` // 是否按线路独立测速
 }
 
 // Config 聚合全部配置。
@@ -151,6 +177,12 @@ type Config struct {
 	CFIP   *CFIPConfig                      `json:"cf_ip,omitempty"`
 	CFDNS  *CFDNSConfig                     `json:"cf_dns,omitempty"`
 	DNSPod *DNSPodConfig                    `json:"dnspod,omitempty"`
+	// DNSPodDomains 多域名配置：key=域名（默认取文件名去 .conf，文件内 domain 非空以其为准），
+	// 值同单值 DNSPodConfig 结构（仍走 isp_lines 多线路）。Domains 非空时 registry 遍历各域名（Enabled 过滤），
+	// 否则回退单值 DNSPod。
+	DNSPodDomains map[string]*DNSPodConfig `json:"dnspod_domains,omitempty"`
+	// CFDNSDomains 多域名配置：结构与 DNSPodDomains 同理（单值 CFDNS）。
+	CFDNSDomains map[string]*CFDNSConfig `json:"cf_dns_domains,omitempty"`
 	// Modules 扩展钩子：各外部 DNS 提供方（如 aliyun）的自有配置。
 	// 由 loadDir 从 modules.json 增量读取填充；config 包不感知具体 provider 结构
 	// （因 config 严禁 import internal/dns，新 provider 的校验下沉到模块自身）。

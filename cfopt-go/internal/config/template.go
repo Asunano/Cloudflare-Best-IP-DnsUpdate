@@ -45,7 +45,7 @@ const (
     "all_ip": false
   },
   "speed_test": {
-    "take_ip_num": 5,
+    "take_ip_num": 2,
     "max_retry": 3,
     "output_html": true,
     "enable_log": true
