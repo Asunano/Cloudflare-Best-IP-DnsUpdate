@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"strings"
@@ -92,8 +93,8 @@ func newUpdateCmd() *cobra.Command {
 				NoVerify: noVerify,
 				Timeout:  timeout,
 			}
-			if err := up.DownloadAndReplace(ctx, currentBin, info, opts); err != nil {
-				return fmt.Errorf("update: 替换二进制: %w", err)
+			if err := runUpdateGuarded(up, ctx, currentBin, info, opts); err != nil {
+				return err
 			}
 			fmt.Printf("已更新到 v%s\n", info.Version)
 			return nil
@@ -156,9 +157,21 @@ func runCheckUpdate() error {
 		return fmt.Errorf("update: 获取当前二进制路径: %w", err)
 	}
 	opts := update.Options{Timeout: 60 * time.Second}
-	if err := up.DownloadAndReplace(ctx, currentBin, info, opts); err != nil {
-		return fmt.Errorf("update: 替换二进制: %w", err)
+	if err := runUpdateGuarded(up, ctx, currentBin, info, opts); err != nil {
+		return err
 	}
 	fmt.Printf("已更新到 v%s\n", info.Version)
+	return nil
+}
+
+// runUpdateGuarded 经防更新循环保护执行自更新；对 ErrUpdateLoop 给出友好提示。
+func runUpdateGuarded(up *update.Updater, ctx context.Context, currentBin string, info *update.ReleaseInfo, opts update.Options) error {
+	err := update.RunGuarded(up, ctx, currentBin, info, opts)
+	if err != nil {
+		if errors.Is(err, update.ErrUpdateLoop) {
+			return fmt.Errorf("update: 防更新循环保护已触发: %w", err)
+		}
+		return fmt.Errorf("update: 替换二进制: %w", err)
+	}
 	return nil
 }

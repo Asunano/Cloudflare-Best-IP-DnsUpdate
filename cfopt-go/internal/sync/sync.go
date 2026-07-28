@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"cfopt/internal/common"
 	"cfopt/internal/config"
@@ -336,17 +337,40 @@ func accumulate(summary *SyncSummary, res *dns.SyncResult) {
 	}
 }
 
-// runSpeedtest 执行一次测速；若失败则自动重测一次（对应原 sync.sh auto_retry_test）。
+// runSpeedtest 执行一次测速；若失败则按 cfg.CFIP.SpeedTest.MaxRetry 自动重测
+// （对应原 sync.sh auto_retry_test，配置项 cf-ip.speed_test.max_retry，默认 3，范围 1-10）。
+// maxRetry 表示总尝试次数（含首次）；重测之间做指数退避（封顶 30s）。
 func (s *Syncer) runSpeedtest(ctx context.Context, cfg *config.Config) ([]speedtest.SpeedResult, error) {
-	results, err := s.tester.Run(ctx, cfg.CFIP)
-	if err != nil {
-		common.Warn("sync: 测速失败，尝试自动重测一次", "err", err.Error())
-		results, err = s.tester.Run(ctx, cfg.CFIP)
-		if err != nil {
-			return nil, err
+	maxRetry := 1
+	if cfg != nil && cfg.CFIP != nil {
+		if mr := cfg.CFIP.SpeedTest.MaxRetry; mr > 0 {
+			maxRetry = mr
 		}
 	}
-	return results, nil
+
+	var lastErr error
+	for attempt := 1; attempt <= maxRetry; attempt++ {
+		results, err := s.tester.Run(ctx, cfg.CFIP)
+		if err == nil {
+			return results, nil
+		}
+		lastErr = err
+		if attempt < maxRetry {
+			common.Warn("sync: 测速失败，准备重测", "attempt", attempt, "max_retry", maxRetry, "err", err.Error())
+			backoff := time.Duration(attempt) * 5 * time.Second
+			if backoff > 30*time.Second {
+				backoff = 30 * time.Second
+			}
+			select {
+			case <-ctx.Done():
+				return nil, ctx.Err()
+			case <-time.After(backoff):
+			}
+		} else {
+			common.Warn("sync: 测速失败且已达最大重测次数", "attempt", attempt, "max_retry", maxRetry, "err", err.Error())
+		}
+	}
+	return nil, lastErr
 }
 
 // writeBestIPs 将最优 IP 列表写入各选中模块的 IP 源文件（模块未声明文件或路径为空则跳过）。

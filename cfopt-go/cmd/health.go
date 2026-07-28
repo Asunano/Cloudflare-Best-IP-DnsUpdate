@@ -281,11 +281,20 @@ func checkSchtasksExists() bool {
 	return err == nil && strings.Contains(string(out), "CFOPT_Sync")
 }
 
+// crontabHasCfopt 判断给定 crontab 内容中是否包含 cfopt 调度条目。
+// 与 installCronSchedule / uninstallCronSchedule 使用同一标记 "schedule run --once"。
+func crontabHasCfopt(content string) bool {
+	return strings.Contains(content, "schedule run --once")
+}
+
 // checkCrontabExists 检查是否存在 cfopt 相关的 crontab 条目。
 func checkCrontabExists() bool {
-	// 读取 crontab 检查是否有 cfopt 条目
-	// 使用 crontab -l 命令
-	return false // 简化实现：仅通过健康检测的 autoFix 来修复
+	out, err := exec.Command("crontab", "-l").Output()
+	if err != nil {
+		// 无 crontab（crontab -l 非零退出）或 crontab 不可用，视为不存在。
+		return false
+	}
+	return crontabHasCfopt(string(out))
 }
 
 // checkHistoryErrors 检查 history.jsonl 中是否有最近错误。
@@ -465,7 +474,7 @@ func doFix(issues []healthIssue, idx int) bool {
 		}
 		// 都失败：打印具体原因，引导 crontab 备选
 		fmt.Println()
-		fmt.Println("  提示：系统服务安装失败，便携模式可尝试备选调度：")
+		fmt.Println("  提示：系统服务安装失败，便携模式可尝试备选调度（crontab 定时任务）：")
 		if runtime.GOOS == "windows" {
 			fmt.Println("    cfopt schedule install-schtasks")
 		} else {

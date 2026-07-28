@@ -264,7 +264,7 @@ func (dnspodModule) Sync(ctx context.Context, cfg *config.Config) (*SyncResult, 
 		return res, nil
 	}
 	if cfg.DNSPod != nil && cfg.DNSPod.Enabled {
-		r, err := NewDNSPodProvider(cfg.DNSPod).Sync(ctx, cfg.DNSPod)
+		r, err := NewDNSPodProviderWithDataDir(cfg.DNSPod, ResolveDataDir(cfg)).Sync(ctx, cfg.DNSPod)
 		mergeSyncResult(res, r)
 		if err != nil {
 			res.Errors = append(res.Errors, "dnspod:"+err.Error())
@@ -274,7 +274,7 @@ func (dnspodModule) Sync(ctx context.Context, cfg *config.Config) (*SyncResult, 
 		if d == nil || !d.Enabled {
 			continue
 		}
-		r, err := NewDNSPodProvider(d).Sync(ctx, d)
+		r, err := NewDNSPodProviderWithDataDir(d, ResolveDataDir(cfg)).Sync(ctx, d)
 		mergeSyncResult(res, r)
 		if err != nil {
 			res.Errors = append(res.Errors, "dnspod:"+err.Error())

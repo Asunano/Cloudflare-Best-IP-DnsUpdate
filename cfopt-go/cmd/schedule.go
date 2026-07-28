@@ -77,9 +77,75 @@ func newScheduleCmd() *cobra.Command {
 				return uninstallSchtasks()
 			},
 		},
+		panelCronCmd,
 	)
 	return cmd
 }
+
+// showPanelCron 打印宝塔/1Panel 面板可用的调度命令（含操作说明与提示）。
+// 频率由面板自身设置，因此只输出脚本命令本身（无 crontab 表达式前缀）。
+func showPanelCron(binPath string) error {
+	script, err := buildPanelCronScript(binPath)
+	if err != nil {
+		return err
+	}
+	fmt.Println("面板调度命令生成器 (宝塔 / 1Panel)")
+	fmt.Println()
+	fmt.Println("操作说明：")
+	fmt.Println("  1. 在面板中选择【计划任务】->【添加任务】->【Shell 脚本】")
+	fmt.Println("  2. 设置好执行周期（如每天 3:00）")
+	fmt.Println("  3. 将下方「脚本内容」复制粘贴到输入框中")
+	fmt.Println()
+	fmt.Println("--- 脚本内容 (直接复制整行) ---")
+	fmt.Println(script)
+	fmt.Println("--------------------------------")
+	fmt.Println()
+	fmt.Printf("提示：请确保面板执行用户有权限访问 %s 目录。\n", filepath.Dir(binPathOrExec(binPath)))
+	return nil
+}
+
+// buildPanelCronScript 依据 cfopt 二进制路径生成面板调度命令。
+// 使用绝对路径并先 cd 到工作目录，确保默认 conf 配置被正确加载。
+func buildPanelCronScript(binPath string) (string, error) {
+	if binPath == "" {
+		if exe, err := os.Executable(); err == nil {
+			binPath = exe
+		} else {
+			return "", common.Wrap("panel-cron:exe", fmt.Errorf("无法获取当前二进制路径: %w", err))
+		}
+	}
+	workDir := filepath.Dir(binPath)
+	logPath := filepath.Join(workDir, "cfopt-cron.log")
+	return fmt.Sprintf("cd %s && %s schedule run --once >> %s 2>&1", workDir, binPath, logPath), nil
+}
+
+// binPathOrExec 返回用于提示的目录基准：显式给定就用给定路径，否则回退当前二进制所在目录。
+func binPathOrExec(binPath string) string {
+	if binPath != "" {
+		return binPath
+	}
+	if exe, err := os.Executable(); err == nil {
+		return exe
+	}
+	return "cfopt"
+}
+
+// panelCronCmd 构造 `cfopt schedule panel-cron` 子命令（面板调度命令生成器）。
+var panelCronCmd = &cobra.Command{
+	Use:   "panel-cron",
+	Short: "生成宝塔/1Panel 面板可粘贴的调度命令",
+	Long:  "输出一行 Shell 命令，可在宝塔/1Panel 的「计划任务 → Shell 脚本」中直接粘贴使用（面板自身设置执行周期）。",
+	RunE: func(c *cobra.Command, args []string) error {
+		return showPanelCron(panelCronBin)
+	},
+}
+
+func init() {
+	panelCronCmd.Flags().StringVar(&panelCronBin, "bin", "", "cfopt 二进制路径（默认自动探测）")
+}
+
+// panelCronBin 保存 --bin 标志值（供 panel-cron 子命令使用）。
+var panelCronBin string
 
 // runScheduleStatus 查询系统服务运行状态，并打印最近历史记录（供运维快速确认）。
 func runScheduleStatus() error {

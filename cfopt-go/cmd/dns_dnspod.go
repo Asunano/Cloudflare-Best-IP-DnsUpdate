@@ -42,7 +42,7 @@ func newDNSPodCmd() *cobra.Command {
 				cfg.DNSPod.DeleteMode = mode
 			}
 
-			prov := dns.NewDNSPodProvider(cfg.DNSPod)
+			prov := dns.NewDNSPodProviderWithDataDir(cfg.DNSPod, dns.ResolveDataDir(cfg))
 			res, err := prov.Sync(context.Background(), cfg.DNSPod)
 			if err != nil {
 				return common.Wrap("cmd:dns:dnspod:sync", err)

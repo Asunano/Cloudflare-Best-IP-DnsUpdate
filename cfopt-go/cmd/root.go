@@ -27,8 +27,8 @@ var rootCmd = &cobra.Command{
 	Long:          "cfopt 提供测速、DNS 同步、一键同步、调度 daemon 与配置管理能力。无参数运行时进入主菜单。",
 	SilenceUsage:  true,
 	SilenceErrors: false,
-	PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
-		common.InitLogger(logLevel)
+		PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
+		common.InitLogger(logLevel, filepath.Join(cfgDir, "logs", "cfopt.log"))
 		return nil
 	},
 	// 无参数运行即进入主菜单（问答循环）。
@@ -64,6 +64,7 @@ func init() {
 		newQuickdeployCmd(),
 		newUninstallCmd(),
 		newHealthCmd(),
+		newLogsCmd(),
 	)
 }
 

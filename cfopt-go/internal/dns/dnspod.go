@@ -34,6 +34,7 @@ type DNSPodProvider struct {
 	defaultLine string
 	subDomains map[string]string
 	baseURL    string // API 基地址（默认 dnspodBaseURL，可注入用于测试）
+	dataDir    string // 托管状态落盘目录（用于回收不再配置线路的孤儿记录）；空则不持久化/不清理
 }
 
 // 编译期接口实现断言：确保 DNSPodProvider 完整实现 LineAwareProvider。
@@ -95,7 +96,15 @@ func (p *DNSPodProvider) ListDomains(ctx context.Context) ([]string, error) {
 }
 
 // NewDNSPodProvider 从配置构造 DNSPodProvider。
+// NewDNSPodProvider 用 DNSPodConfig 构造提供方（dataDir 为空：不持久化托管状态，不回收孤儿记录）。
 func NewDNSPodProvider(cfg *config.DNSPodConfig) *DNSPodProvider {
+	return NewDNSPodProviderWithDataDir(cfg, "")
+}
+
+// NewDNSPodProviderWithDataDir 同 NewDNSPodProvider，但显式传入 dataDir：
+// 非空时会在每次同步后持久化「本域名被管理的线路 → 子域名」映射，并在线路被移除
+// （如切回单线路 / 删减 isp_lines）时自动回收对应孤儿 DNS 记录。
+func NewDNSPodProviderWithDataDir(cfg *config.DNSPodConfig, dataDir string) *DNSPodProvider {
 	timeout := cfg.Timeout
 	if timeout <= 0 {
 		timeout = 10
@@ -121,6 +130,7 @@ func NewDNSPodProvider(cfg *config.DNSPodConfig) *DNSPodProvider {
 		defaultLine: cfg.DefaultLine,
 		subDomains: cfg.SubDomains,
 		baseURL:    dnspodBaseURL,
+		dataDir:    dataDir,
 	}
 }
 
@@ -384,6 +394,10 @@ func (p *DNSPodProvider) Sync(ctx context.Context, cfg *config.DNSPodConfig) (*S
 	res.Created = lineRes.Created
 	res.Deleted = lineRes.Deleted
 	res.Errors = append(res.Errors, lineRes.Errors...)
+
+	// 回收不再配置的线路（孤儿记录）：仅清理此前由 cfopt 管理且当前 Lines() 不再包含的线路。
+	p.cleanupOrphanLines(ctx, resv, res)
+
 	return res, nil
 }
 

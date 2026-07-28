@@ -56,6 +56,7 @@ type InstallResult struct {
 	CFSTInstalled          bool        // cfst 已下载安装（落 Dir/assets/cfst）
 	ConfInit               bool        // conf 骨架已生成
 	ScheduleInstalled      bool        // 调度已注册（实际由 cmd 层 runSchedule 完成，此处记录意图）
+	RolledBack             bool        // 安装因致命错误已回滚已写入项
 	Warnings               []string    // 非致命告警（如网络体检失败、cfst 下载失败）
 	Errors                 []string    // 致命错误
 }
@@ -88,9 +89,12 @@ func validateInstallDir(dir string) error {
 		return common.Wrap("install:abspath", err)
 	}
 	absNorm := filepath.ToSlash(abs)
+	// 禁止危险目录：/tmp（世界可写、易失）与特殊文件系统 /dev /proc /sys。
+	// 仅做「精确根或前缀」匹配，去掉原先的 strings.Contains(bad+"/")，
+	// 否则会误伤 /home/user/proc/x 这类含 "proc/" 的普通路径。
 	forbidden := []string{"/tmp", "/dev", "/proc", "/sys"}
 	for _, bad := range forbidden {
-		if absNorm == bad || strings.HasPrefix(absNorm, bad+"/") || strings.Contains(absNorm, bad+"/") {
+		if absNorm == bad || strings.HasPrefix(absNorm, bad+"/") {
 			return fmt.Errorf("install: 安装目录非法（禁止 %s）: %s", bad, abs)
 		}
 	}
@@ -365,17 +369,34 @@ func RunInstall(ctx context.Context, opts InstallOptions) (*InstallResult, error
 		exeDir = filepath.Dir(exe)
 	}
 
+	// undos 记录已完成的「可逆」副作用，安装出现致命错误时逆序回滚。
+	// 仅回滚明确可逆的副作用（自安置二进制、全局命令），不回滚 conf/cfst 等幂等可恢复项，
+	// 以免误删用户已有配置。
+	var undos []func()
+
 	// 1) 自安置二进制。
 	// 便携模式：仅当目标目录与当前二进制目录不同才复制（同目录则跳过，二进制已在目录内）。
+	exeName := "cfopt"
+	if runtime.GOOS == "windows" {
+		exeName = "cfopt.exe"
+	}
+	dst := filepath.Join(opts.Dir, exeName)
 	if opts.Mode == ModePortable && opts.Dir == exeDir {
 		res.SelfPlaced = true // 二进制已在目标目录内，视为已安置（幂等）
 	} else {
 		if exeErr != nil {
 			res.Errors = append(res.Errors, "获取当前二进制路径失败: "+exeErr.Error())
-		} else if _, e := SelfPlace(exe, opts.Dir); e != nil {
-			res.Errors = append(res.Errors, "自安置失败: "+e.Error())
 		} else {
-			res.SelfPlaced = true
+			dstExisted := existsPath(dst)
+			if _, e := SelfPlace(exe, opts.Dir); e != nil {
+				res.Errors = append(res.Errors, "自安置失败: "+e.Error())
+			} else {
+				res.SelfPlaced = true
+				// 仅当二进制此前不存在时才登记回滚，避免删除用户原有二进制。
+				if !dstExisted {
+					undos = append(undos, func() { _ = os.Remove(dst) })
+				}
+			}
 		}
 	}
 
@@ -386,6 +407,7 @@ func RunInstall(ctx context.Context, opts InstallOptions) (*InstallResult, error
 			res.Warnings = append(res.Warnings, "全局命令安装未完成（可稍后手动添加）: "+e.Error())
 		} else {
 			res.GlobalCommandInstalled = true
+			undos = append(undos, func() { _ = GlobalCommandRemover(opts.Dir, runtime.GOOS) })
 		}
 	} else {
 		res.GlobalCommandInstalled = false // 便携模式恒 false
@@ -415,7 +437,22 @@ func RunInstall(ctx context.Context, opts InstallOptions) (*InstallResult, error
 	if opts.WithSchedule {
 		res.ScheduleInstalled = true
 	}
+
+	// 回滚：出现致命错误时撤销已完成的自安置/全局命令，避免留下半成品状态。
+	if len(res.Errors) > 0 && len(undos) > 0 {
+		res.RolledBack = true
+		for i := len(undos) - 1; i >= 0; i-- {
+			undos[i]()
+		}
+		res.Warnings = append(res.Warnings, "安装失败，已回滚已写入项（二进制/全局命令），conf/cfst 等幂等项保留")
+	}
 	return res, nil
+}
+
+// existsPath 判断路径是否存在（用于回滚时判断是否曾创建二进制）。
+func existsPath(p string) bool {
+	_, err := os.Stat(p)
+	return err == nil
 }
 
 // RunUninstall 一键卸载（best-effort，不交互）。

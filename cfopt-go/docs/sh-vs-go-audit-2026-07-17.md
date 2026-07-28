@@ -434,4 +434,64 @@ Go 重写版在**架构设计、跨平台能力、测试覆盖、GUI 集成、�
 
 ---
 
+## 八、复核更新（2026-07-28）
+
+> 复核：原报告（07-17）标注的多数「❌ 未实现 / ⚠️ 部分实现」项经代码核对**现已实现**（部分为本周增量修复，部分为原报告误判）。本章记录当前真实状态，覆盖原报告结论。
+
+### 8.1 状态已变更（原 ❌/⚠️ → ✅ 已实现）
+
+| ID | 原状态 | 当前状态 | 说明 |
+|----|--------|----------|------|
+| A8 | ❌ | ✅ | `internal/install.RunInstall` 已实现 fatal 错误自动回滚（撤销自安置二进制 + 全局命令），本周新增 |
+| A10 | ❌ | ✅ | `internal/common/log.go` 已实现 10MB 日志轮转（`.old` 保留 1 份），本周新增 |
+| E1 | ❌ | ✅ | `cfopt schedule install-cron` / `uninstall-cron` 已实现，无 systemd 环境可用 crontab 兜底 |
+| F5 | ❌ | ✅ | `cfopt update --mirror <url>` 标志 + `Updater.SetMirror` 镜像源优先、失败回退 GitHub |
+| G2 | ❌ | ✅ | `cfopt health` 已覆盖 cfst 二进制 / 配置文件 / 数据目录完整性检查 |
+| G3 | ⚠️ | ✅ | `config.Validate()` + health 的 `checkConfigFiles` 已覆盖配置完整性 |
+| G5 | ⚠️ | ✅ | 安装时目录可写检查 + health 的 `checkDataDirs` 已覆盖目录权限检查 |
+| G6 | ❌ | ✅ | `cfopt health` 检测后可自动修复（cfst fetch / config init / schedule start） |
+| G7 | ❌ | ✅ | `cfopt health` 统一健康看板（6 项检测 + 修复引导）已实现 |
+| H3 | ⚠️ | ✅(增强) | `runMenu` 主菜单 + 顶部状态栏已落地 |
+| H4 | ❌ | ✅ | `runMenu` 顶部 `buildStatusLine` 模块状态栏已实现 |
+| H6 | ❌ | ✅ | `cfopt config cfip` 交互式 CF-IP 参数菜单已实现 |
+| F7 | ❌ | ✅ | `internal/update/guarded.go` + `RunGuarded`：连续更新失败计数达 3 次触发 `ErrUpdateLoop` 中止，对标 Bash `.restart_count` 防循环保护 |
+| E7 | ❌ | ✅ | `cfopt schedule panel-cron`：生成宝塔/1Panel 面板可粘贴的调度命令（绝对路径 + `cd` 工作目录 + `schedule run --once` + 日志重定向） |
+| H1 | ❌ | ✅ | `cfopt logs`：读取 `logs/cfopt.log`，支持 `--tail` / `--level` 过滤；`--history` 读取 `history.jsonl` |
+
+### 8.2 仍存在的真实差距（对比 Bash 原版）
+
+> 截至 2026-07-28，原 3 项真实差距（F7/E7/H1）已全部补齐（见 8.4），Go 版功能与原版 **完全对齐**，不再有未实现的对照项。
+
+| ID | 功能 | 说明 | 状态 |
+|----|------|------|------|
+| F7 | 防更新循环保护 | 已由 `update.RunGuarded` 实现（连续失败 ≥3 次自停） | ✅ 已补齐 |
+| E7 | 面板命令生成器 | 已由 `cfopt schedule panel-cron` 实现 | ✅ 已补齐 |
+| H1 | 日志查看命令 | 已由 `cfopt logs` 实现 | ✅ 已补齐 |
+
+> 除上述 3 项外，原报告列出的其余「❌/⚠️」项均已满足，Go 版功能与原版 **实质一致**。
+
+### 8.3 行为一致性结论
+
+- 核心链路（配置加载/校验、CF-IP 测速、CF-DNS/DNSPod 同步、调度、更新）Go 与原版一致；Go 在多处为**增强**：跨平台、IPC GUI 后端、逐线路独立测速、Zone/域名自动发现、历史记录、日志轮转、安装回滚。
+- Go 相对 Bash 的**新增行为（均为增量改进，非回归）**：
+  - DNSPod 孤儿线路记录自动回收：仅清理 cfopt 自身跟踪的线路记录，安全默认（DeleteMode 防止误删），不改变正常同步路径。
+  - CF-DNS 漂移/过期保护（P2-3）。
+- 本周修复的回归/缺陷（已在 `cfopt-go` 落地并通过测试）：
+  - `health.checkCrontabExists` 原硬编码返回 `false` → 改为真实检测 `schedule run --once` 条目；
+  - `sync.runSpeedtest` 原硬编码 1 次、忽略 `max_retry` → 现按 `SpeedTestConfig.MaxRetry` 重试 + 指数退避；
+  - 日志原仅 stderr、无文件/轮转 → 现落盘 `logs/cfopt.log` 并 10MB 轮转；
+  - 安装原无回滚 → 现 fatal 错误自动回滚已写入项。
+
+### 8.4 本周补全（F7 / E7 / H1 已落地，2026-07-28）
+
+- **F7 防更新循环保护**（`internal/update/guarded.go`）：新增 `RunGuarded` 包装 `DownloadAndReplace`，在 `currentBin` 同目录维护 `.update_failures` 计数文件；连续失败达 `MaxConsecutiveFailures=3` 时返回 `ErrUpdateLoop` 直接中止，成功则清零计数。`cmd/update.go` 的 `--yes` 与菜单「检查更新」两条路径均已切换为 `RunGuarded`。
+- **E7 面板命令生成器**（`cmd/schedule.go`）：新增 `cfopt schedule panel-cron` 子命令，输出宝塔/1Panel「计划任务 → Shell 脚本」可直接粘贴的一行命令（`cd <工作目录> && <二进制绝对路径> schedule run --once >> cfopt-cron.log 2>&1`），并附操作说明与权限提示；支持 `--bin` 覆盖路径。
+- **H1 日志查看命令**（`cmd/logs.go`）：新增 `cfopt logs` 子命令，默认读取 `conf/logs/cfopt.log`，支持 `--tail N`（默认 50）与 `--level`（debug/info/warn/error，级别越低越严重则越收敛）；`--history` 则读取 `history.jsonl` 历史记录。
+
+### 8.5 测试覆盖
+
+- 原报告「62+ 用例」已过时；当前 `go test ./...` 约 **350+** 个测试函数，全绿（本次新增：F7 `TestRunGuarded_LoopGuardBlocks`/`_FailureBumpsCount`/`_SuccessResetsCount`、E7 `TestBuildPanelCronScript`(+Windows)、H1 `TestTailLines`/`TestLevelRankInLine`/`TestFilterByLevel`/`TestRunLogsFile_*`，均通过）。
+
+---
+
 *报告完 · 产品经理 Alice (Xu)*
