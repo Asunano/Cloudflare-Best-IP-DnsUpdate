@@ -18,12 +18,12 @@ modules/**/*.lock
 # 部署版本特有的模块（原始仓库函数内联在 cfopt.sh 中）
 modules/install/
 
-# 运行时数据目录（测速结果、IP 列表等）
-assets/data/
+# 运行时数据目录（测速结果、IP 列表等，任意层级）
+**/assets/data/
 
 # cfst 程序二进制文件（sidecar，按 assets/cfst/cfst-<goos>-<goarch>[.exe] 探测，不入库）
 assets/cfst/cfst
-assets/cfst/cfst-*
+**/assets/cfst/cfst-*
 
 # 临时文件
 *.tmp
@@ -47,8 +47,10 @@ Thumbs.db
 # Tauri sidecar 二进制（由 scripts/setup-sidecar 生成，不入库）
 /tauri/binaries/
 
-# cfopt-go 运行时配置（用户自定义，含凭据，不入库）
-/cfopt-go/conf/*.json
+# cfopt-go 运行时配置（用户自定义，含凭据，不入库；保留 *.example 模板）
+/cfopt-go/conf/**/*.json
+/cfopt-go/conf/**/*.conf
+!/cfopt-go/conf/**/*.example
 # cfopt-go IPC 端口发现文件
 /cfopt-go/cfopt.ipc
 
