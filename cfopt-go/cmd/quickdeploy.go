@@ -101,8 +101,9 @@ func autoFetchCFST() bool {
 	}
 	fmt.Println("正在下载 cfst...")
 	_, err := cfst.Fetch(context.Background(), cfst.CFSTFetchOptions{
-		DestDir: destDir,
-		Timeout: 120 * time.Second,
+		DestDir:    destDir,
+		Timeout:    120 * time.Second,
+		AutoMirror: true,
 	})
 	if err != nil {
 		fmt.Printf("⚠ 下载 cfst 失败: %v\n", err)
@@ -315,6 +316,25 @@ func quickDeployCore(ctx context.Context, plan *deploy.DeployPlan, installSchedu
 	if err := deployWriteConfReload(plan); err != nil {
 		return false, err
 	}
+
+	// 部署记录持久化 + 重复部署检测（对应 Bash deploy_record.json）。
+	if deploy.IsDomainDeployed(cfgDir, plan.Domain) {
+		common.Warn("quickdeploy: 该域名此前已部署，本次将更新部署记录", "domain", plan.Domain)
+	}
+	if err := deploy.AppendDeployRecord(cfgDir, deploy.DeployRecord{
+		Provider:         plan.Provider,
+		Domain:           plan.Domain,
+		SubDomain:        plan.SubDomain,
+		ZoneID:           plan.ZoneID,
+		Lines:            plan.Lines,
+		Colo:             plan.Colo,
+		TakeIPNum:        plan.TakeIPNum,
+		ScheduleInterval: plan.ScheduleInterval,
+		ConfPath:         filepath.Join(plan.ConfSubDir(), plan.ConfFileName()),
+	}); err != nil {
+		common.Warn("quickdeploy: 写入部署记录失败", "err", err.Error())
+	}
+
 	// 首次测速 + 同步（失败仅告警，不阻断部署闭环）。
 	if _, err := syncRunner(ctx, cfgDir); err != nil {
 		common.Warn("quickdeploy: 首次同步未完成（可稍后 `cfopt sync` 重试）", "err", err.Error())

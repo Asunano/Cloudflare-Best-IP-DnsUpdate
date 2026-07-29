@@ -24,16 +24,21 @@ func runSyncAll() error {
 	if err != nil {
 		return common.Wrap("cmd:sync:build", err)
 	}
+	// F1：测速阶段渲染实时进度条（仅终端可见；nil 表示静默）。
+	syncer.SpeedtestProgress = renderSpeedtestProgress
 	// T15 单飞运行锁：防止并发 sync 重复测速/写 DNS（非阻塞 fast-fail）。
 	rel, lockErr := common.AcquireRunLock(common.RunLockName)
 	if lockErr != nil {
 		return common.New("cmd:sync:lock", "已有同步进程在运行（cfopt-sync-run）")
 	}
 	defer func() { _ = rel() }()
-	if _, err := syncer.SyncAll(context.Background(), cfg, nil); err != nil {
+	summary, err := syncer.SyncAll(context.Background(), cfg, nil)
+	if err != nil {
 		return common.Wrap("cmd:sync", err)
 	}
-	fmt.Println("sync: 完成")
+	fmt.Printf("sync: 完成 (最优IP=%d updated=%d created=%d deleted=%d)\n",
+		summary.BestIPCount, summary.Updated, summary.Created, summary.Deleted)
+	printWarnings(summary.Warnings)
 	return nil
 }
 
@@ -65,15 +70,20 @@ func runSyncSingle(modID, domain string) error {
 	if err != nil {
 		return common.Wrap("cmd:sync:build", err)
 	}
+	// F1：测速阶段渲染实时进度条。
+	syncer.SpeedtestProgress = renderSpeedtestProgress
 	// 单飞运行锁：防止并发 sync 重复测速/写 DNS（非阻塞 fast-fail）。
 	rel, lockErr := common.AcquireRunLock(common.RunLockName)
 	if lockErr != nil {
 		return common.New("cmd:sync:lock", "已有同步进程在运行（cfopt-sync-run）")
 	}
 	defer func() { _ = rel() }()
-	if _, err := syncer.SyncAll(context.Background(), cfg, nil, modID); err != nil {
+	summary, err := syncer.SyncAll(context.Background(), cfg, nil, modID)
+	if err != nil {
 		return common.Wrap("cmd:sync:single", err)
 	}
-	fmt.Printf("sync: %s 同步完成\n", domain)
+	fmt.Printf("sync: %s 同步完成 (updated=%d created=%d deleted=%d)\n",
+		domain, summary.Updated, summary.Created, summary.Deleted)
+	printWarnings(summary.Warnings)
 	return nil
 }

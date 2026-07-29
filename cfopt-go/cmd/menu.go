@@ -10,6 +10,11 @@ import (
 	"cfopt/internal/prompt"
 )
 
+// isDomainConfName 判断文件名是否为域名级配置文件（.conf 或 .json，Bash 版遗留用 .json）。
+func isDomainConfName(name string) bool {
+	return strings.HasSuffix(name, ".conf") || strings.HasSuffix(name, ".json")
+}
+
 // runMenu 主菜单循环（无参运行 cfopt 即进入）。非交互终端打印用法即退出，不阻塞。
 func runMenu() error {
 	// Windows 下推荐优先使用 GUI（纯 CLI 提示，不改 IPC/GUI 契约）。
@@ -70,11 +75,11 @@ func buildStatusLine() string {
 		parts = append(parts, "✗ CF-IP")
 	}
 
-	// 2) CF DNS：检查 conf/cf-dns/ 下是否有 .conf
+	// 2) CF DNS：检查 conf/cf-dns/ 下是否有 .conf 或 .json
 	hasCFDNS := false
 	if entries, err := os.ReadDir(filepath.Join(cfgDir, "cf-dns")); err == nil {
 		for _, e := range entries {
-			if !e.IsDir() && strings.HasSuffix(e.Name(), ".conf") {
+			if !e.IsDir() && isDomainConfName(e.Name()) {
 				hasCFDNS = true
 				break
 			}
@@ -86,11 +91,11 @@ func buildStatusLine() string {
 		parts = append(parts, "✗ CF DNS")
 	}
 
-	// 3) DNSPod：检查 conf/dnspod/ 下是否有 .conf
+	// 3) DNSPod：检查 conf/dnspod/ 下是否有 .conf 或 .json
 	hasDNSPod := false
 	if entries, err := os.ReadDir(filepath.Join(cfgDir, "dnspod")); err == nil {
 		for _, e := range entries {
-			if !e.IsDir() && strings.HasSuffix(e.Name(), ".conf") {
+			if !e.IsDir() && isDomainConfName(e.Name()) {
 				hasDNSPod = true
 				break
 			}
@@ -278,10 +283,10 @@ func runSyncSingleSelect() error {
 			continue
 		}
 		for _, e := range entries {
-			if e.IsDir() || !strings.HasSuffix(e.Name(), ".conf") {
+			if e.IsDir() || !isDomainConfName(e.Name()) {
 				continue
 			}
-			domain := strings.TrimSuffix(e.Name(), ".conf")
+			domain := strings.TrimSuffix(strings.TrimSuffix(e.Name(), ".conf"), ".json")
 			options = append(options, domainOption{
 				provider: p.label,
 				domain:   domain,

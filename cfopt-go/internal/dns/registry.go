@@ -258,7 +258,7 @@ func (dnspodModule) IPSourceFiles(cfg *config.Config) []string {
 }
 
 // Sync 遍历单值 dnspod 与各启用域名，逐域名调用 NewDNSPodProvider(d).Sync（内部仍走 isp_lines 多线路），累计结果。
-func (dnspodModule) Sync(ctx context.Context, cfg *config.Config) (*SyncResult, error) {
+func (m dnspodModule) Sync(ctx context.Context, cfg *config.Config) (*SyncResult, error) {
 	res := &SyncResult{}
 	if cfg == nil {
 		return res, nil
@@ -295,6 +295,7 @@ func mergeSyncResult(dst *SyncResult, src *SyncResult) {
 	dst.Created += src.Created
 	dst.Deleted += src.Deleted
 	dst.Errors = append(dst.Errors, src.Errors...)
+	dst.Warnings = append(dst.Warnings, src.Warnings...)
 }
 
 // ---- PerLineSpeedtester 实现（逐线路独立测速） ----

@@ -305,6 +305,10 @@ func (p *CloudflareProvider) Sync(ctx context.Context, cfg *config.CFDNSConfig) 
 		common.Info("cf: 模块未启用，跳过同步")
 		return res, nil
 	}
+	// F3/F4：IP 源文件前置检测（过期警告 + 数量剧变警告），非阻断；结果并入 res.Warnings。
+	if warns := CheckIPSources([]string{cfg.IPSource.FilePath}, IPSourceCheckOpts{}); len(warns) > 0 {
+		res.Warnings = append(res.Warnings, warns...)
+	}
 	ipFile := cfg.IPSource.FilePath
 	if strings.TrimSpace(ipFile) == "" {
 		return res, common.New("cf:sync", "未配置 ip_source.file_path")

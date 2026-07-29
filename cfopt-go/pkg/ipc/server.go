@@ -41,9 +41,10 @@ type SyncService interface {
 	Run(ctx context.Context, onProgress sync.ProgressFunc, providers ...string) (*sync.SyncSummary, error)
 }
 
-// SpeedtestService 测速能力。
+// SpeedtestService 测速能力。onProgress 为可选测速进度回调（可为 nil），
+// 实现方应在解析到 cfst "X / Y" 进度时调用，供 GUI 推送 speedtest.progress 事件。
 type SpeedtestService interface {
-	Run(ctx context.Context) ([]speedtest.SpeedResult, error)
+	Run(ctx context.Context, onProgress speedtest.ProgressFunc) ([]speedtest.SpeedResult, error)
 }
 
 // HistoryService 历史记录读取能力。
@@ -197,7 +198,7 @@ func (s *Server) dispatch(enc *json.Encoder, req Request, reqID int64) (interfac
 	case "sync.run":
 		return s.handleSyncRun(ctx, enc, req, reqID)
 	case "speedtest.run":
-		return s.handleSpeedtestRun(ctx)
+		return s.handleSpeedtestRun(ctx, enc, req, reqID)
 	case "history.list":
 		// params 可选：提供 n 则使用；缺省（nil/空）沿用默认 n = 20。
 		n := 20
@@ -272,8 +273,21 @@ func (s *Server) handleSyncRun(ctx context.Context, enc *json.Encoder, req Reque
 // handleSpeedtestRun 执行测速；与 CLI `cfopt speedtest --output` 默认行为一致，
 // 在返回结果的同时把最优 IP 补写一份 .iplist 文件（路径同 CLI 默认：<output_dir>/best_ips.iplist）。
 // 写文件失败仅告警，不影响结果返回（IPC 首要契约是返回测速结果）。
-func (s *Server) handleSpeedtestRun(ctx context.Context) (interface{}, error) {
-	results, err := s.svc.Speedtest.Run(ctx)
+func (s *Server) handleSpeedtestRun(ctx context.Context, enc *json.Encoder, req Request, reqID int64) (interface{}, error) {
+	onProgress := func(stage string, cur, total int) {
+		_ = enc.Encode(Event{
+			JSONRPC: ProtocolVersion,
+			Method:  "speedtest.progress",
+			Params: ProgressEvent{
+				ReqID:   reqID,
+				Phase:   stage,
+				Cur:     cur,
+				Total:   total,
+				Message: stage,
+			},
+		})
+	}
+	results, err := s.svc.Speedtest.Run(ctx, onProgress)
 	if err != nil {
 		return nil, err
 	}

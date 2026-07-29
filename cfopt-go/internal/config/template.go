@@ -60,7 +60,7 @@ const (
 
 	cfdnsTemplate = `{
   "_comment": "Cloudflare DNS 更新模块配置 (Go 重写版)",
-  "enabled": true,
+  "enabled": false,
   "api": {
     "token": "your_api_token_here",
     "zone_id": "your_zone_id_here",
@@ -68,7 +68,7 @@ const (
     "max_retries": 5
   },
   "dns": {
-    "record_name": "your_dns_name_here",
+    "record_name": "",
     "domain": "",
     "max_ips_per_record": 2
   },

@@ -39,7 +39,7 @@ func (m *fakePerLineModule) SpeedtestJobs(cfg *config.Config) []dns.LineSpeedtes
 // taggedTester 返回固定 IP 的假测速器，便于区分「全局 best」与「per-line 结果」。
 type taggedTester struct{ ip string }
 
-func (t *taggedTester) Run(ctx context.Context, cfg *config.CFIPConfig) ([]speedtest.SpeedResult, error) {
+func (t *taggedTester) Run(ctx context.Context, cfg *config.CFIPConfig, progress speedtest.ProgressFunc) ([]speedtest.SpeedResult, error) {
 	return []speedtest.SpeedResult{{IP: t.ip, Latency: 10, Speed: 100, Colo: "HKG"}}, nil
 }
 func (t *taggedTester) ParseOutput(path string) ([]speedtest.SpeedResult, error) { return nil, nil }

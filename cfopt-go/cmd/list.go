@@ -6,8 +6,10 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"cfopt/internal/common"
+	"cfopt/internal/deploy"
 	"cfopt/internal/prompt"
 )
 
@@ -43,10 +45,10 @@ func runListConfigs() error {
 			continue
 		}
 		for _, e := range dirEntries {
-			if e.IsDir() || !strings.HasSuffix(e.Name(), ".conf") {
+			if e.IsDir() || !isDomainConfName(e.Name()) {
 				continue
 			}
-			domain := strings.TrimSuffix(e.Name(), ".conf")
+			domain := strings.TrimSuffix(strings.TrimSuffix(e.Name(), ".conf"), ".json")
 			entries = append(entries, domainEntry{
 				provider: p.label,
 				domain:   domain,
@@ -65,8 +67,20 @@ func runListConfigs() error {
 
 	// 非交互终端：打印表格列表后返回
 	if !prompt.IsInteractive() {
+		records, _ := deploy.ReadDeployRecords(cfgDir)
+		deployAt := make(map[string]time.Time)
+		for _, r := range records {
+			k := strings.ToLower(r.Domain)
+			if t, ok := deployAt[k]; !ok || r.CreatedAt.After(t) {
+				deployAt[k] = r.CreatedAt
+			}
+		}
 		for i, e := range entries {
-			fmt.Printf("  %d) %-12s %s\n", i+1, e.provider, e.domain)
+			atStr := "—"
+			if at, ok := deployAt[strings.ToLower(e.domain)]; ok && !at.IsZero() {
+				atStr = at.Format("2006-01-02 15:04")
+			}
+			fmt.Printf("  %d) %-12s %-24s 部署: %s\n", i+1, e.provider, e.domain, atStr)
 		}
 		fmt.Printf("  共 %d 个域名\n", len(entries))
 		fmt.Println()
@@ -157,6 +171,16 @@ func displayConfDetail(entry domainEntry) error {
 		}
 		if v, ok := raw["mode"]; ok {
 			fmt.Printf("  模式:    %v\n", v)
+		}
+	}
+
+	// 部署时间（若有部署记录）
+	if recs, rerr := deploy.ReadDeployRecords(cfgDir); rerr == nil {
+		for _, r := range recs {
+			if strings.EqualFold(r.Domain, entry.domain) {
+				fmt.Printf("  部署时间: %s\n", r.CreatedAt.Format("2006-01-02 15:04:05"))
+				break
+			}
 		}
 	}
 

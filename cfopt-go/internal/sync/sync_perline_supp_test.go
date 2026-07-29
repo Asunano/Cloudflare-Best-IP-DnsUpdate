@@ -42,7 +42,7 @@ type multiLineTaggedTester struct {
 	ipByLine map[string]string
 }
 
-func (t *multiLineTaggedTester) Run(_ context.Context, cfg *config.CFIPConfig) ([]speedtest.SpeedResult, error) {
+func (t *multiLineTaggedTester) Run(_ context.Context, cfg *config.CFIPConfig, _ speedtest.ProgressFunc) ([]speedtest.SpeedResult, error) {
 	line := lineFromOutputDir(cfg.Paths.OutputDir)
 	ip := t.ipByLine[line]
 	if ip == "" {

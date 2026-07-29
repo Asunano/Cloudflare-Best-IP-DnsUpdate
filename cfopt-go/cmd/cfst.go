@@ -24,24 +24,26 @@ func newCFSTCmd() *cobra.Command {
 // newCFSTFetchCmd 构造 `cfopt cfst fetch` 子命令：从官方 release 下载并安装 cfst。
 func newCFSTFetchCmd() *cobra.Command {
 	var (
-		repo    string
-		dest    string
-		timeout time.Duration
-		goos    string
-		goarch  string
-		mirror  string
+		repo           string
+		dest           string
+		timeout        time.Duration
+		goos           string
+		goarch         string
+		mirror         string
+		autoMirror     bool
 	)
 	cmd := &cobra.Command{
 		Use:   "fetch",
 		Short: "下载并安装 cfst 二进制（SHA256 校验）",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			opts := cfst.CFSTFetchOptions{
-				Repo:    repo,
-				DestDir: dest,
-				Timeout: timeout,
-				Goos:    goos,
-				Goarch:  goarch,
-				Mirror:  mirror,
+				Repo:     repo,
+				DestDir:  dest,
+				Timeout:  timeout,
+				Goos:     goos,
+				Goarch:   goarch,
+				Mirror:   mirror,
+				AutoMirror: autoMirror,
 			}
 			if opts.Goos == "" {
 				opts.Goos = runtime.GOOS
@@ -63,5 +65,6 @@ func newCFSTFetchCmd() *cobra.Command {
 	cmd.Flags().StringVar(&goos, "os", "", "目标操作系统（默认当前 GOOS）")
 	cmd.Flags().StringVar(&goarch, "arch", "", "目标架构（默认当前 GOARCH，仅支持 amd64/arm64）")
 	cmd.Flags().StringVar(&mirror, "mirror", "", "镜像源 URL（优先从镜像下载 cfst，失败回退 GitHub）")
+	cmd.Flags().BoolVar(&autoMirror, "auto-mirror", true, "智能镜像：按地区自动启用 gh-proxy 加速（中国地区默认开启）")
 	return cmd
 }

@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"cfopt/internal/common"
+	"cfopt/internal/geo"
 	"cfopt/internal/update"
 )
 
@@ -39,6 +40,7 @@ type CFSTFetchOptions struct {
 	Insecure bool          // 仅测试/调试：允许 http 下载
 	APIBase  string        // 可选：覆盖 update.Updater 的 API 基地址（测试注入 httptest）
 	Mirror   string        // 镜像源 URL，优先从该地址下载（失败回退 GitHub）
+	AutoMirror bool // 智能镜像：按客户端地区自动启用 gh-proxy 加速（默认关闭，需显式开启）
 }
 
 // Fetch 从官方 release 下载并安装 cfst 二进制，返回安装后的绝对路径。
@@ -76,6 +78,12 @@ func Fetch(ctx context.Context, opts CFSTFetchOptions) (string, error) {
 	if opts.Mirror != "" {
 		up.SetMirror(opts.Mirror)
 	}
+	// 智能镜像：显式开启时，按客户端地区自动决定是否走 gh-proxy 代理（中国地区加速下载）。
+	up.EnableAutoMirror = opts.AutoMirror
+	up.ResolveAutoMirror(ctx)
+	if up.ProxyPrefix != "" {
+		common.Info("cfst:fetch: 检测到中国地区，已启用镜像代理加速下载", "proxy", up.ProxyPrefix)
+	}
 	up.Insecure = opts.Insecure
 	up.Client.Timeout = opts.Timeout
 
@@ -104,14 +112,22 @@ func Fetch(ctx context.Context, opts CFSTFetchOptions) (string, error) {
 			opts.Goos, opts.Goarch, cfstReleaseBase, opts.DestDir))
 	}
 
-	// 下载到临时文件。
+	// 下载到临时文件。智能镜像兜底（geo.WithMirrorFallback）：直连失败自动回退 gh-proxy 重试，
+	// 避免中国网络直连 GitHub 超时卡死。cfst.Fetch 已按需设置 up.EnableAutoMirror。
 	tmp, err := os.CreateTemp("", "cfst-fetch-*")
 	if err != nil {
 		return "", common.Wrap("cfst:fetch:tmp", err)
 	}
 	tmpName := tmp.Name()
 	defer func() { _ = os.Remove(tmpName) }()
-	if _, err := up.Download(ctx, asset.URL, tmpName); err != nil {
+	if opts.AutoMirror {
+		if err := geo.WithMirrorFallback(ctx, asset.URL, opts.Timeout, func(c context.Context, url string) error {
+			_, e := up.Download(c, url, tmpName)
+			return e
+		}); err != nil {
+			return "", common.Wrap("cfst:fetch:download", err)
+		}
+	} else if _, err := up.Download(ctx, asset.URL, tmpName); err != nil {
 		return "", common.Wrap("cfst:fetch:download", err)
 	}
 

@@ -10,6 +10,73 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+// TestLoadFresh_DomainJSON 验证多域名配置兼容 .json 扩展名（Bash 版遗留配置）。
+func TestLoadFresh_DomainJSON(t *testing.T) {
+	dir := t.TempDir()
+	require.NoError(t, os.MkdirAll(filepath.Join(dir, "dnspod"), 0o755))
+	writeFiles(t, dir, map[string]string{
+		"global.json": `{}`,
+		"cf-ip.json":  `{}`,
+		"cf-dns.json": `{}`,
+		"dnspod.json": `{}`,
+		"dnspod/example.com.json": `{"enabled":true,"domain":"example.com","mode":"single","secret_id":"sid","secret_key":"sk","ip_file":"./a.iplist"}`,
+	})
+	cfg, err := LoadFresh(dir)
+	require.NoError(t, err)
+	d, ok := cfg.DNSPodDomains["example.com"]
+	require.True(t, ok, "应能从 .json 域名配置加载")
+	require.NotNil(t, d)
+	assert.Equal(t, "example.com", d.Domain)
+}
+
+// TestLoadFresh_DomainConfPriority 验证同 stem 同时存在 .conf 与 .json 时优先 .conf。
+func TestLoadFresh_DomainConfPriority(t *testing.T) {
+	dir := t.TempDir()
+	require.NoError(t, os.MkdirAll(filepath.Join(dir, "dnspod"), 0o755))
+	writeFiles(t, dir, map[string]string{
+		"global.json": `{}`,
+		"cf-ip.json":  `{}`,
+		"cf-dns.json": `{}`,
+		"dnspod.json": `{}`,
+		"dnspod/same.conf": `{"enabled":true,"domain":"from-conf","mode":"single","secret_id":"a","secret_key":"b","ip_file":"./a.iplist"}`,
+		"dnspod/same.json": `{"enabled":true,"domain":"from-json","mode":"single","secret_id":"a","secret_key":"b","ip_file":"./a.iplist"}`,
+	})
+	cfg, err := LoadFresh(dir)
+	require.NoError(t, err)
+	_, okConf := cfg.DNSPodDomains["from-conf"]
+	_, okJSON := cfg.DNSPodDomains["from-json"]
+	assert.True(t, okConf, ".conf 应胜出")
+	assert.False(t, okJSON, ".json 应被 .conf 覆盖")
+}
+
+// TestLoadFresh_DomainCFJSON 验证 cf-dns 多域名 .json 也被扫描加载。
+func TestLoadFresh_DomainCFJSON(t *testing.T) {
+	dir := t.TempDir()
+	require.NoError(t, os.MkdirAll(filepath.Join(dir, "cf-dns"), 0o755))
+	writeFiles(t, dir, map[string]string{
+		"global.json": `{}`,
+		"cf-ip.json":  `{}`,
+		"cf-dns.json": `{}`,
+		"dnspod.json": `{}`,
+		"cf-dns/example.org.json": `{"enabled":true,"api":{"token":"t","zone_id":"z"},"dns":{"record_name":"@","domain":"example.org"},"ip_source":{"file_path":"./a.iplist"}}`,
+	})
+	cfg, err := LoadFresh(dir)
+	require.NoError(t, err)
+	d, ok := cfg.CFDNSDomains["example.org"]
+	require.True(t, ok, "应能从 .json 加载 CF 多域名配置")
+	assert.Equal(t, "example.org", d.DNS.Domain)
+}
+
+// writeFiles 将多个配置文件写入临时目录（自动创建父目录），返回目录路径。
+func writeFiles(t *testing.T, dir string, files map[string]string) {
+	t.Helper()
+	for name, content := range files {
+		p := filepath.Join(dir, name)
+		require.NoError(t, os.MkdirAll(filepath.Dir(p), 0o755))
+		require.NoError(t, os.WriteFile(p, []byte(content), 0o644))
+	}
+}
+
 // writeConf 将多个配置文件写入临时目录，返回目录路径。
 func writeConf(t *testing.T, files map[string]string) string {
 	t.Helper()

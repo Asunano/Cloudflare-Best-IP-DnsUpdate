@@ -443,8 +443,9 @@ func doFix(issues []healthIssue, idx int) bool {
 		ctx, cancel := context.WithTimeout(context.Background(), 120*time.Second)
 		defer cancel()
 		_, err := cfst.Fetch(ctx, cfst.CFSTFetchOptions{
-			DestDir: destDir,
-			Timeout: 120 * time.Second,
+			DestDir:    destDir,
+			Timeout:    120 * time.Second,
+			AutoMirror: true,
 		})
 		if err == nil {
 			issues[idx].Status = "ok"

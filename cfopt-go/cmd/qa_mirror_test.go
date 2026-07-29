@@ -63,11 +63,23 @@ func TestNewCFSTFetchCmd_otherFlags(t *testing.T) {
 	parent := newCFSTCmd()
 	cmd := parent.Commands()[0]
 
-	requiredFlags := []string{"repo", "dest", "timeout", "os", "arch", "mirror"}
+	requiredFlags := []string{"repo", "dest", "timeout", "os", "arch", "mirror", "auto-mirror"}
 	for _, name := range requiredFlags {
 		if cmd.Flags().Lookup(name) == nil {
 			t.Errorf("cfst fetch 命令应注册 --%s 标志", name)
 		}
+	}
+}
+
+// TestNewUpdateCmd_autoMirrorFlag 验证 `cfopt update` 注册了 --auto-mirror 标志。
+func TestNewUpdateCmd_autoMirrorFlag(t *testing.T) {
+	cmd := newUpdateCmd()
+	flag := cmd.Flags().Lookup("auto-mirror")
+	if flag == nil {
+		t.Fatal("update 命令应注册 --auto-mirror 标志")
+	}
+	if flag.DefValue != "true" {
+		t.Errorf("--auto-mirror 默认值应为 true，实际 %q", flag.DefValue)
 	}
 }
 

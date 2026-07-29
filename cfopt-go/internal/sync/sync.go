@@ -28,6 +28,8 @@ type Syncer struct {
 	registry             *dns.Registry
 	history              history.HistoryStore
 	perLineTesterFactory func(*config.CFIPConfig) (speedtest.SpeedTester, error)
+	// SpeedtestProgress 可选测速进度回调（CLI 渲染进度条 / GUI 推送事件），可为 nil。
+	SpeedtestProgress speedtest.ProgressFunc
 }
 
 // NewSyncer 构造 Syncer。registry 通常由 BuildSyncerFromConfig 内部用 dns.BuiltinModules 构建。
@@ -70,6 +72,7 @@ type SyncSummary struct {
 	Created     int      `json:"created"`       // 各 Provider 累计新建的记录数
 	Deleted     int      `json:"deleted"`       // 各 Provider 累计删除的记录数
 	Errors      []string `json:"errors"`        // 各阶段累积的错误描述
+	Warnings    []string `json:"warnings"`      // 各阶段累积的非阻断告警
 }
 
 // ProgressFunc 进度回调：phase 为阶段名，cur/total 为已完成/总阶段计数。
@@ -177,6 +180,13 @@ func (s *Syncer) SyncAll(ctx context.Context, cfg *config.Config, onProgress Pro
 			}
 			common.Info("sync: 全局最优 IP 已落盘", "path", gp, "count", len(best))
 		}
+
+		// 按域名独立测速（增量）：为配置了 SpeedTestColo 的 CF 域名覆盖其各自 IP 文件。
+		// 无域名配置 colo 时为空操作，行为与今日完全一致（零回归）。
+		if err := s.runPerDomainSpeedtest(ctx, cfg); err != nil {
+			common.Warn("sync: 按域名独立测速失败（不影响其余流程）", "err", err.Error())
+			summary.Errors = append(summary.Errors, "perdomain: "+err.Error())
+		}
 	} else if len(perLineMods) > 0 {
 		common.Info("sync: 全部为逐线路模块，跳过全局测速与 writeBestIPs（避免覆盖 per-line 各自文件）")
 	}
@@ -195,7 +205,7 @@ func (s *Syncer) SyncAll(ctx context.Context, cfg *config.Config, onProgress Pro
 			if err != nil {
 				return summary, common.Wrap("sync:perline:tester:"+job.Line, err)
 			}
-			results, err := tester.Run(ctx, cfip)
+			results, err := tester.Run(ctx, cfip, s.SpeedtestProgress)
 			if err != nil {
 				summary.Errors = append(summary.Errors, "perline:"+job.Line+": "+err.Error())
 				return summary, common.Wrap("sync:perline:"+job.Line, err)
@@ -324,7 +334,7 @@ func (s *Syncer) writeIPListToFiles(best []ipsource.IPRecord, files []string) er
 	return nil
 }
 
-// accumulate 将单次 Sync 结果累加到汇总中（计数相加、错误合并）。
+// accumulate 将单次 Sync 结果累加到汇总中（计数相加、错误合并、告警合并）。
 func accumulate(summary *SyncSummary, res *dns.SyncResult) {
 	if summary == nil || res == nil {
 		return
@@ -334,6 +344,9 @@ func accumulate(summary *SyncSummary, res *dns.SyncResult) {
 	summary.Deleted += res.Deleted
 	if len(res.Errors) > 0 {
 		summary.Errors = append(summary.Errors, res.Errors...)
+	}
+	if len(res.Warnings) > 0 {
+		summary.Warnings = append(summary.Warnings, res.Warnings...)
 	}
 }
 
@@ -350,7 +363,7 @@ func (s *Syncer) runSpeedtest(ctx context.Context, cfg *config.Config) ([]speedt
 
 	var lastErr error
 	for attempt := 1; attempt <= maxRetry; attempt++ {
-		results, err := s.tester.Run(ctx, cfg.CFIP)
+		results, err := s.tester.Run(ctx, cfg.CFIP, s.SpeedtestProgress)
 		if err == nil {
 			return results, nil
 		}
@@ -386,6 +399,91 @@ func (s *Syncer) writeBestIPs(cfg *config.Config, best []ipsource.IPRecord, modu
 		}
 	}
 	return nil
+}
+
+// cfDomainSpeedtestJob 单个 CF 域名的独立测速任务（按 SpeedTestColo 覆盖测速地区）。
+type cfDomainSpeedtestJob struct {
+	Domain string   // 域名（用于输出目录隔离与日志）
+	Colo   string   // 覆盖的测速地区（逗号分隔）
+	Files  []string // 测速结果应写入的 IP 文件（该域名的 ip_source.file_path）
+}
+
+// cfDomainColoJobs 收集启用 CF 域名中配置了 SpeedTestColo 者（需要独立测速）。
+// 无 colo 的域名复用全局测速结果，不进入此列表。
+func cfDomainColoJobs(cfg *config.Config) []cfDomainSpeedtestJob {
+	var jobs []cfDomainSpeedtestJob
+	if cfg == nil {
+		return jobs
+	}
+	add := func(d *config.CFDNSConfig) {
+		if d != nil && d.Enabled && strings.TrimSpace(d.SpeedTestColo) != "" {
+			files := []string{d.IPSource.FilePath}
+			jobs = append(jobs, cfDomainSpeedtestJob{Domain: d.DNS.Domain, Colo: d.SpeedTestColo, Files: files})
+		}
+	}
+	add(cfg.CFDNS)
+	for _, d := range cfg.CFDNSDomains {
+		add(d)
+	}
+	return jobs
+}
+
+// runPerDomainSpeedtest 对配置了独立测速地区（SpeedTestColo）的 CF 域名，
+// 在主测速之后额外以该 colo 跑一次测速，并只覆写该域名的 IP 文件（增量、零回归）。
+// 全局测速（写所有域名共享 best）仍先执行，故无 colo 的域名保持原行为。
+// 单个域名测速失败仅记录告警，不中断整体 SyncAll。
+func (s *Syncer) runPerDomainSpeedtest(ctx context.Context, cfg *config.Config) error {
+	if cfg == nil || cfg.CFIP == nil {
+		return nil
+	}
+	jobs := cfDomainColoJobs(cfg)
+	if len(jobs) == 0 {
+		return nil
+	}
+	var firstErr error
+	for _, job := range jobs {
+		// 克隆全局 CFIP 配置，仅覆盖 colo；输出目录隔离避免 CSV/ip.txt 碰撞。
+		cfip := *cfg.CFIP
+		cfst := cfg.CFIP.CFST
+		cfst.Colo = job.Colo
+		cfip.CFST = cfst
+		if cfg.CFIP.Paths.OutputDir != "" {
+			cfip.Paths.OutputDir = filepath.Join(cfg.CFIP.Paths.OutputDir, "perdomain", sanitizeLine(job.Domain))
+		}
+		tester, terr := s.perLineTesterFactory(&cfip)
+		if terr != nil {
+			common.Warn("sync:perdomain: 构造测速器失败", "domain", job.Domain, "err", terr.Error())
+			if firstErr == nil {
+				firstErr = terr
+			}
+			continue
+		}
+		results, rerr := tester.Run(ctx, &cfip, s.SpeedtestProgress)
+		if rerr != nil {
+			common.Warn("sync:perdomain: 测速失败", "domain", job.Domain, "err", rerr.Error())
+			if firstErr == nil {
+				firstErr = rerr
+			}
+			continue
+		}
+		best := ExtractBestIPs(results, takeIPNum(cfg))
+		if len(best) == 0 {
+			common.Warn("sync:perdomain: 未提取到有效 IP", "domain", job.Domain)
+			if firstErr == nil {
+				firstErr = common.New("sync:perdomain:"+job.Domain, "未提取到有效 IP")
+			}
+			continue
+		}
+		if werr := s.writeIPListToFiles(best, job.Files); werr != nil {
+			common.Warn("sync:perdomain: 写入 IP 文件失败", "domain", job.Domain, "err", werr.Error())
+			if firstErr == nil {
+				firstErr = werr
+			}
+			continue
+		}
+		common.Info("sync: 按域名独立测速完成", "domain", job.Domain, "colo", job.Colo, "count", len(best))
+	}
+	return firstErr
 }
 
 // appendHistory 将一次 Sync 统计写入历史（成功/失败均记录）。

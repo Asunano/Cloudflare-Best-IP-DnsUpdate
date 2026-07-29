@@ -264,8 +264,37 @@ func fetchCloudflareRanges(ctx context.Context, dest string) error {
 	return nil
 }
 
+// checkDownloadURLReachable 在测速前校验下载 URL 连通性（对应 Bash cf-ip/core.sh 的预检）。
+// 两步合一：带 Range: bytes=0-1023 的 GET 既验证 HTTP 状态码（2xx/3xx 视为可达），
+// 也验证真实下载能力（仅取前 1KB，避免大文件传输）。返回 (reachable, err)：
+//   - reachable=false 且 err=nil：URL 不可达，调用方应跳过下载测速（仅延迟测速）。
+//   - err!=nil：预检自身出错（网络异常等），调用方应告警但继续。
+func checkDownloadURLReachable(ctx context.Context, url string) (bool, error) {
+	client := &http.Client{Timeout: 10 * time.Second}
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	if err != nil {
+		return false, common.Wrap("speedtest:precheck", err)
+	}
+	req.Header.Set("Range", "bytes=0-1023")
+
+	resp, err := client.Do(req)
+	if err != nil {
+		// 网络层不可达：非错误，仅提示跳过下载测速。
+		return false, nil
+	}
+	defer resp.Body.Close()
+	// 丢弃最多 1KB 响应体（Range 已限制），顺便验证可读取。
+	_, _ = io.CopyN(io.Discard, resp.Body, 1024)
+	if resp.StatusCode < 200 || resp.StatusCode >= 400 {
+		return false, nil
+	}
+	return true, nil
+}
+
 // Run 执行 cfst 测速，期间另起 goroutine 解析 \r 进度日志，最终返回解析结果。
-func (t *CFSTTester) Run(ctx context.Context, cfg *config.CFIPConfig) ([]SpeedResult, error) {
+// progress 为可选进度回调（nil 表示不关心）：每当解析到 cfst "X / Y" 进度时调用，
+// 供 CLI 渲染实时进度条 / GUI 推送 progress 事件。
+func (t *CFSTTester) Run(ctx context.Context, cfg *config.CFIPConfig, progress ProgressFunc) ([]SpeedResult, error) {
 	outputDir := cfg.Paths.OutputDir
 	if outputDir == "" {
 		outputDir = "assets/data/cf-ip"
@@ -280,7 +309,28 @@ func (t *CFSTTester) Run(ctx context.Context, cfg *config.CFIPConfig) ([]SpeedRe
 	if err != nil {
 		return nil, err
 	}
-	args := t.buildCmd(cfg, output)
+
+	// F2：下载测速前 URL 连通性预检（对应 Bash cf-ip/core.sh）。
+	// 未禁用下载且配置了 cfst.url 时，先校验可达性；不可达则本轮仅做延迟测速，
+	// 不阻断（告警后继续）。用局部副本改 DisableDownload，避免污染持久化配置。
+	runCfg := cfg
+	if !cfg.CFST.DisableDownload && strings.TrimSpace(cfg.CFST.URL) != "" {
+		common.Info("speedtest: 预检下载 URL 连通性", "url", cfg.CFST.URL)
+		ok, perr := checkDownloadURLReachable(ctx, strings.TrimSpace(cfg.CFST.URL))
+		if perr != nil {
+			common.Warn("speedtest: 下载 URL 预检出错，继续但下载测速可能失败", "err", perr.Error())
+		}
+		if !ok {
+			common.Warn("speedtest: 下载 URL 不可达，跳过下载测速（仅延迟测速）", "url", cfg.CFST.URL)
+			localCFST := cfg.CFST
+			localCFST.DisableDownload = true
+			cp := *cfg
+			cp.CFST = localCFST
+			runCfg = &cp
+		}
+	}
+
+	args := t.buildCmd(runCfg, output)
 	if ipFile != "" {
 		args = append(args, "-f", ipFile)
 	}
@@ -327,19 +377,26 @@ func (t *CFSTTester) Run(ctx context.Context, cfg *config.CFIPConfig) ([]SpeedRe
 			// 按 \r 切分（cfst 用 \r 覆盖进度行）
 			for _, seg := range strings.Split(line, "\r") {
 				seg = strings.TrimSpace(seg)
-				loc := progressRe.FindStringIndex(seg)
-				if loc == nil {
+				m := progressRe.FindStringSubmatch(seg)
+				if m == nil {
 					continue
 				}
 				// 防御误匹配日期片段（如 2026/07/16 的 "2026/07"）：
 				// 真实进度 "X / Y" 两端不会紧邻 '/'，而日期的年/月或月/日之间都会有 '/'.
-				if loc[0] > 0 && seg[loc[0]-1] == '/' {
+				idx := progressRe.FindStringIndex(seg)
+				if idx[0] > 0 && seg[idx[0]-1] == '/' {
 					continue
 				}
-				if loc[1] < len(seg) && seg[loc[1]] == '/' {
+				if idx[1] < len(seg) && seg[idx[1]] == '/' {
 					continue
 				}
-				common.Info("speedtest: 进度", "progress", seg[loc[0]:loc[1]])
+				cur, _ := strconv.Atoi(m[1])
+				total, _ := strconv.Atoi(m[2])
+				if progress != nil {
+					progress("speedtest", cur, total)
+				}
+				// F1：进度仅在 debug 级落日志，避免 info 级刷屏（实时条由回调渲染）。
+				common.Debug("speedtest: 进度", "progress", seg[idx[0]:idx[1]])
 			}
 		}
 	}()

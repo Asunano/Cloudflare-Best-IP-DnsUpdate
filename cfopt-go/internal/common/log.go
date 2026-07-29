@@ -1,6 +1,7 @@
 package common
 
 import (
+	"context"
 	"io"
 	"log/slog"
 	"os"
@@ -14,8 +15,65 @@ var logger *slog.Logger
 
 func init() {
 	// 默认 INFO 级别，输出到 stderr（与业务解耦，便于 daemon/GUI 重定向）。
-	logger = slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelInfo}))
+	// 经 redactHandler 包裹，落盘的 token/secret 等敏感属性值自动脱敏。
+	logger = slog.New(redactHandler{inner: slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelInfo})})
 	slog.SetDefault(logger)
+}
+
+// secretKeyWords 命中这些 key（不区分大小写）的属性值将被脱敏。
+var secretKeyWords = []string{"token", "secret", "password", "passwd", "apikey", "api_key", "key"}
+
+// redactHandler 包裹底层 slog.Handler，在输出前对敏感属性值脱敏，
+// 等价于 Bash 原版 sanitize_log：任何经结构化日志打印的 token/secret 都不会以明文落盘。
+type redactHandler struct {
+	inner slog.Handler
+}
+
+func (h redactHandler) Enabled(ctx context.Context, level slog.Level) bool {
+	return h.inner.Enabled(ctx, level)
+}
+
+// Handle 克隆记录并对各属性脱敏后交给底层 handler。
+func (h redactHandler) Handle(ctx context.Context, r slog.Record) error {
+	nr := slog.NewRecord(r.Time, r.Level, r.Message, r.PC)
+	r.Attrs(func(a slog.Attr) bool {
+		nr.AddAttrs(redactAttr(a))
+		return true
+	})
+	return h.inner.Handle(ctx, nr)
+}
+
+// WithAttrs 带属性创建新 handler，属性同样先脱敏。
+func (h redactHandler) WithAttrs(attrs []slog.Attr) slog.Handler {
+	redacted := make([]slog.Attr, len(attrs))
+	for i, a := range attrs {
+		redacted[i] = redactAttr(a)
+	}
+	return redactHandler{inner: h.inner.WithAttrs(redacted)}
+}
+
+// WithGroup 带分组创建新 handler。
+func (h redactHandler) WithGroup(name string) slog.Handler {
+	return redactHandler{inner: h.inner.WithGroup(name)}
+}
+
+// redactAttr 对单个属性脱敏：key 命中敏感词，或值形如 "Bearer <token>" 时脱敏其值。
+func redactAttr(a slog.Attr) slog.Attr {
+	if a.Value.Kind() != slog.KindString {
+		return a
+	}
+	key := strings.ToLower(a.Key)
+	for _, w := range secretKeyWords {
+		if strings.Contains(key, w) {
+			a.Value = slog.StringValue(MaskSecret(a.Value.String()))
+			return a
+		}
+	}
+	v := a.Value.String()
+	if strings.HasPrefix(v, "Bearer ") {
+		a.Value = slog.StringValue(MaskSecret(v))
+	}
+	return a
 }
 
 // InitLogger 依据 level 初始化全局 slog 日志器。
@@ -33,7 +91,7 @@ func InitLogger(level, logFile string) {
 	}
 
 	handler := slog.NewTextHandler(out, &slog.HandlerOptions{Level: lvl})
-	logger = slog.New(handler)
+	logger = slog.New(redactHandler{inner: handler})
 	slog.SetDefault(logger)
 }
 

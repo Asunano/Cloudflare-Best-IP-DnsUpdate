@@ -136,6 +136,8 @@ func (p *DeployPlan) BuildConf() (any, error) {
 				AutoRefresh:          true,
 				RefreshIntervalHours: 6,
 			},
+			// 把向导选择的测速地区写到域名级，使该域名在 sync 时获得独立测速（全局 cf-ip.cfst.colo 作为回退默认）。
+			SpeedTestColo: p.Colo,
 		}
 		return cfg, nil
 

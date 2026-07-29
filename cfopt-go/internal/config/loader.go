@@ -65,8 +65,9 @@ func loadDir(dir string) (*Config, error) {
 		return nil, common.Wrap("config:load dnspod.json", err)
 	}
 
-	// 多域名：扫描 conf/dnspod/*.conf 与 conf/cf-dns/*.conf（JSON 内容、扩展名 .conf），
-	// key 默认取文件名去 .conf，文件内 domain 字段非空以其为准。与单值 dnspod.json/cf-dns.json 共存。
+	// 多域名：扫描 conf/dnspod/* 与 conf/cf-dns/*（JSON 内容、扩展名 .conf 或 .json，.conf 优先），
+	// key 默认取文件名去扩展名，文件内 domain 字段非空以其为准。与单值 dnspod.json/cf-dns.json 共存。
+	// 兼容 Bash 版多域名 *.json 配置（无需手动改名即可被识别，亦可用 `cfopt config migrate` 迁移）。
 	cfg.DNSPodDomains = scanDNSPodConfDir(dir)
 	cfg.CFDNSDomains = scanCFDNSConfDir(dir)
 
@@ -86,28 +87,53 @@ func loadDir(dir string) (*Config, error) {
 	return cfg, nil
 }
 
-// scanDNSPodConfDir 扫描 dir/dnspod 下所有 *.conf（JSON 内容），返回 map[域名]*DNSPodConfig。
-// key 取文件名去 .conf；若文件内 domain 字段非空，以其为准。可选目录缺失/读取失败则跳过该文件。
-// 注意：仅匹配 .conf 扩展名，.conf.example 等模板不会被加载。
-func scanDNSPodConfDir(dir string) map[string]*DNSPodConfig {
-	out := make(map[string]*DNSPodConfig)
-	entries, err := os.ReadDir(filepath.Join(dir, "dnspod"))
+// scanDomainConfBytes 扫描 dir/<subdir> 下所有 *.conf 与 *.json（JSON 内容），以文件名去扩展名为 key
+// 返回各 stem 选中的文件字节。同 stem 同时存在 .conf 与 .json 时优先 .conf（其余场景后者覆盖前者，
+// 保证 .conf 始终胜出，与迁移场景兼容）。目录缺失/读取失败则跳过该文件。
+// 注意：仅匹配 .conf / .json 扩展名，.conf.example 等模板不会被加载。
+func scanDomainConfBytes(dir, subdir string) map[string][]byte {
+	out := make(map[string][]byte)
+	entries, err := os.ReadDir(filepath.Join(dir, subdir))
 	if err != nil {
 		return out // 目录缺失（可选）则视为无多域名配置
 	}
 	for _, e := range entries {
-		if e.IsDir() || !strings.HasSuffix(e.Name(), ".conf") {
+		if e.IsDir() {
 			continue
 		}
-		data, rerr := os.ReadFile(filepath.Join(dir, "dnspod", e.Name()))
+		name := e.Name()
+		var stem string
+		switch {
+		case strings.HasSuffix(name, ".conf"):
+			stem = strings.TrimSuffix(name, ".conf")
+		case strings.HasSuffix(name, ".json"):
+			stem = strings.TrimSuffix(name, ".json")
+		default:
+			continue
+		}
+		data, rerr := os.ReadFile(filepath.Join(dir, subdir, name))
 		if rerr != nil {
 			continue
 		}
+		// .conf 优先：若已写入（来自 .json 或 .conf），仅当本次为 .conf 时才覆盖。
+		if _, exists := out[stem]; exists && !strings.HasSuffix(name, ".conf") {
+			continue
+		}
+		out[stem] = data
+	}
+	return out
+}
+
+// scanDNSPodConfDir 扫描 dir/dnspod 下所有 *.conf 与 *.json（JSON 内容），返回 map[域名]*DNSPodConfig。
+// key 取文件名去扩展名；若文件内 domain 字段非空，以其为准。与 Bash 多域名 *.json 配置向后兼容。
+func scanDNSPodConfDir(dir string) map[string]*DNSPodConfig {
+	out := make(map[string]*DNSPodConfig)
+	for stem, data := range scanDomainConfBytes(dir, "dnspod") {
 		var v DNSPodConfig
 		if jerr := json.Unmarshal(data, &v); jerr != nil {
 			continue
 		}
-		key := strings.TrimSuffix(e.Name(), ".conf")
+		key := stem
 		if strings.TrimSpace(v.Domain) != "" {
 			key = v.Domain
 		}
@@ -116,27 +142,16 @@ func scanDNSPodConfDir(dir string) map[string]*DNSPodConfig {
 	return out
 }
 
-// scanCFDNSConfDir 扫描 dir/cf-dns 下所有 *.conf（JSON 内容），返回 map[域名]*CFDNSConfig。
+// scanCFDNSConfDir 扫描 dir/cf-dns 下所有 *.conf 与 *.json（JSON 内容），返回 map[域名]*CFDNSConfig。
 // 规则同 scanDNSPodConfDir（key 取文件名，文件内 dns.domain 非空以其为准）。
 func scanCFDNSConfDir(dir string) map[string]*CFDNSConfig {
 	out := make(map[string]*CFDNSConfig)
-	entries, err := os.ReadDir(filepath.Join(dir, "cf-dns"))
-	if err != nil {
-		return out
-	}
-	for _, e := range entries {
-		if e.IsDir() || !strings.HasSuffix(e.Name(), ".conf") {
-			continue
-		}
-		data, rerr := os.ReadFile(filepath.Join(dir, "cf-dns", e.Name()))
-		if rerr != nil {
-			continue
-		}
+	for stem, data := range scanDomainConfBytes(dir, "cf-dns") {
 		var v CFDNSConfig
 		if jerr := json.Unmarshal(data, &v); jerr != nil {
 			continue
 		}
-		key := strings.TrimSuffix(e.Name(), ".conf")
+		key := stem
 		if strings.TrimSpace(v.DNS.Domain) != "" {
 			key = v.DNS.Domain
 		}

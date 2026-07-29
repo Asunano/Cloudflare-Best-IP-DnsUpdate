@@ -50,7 +50,7 @@ func TestCFSTRun_ReturnsStderrOnFailure(t *testing.T) {
 	// 预置后即便在无外网 CI 下也不会因 30s 超时/网络错误而变慢或 flaky。
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "ip.txt"), []byte("203.0.113.0/24\n"), 0o644))
 
-	_, err := tester.Run(context.Background(), cfg)
+	_, err := tester.Run(context.Background(), cfg, nil)
 	require.Error(t, err, "cfst 以退出码 2 失败时 Run() 应返回错误")
 	assert.Contains(t, err.Error(), marker,
 		"cfst 真实报错文本（stderr）应回传到错误中")

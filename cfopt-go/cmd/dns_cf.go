@@ -37,6 +37,7 @@ func newDNSCfCmd() *cobra.Command {
 				return common.Wrap("cmd:dns:cf:sync", err)
 			}
 			fmt.Printf("Cloudflare 同步完成: updated=%d created=%d deleted=%d\n", res.Updated, res.Created, res.Deleted)
+			printWarnings(res.Warnings)
 			return nil
 		},
 	}

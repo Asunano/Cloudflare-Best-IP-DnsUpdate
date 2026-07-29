@@ -457,18 +457,26 @@ Go 重写版在**架构设计、跨平台能力、测试覆盖、GUI 集成、�
 | F7 | ❌ | ✅ | `internal/update/guarded.go` + `RunGuarded`：连续更新失败计数达 3 次触发 `ErrUpdateLoop` 中止，对标 Bash `.restart_count` 防循环保护 |
 | E7 | ❌ | ✅ | `cfopt schedule panel-cron`：生成宝塔/1Panel 面板可粘贴的调度命令（绝对路径 + `cd` 工作目录 + `schedule run --once` + 日志重定向） |
 | H1 | ❌ | ✅ | `cfopt logs`：读取 `logs/cfopt.log`，支持 `--tail` / `--level` 过滤；`--history` 读取 `history.jsonl` |
+| I1 | ❌ | ✅ | `internal/speedtest/cfst.go` `Run` 解析 cfst "X / Y" 进度并回调 `speedtest.ProgressFunc`；CLI `cmd/speedtest.go`+`cmd/sync.go` 渲染终端实时进度条；IPC `speedtest.run` 下发 `speedtest.progress` 事件 |
+| I2 | ❌ | ✅ | `internal/speedtest/cfst.go` `checkDownloadURLReachable`：测速前校验下载 URL 可达性（2xx/3xx + 1KB 区间下载），不可达则本轮仅延迟测速并告警（不阻断） |
+| I3 | ❌ | ✅ | `internal/dns/ipsource_check.go` `CheckIPSources`：IP 源文件 mtime 超过 48h 视为过期并告警（不阻断），注入 Cloudflare/DNSPod provider 的 `Sync` |
+| I4 | ❌ | ✅ | `internal/dns/ipsource_check.go` `CheckIPSources`：解析有效 IP 数相对 `<file>.count` 侧车变化 >50% 发严重警告，每次运行更新侧车 |
 
 ### 8.2 仍存在的真实差距（对比 Bash 原版）
 
-> 截至 2026-07-28，原 3 项真实差距（F7/E7/H1）已全部补齐（见 8.4），Go 版功能与原版 **完全对齐**，不再有未实现的对照项。
+> 截至 2026-07-29，全部真实差距均已补齐：原 3 项（F7/E7/H1）+ 本次 4 项（I1-I4），Go 版功能与原版 **完全对齐**，不再有未实现的对照项。
 
 | ID | 功能 | 说明 | 状态 |
 |----|------|------|------|
 | F7 | 防更新循环保护 | 已由 `update.RunGuarded` 实现（连续失败 ≥3 次自停） | ✅ 已补齐 |
 | E7 | 面板命令生成器 | 已由 `cfopt schedule panel-cron` 实现 | ✅ 已补齐 |
 | H1 | 日志查看命令 | 已由 `cfopt logs` 实现 | ✅ 已补齐 |
+| I1 | CF-IP 测速实时进度条 | `Run` 进度回调 + CLI 终端进度条 + IPC `speedtest.progress` 事件 | ✅ 已补齐 |
+| I2 | 下载 URL 连通性预检 | `checkDownloadURLReachable`：不可达则仅延迟测速并告警 | ✅ 已补齐 |
+| I3 | IP 时效性检测（过期警告） | `CheckIPSources`：源文件 >48h 告警（不阻断） | ✅ 已补齐 |
+| I4 | DNS 更新时 IP 数量变化检测 | `CheckIPSources`：相对 `.count` 变化 >50% 严重警告 | ✅ 已补齐 |
 
-> 除上述 3 项外，原报告列出的其余「❌/⚠️」项均已满足，Go 版功能与原版 **实质一致**。
+> 除上述 7 项外，原报告列出的其余「❌/⚠️」项均已满足，Go 版功能与原版 **实质一致**。
 
 ### 8.3 行为一致性结论
 
@@ -482,15 +490,18 @@ Go 重写版在**架构设计、跨平台能力、测试覆盖、GUI 集成、�
   - 日志原仅 stderr、无文件/轮转 → 现落盘 `logs/cfopt.log` 并 10MB 轮转；
   - 安装原无回滚 → 现 fatal 错误自动回滚已写入项。
 
-### 8.4 本周补全（F7 / E7 / H1 已落地，2026-07-28）
+### 8.4 本周补全（F7 / E7 / H1 已落地，2026-07-28；I1-I4 2026-07-29）
 
 - **F7 防更新循环保护**（`internal/update/guarded.go`）：新增 `RunGuarded` 包装 `DownloadAndReplace`，在 `currentBin` 同目录维护 `.update_failures` 计数文件；连续失败达 `MaxConsecutiveFailures=3` 时返回 `ErrUpdateLoop` 直接中止，成功则清零计数。`cmd/update.go` 的 `--yes` 与菜单「检查更新」两条路径均已切换为 `RunGuarded`。
 - **E7 面板命令生成器**（`cmd/schedule.go`）：新增 `cfopt schedule panel-cron` 子命令，输出宝塔/1Panel「计划任务 → Shell 脚本」可直接粘贴的一行命令（`cd <工作目录> && <二进制绝对路径> schedule run --once >> cfopt-cron.log 2>&1`），并附操作说明与权限提示；支持 `--bin` 覆盖路径。
 - **H1 日志查看命令**（`cmd/logs.go`）：新增 `cfopt logs` 子命令，默认读取 `conf/logs/cfopt.log`，支持 `--tail N`（默认 50）与 `--level`（debug/info/warn/error，级别越低越严重则越收敛）；`--history` 则读取 `history.jsonl` 历史记录。
+- **I1 测速实时进度条**（`internal/speedtest/cfst.go` + `cmd/progressbar.go`）：`SpeedTester.Run` 新增 `progress ProgressFunc` 回调，解析 cfst 输出的 "X / Y" 实时上报；CLI `cfopt speedtest`/`cfopt sync` 渲染 `\r` 覆盖式终端进度条；IPC `speedtest.run` 下发 `speedtest.progress` 事件（接口 `SpeedtestService.Run(ctx, onProgress)` 同步调整）。
+- **I2 下载 URL 连通性预检**（`internal/speedtest/cfst.go`）：`checkDownloadURLReachable` 在测速前对 `cfst.url` 做 HTTP 可达性 + 1KB 区间下载校验；不可达时仅做延迟测速并告警（不阻断），不改持久化配置。
+- **I3 / I4 IP 过期与数量变化检测**（`internal/dns/ipsource_check.go`）：新增 `CheckIPSources` 对一组 IP 源文件做前置检测——mtime 超过 48h（I3，可配 `StaleThreshold`）告警；解析有效 IP 数相对 `<file>.count` 侧车变化超过 50%（I4，可配 `CountChangeWarnRatio`）发严重警告；每次运行更新侧车。警告并入 `SyncResult.Warnings` 并经 `cmd` 打印，注入 Cloudflare/DNSPod provider 的 `Sync`（覆盖 `cfopt dns cf`、`cfopt dns dnspod`、`cfopt sync` 全部路径）。
 
 ### 8.5 测试覆盖
 
-- 原报告「62+ 用例」已过时；当前 `go test ./...` 约 **350+** 个测试函数，全绿（本次新增：F7 `TestRunGuarded_LoopGuardBlocks`/`_FailureBumpsCount`/`_SuccessResetsCount`、E7 `TestBuildPanelCronScript`(+Windows)、H1 `TestTailLines`/`TestLevelRankInLine`/`TestFilterByLevel`/`TestRunLogsFile_*`，均通过）。
+- 原报告「62+ 用例」已过时；当前 `go test ./...` 约 **350+** 个测试函数，全绿（本次新增：F7 `TestRunGuarded_LoopGuardBlocks`/`_FailureBumpsCount`/`_SuccessResetsCount`、E7 `TestBuildPanelCronScript`(+Windows)、H1 `TestTailLines`/`TestLevelRankInLine`/`TestFilterByLevel`/`TestRunLogsFile_*`、I1 `TestCFSTRun_ProgressCallbackInvoked`、I2 `TestCheckDownloadURLReachable_*`、I3/I4 `TestCheckIPSources_*` + `TestDNSPodProvider_Sync_*` 警告注入，均通过）。
 
 ---
 

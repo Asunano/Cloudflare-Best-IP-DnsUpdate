@@ -216,7 +216,7 @@ func ensureCFST(ctx context.Context, destDir string) error {
 	if _, err := os.Stat(filepath.Join(destDir, binName)); err == nil {
 		return nil // 已就绪，跳过下载（幂等，避免重复网络请求）
 	}
-	_, err := cfst.Fetch(ctx, cfst.CFSTFetchOptions{DestDir: destDir})
+	_, err := cfst.Fetch(ctx, cfst.CFSTFetchOptions{DestDir: destDir, AutoMirror: true})
 	return err
 }
 

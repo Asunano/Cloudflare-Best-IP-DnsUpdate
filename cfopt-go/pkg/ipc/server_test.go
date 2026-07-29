@@ -39,7 +39,7 @@ func (f *fakeSyncService) Run(ctx context.Context, onProgress sync.ProgressFunc,
 
 type fakeSpeedtestService struct{}
 
-func (f *fakeSpeedtestService) Run(ctx context.Context) ([]speedtest.SpeedResult, error) {
+func (f *fakeSpeedtestService) Run(ctx context.Context, onProgress speedtest.ProgressFunc) ([]speedtest.SpeedResult, error) {
 	return []speedtest.SpeedResult{}, nil
 }
 

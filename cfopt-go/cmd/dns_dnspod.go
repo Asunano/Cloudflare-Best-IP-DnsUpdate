@@ -51,6 +51,7 @@ func newDNSPodCmd() *cobra.Command {
 			if len(res.Errors) > 0 {
 				fmt.Printf("部分线路错误: %v\n", res.Errors)
 			}
+			printWarnings(res.Warnings)
 			return nil
 		},
 	}
@@ -58,6 +59,7 @@ func newDNSPodCmd() *cobra.Command {
 	cmd.Flags().BoolVar(&dnspodFlagDeleteUnified, "delete-unified", false, "仅删除统一子域记录")
 	cmd.Flags().BoolVar(&dnspodFlagDeleteUnifiedND, "delete-unified-non-default", false, "删除统一子域 + 非默认线路记录（保留默认线路）")
 	cmd.Flags().BoolVar(&dnspodFlagYes, "yes", false, "确认删除操作（必需）")
+	cmd.AddCommand(newDNSPodSwitchCmd())
 	return cmd
 }
 

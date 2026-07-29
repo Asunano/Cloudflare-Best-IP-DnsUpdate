@@ -22,12 +22,14 @@ type Record struct {
 }
 
 // SyncResult 一次同步的统计结果。
-// Updated：就地更新数；Created：新建数；Deleted：删除数；Errors：各线路/步骤的错误摘要。
+// Updated：就地更新数；Created：新建数；Deleted：删除数；Errors：各线路/步骤的错误摘要；
+// Warnings：非阻断告警（如 IP 源文件过期 / IP 数量剧变），供 CLI/GUI 展示。
 type SyncResult struct {
-	Updated int      `json:"updated"`
-	Created int      `json:"created"`
-	Deleted int      `json:"deleted"`
-	Errors  []string `json:"errors,omitempty"`
+	Updated  int      `json:"updated"`
+	Created  int      `json:"created"`
+	Deleted  int      `json:"deleted"`
+	Errors   []string `json:"errors,omitempty"`
+	Warnings []string `json:"warnings,omitempty"`
 }
 
 // cloudflareListResp Cloudflare DNS 记录列表响应。

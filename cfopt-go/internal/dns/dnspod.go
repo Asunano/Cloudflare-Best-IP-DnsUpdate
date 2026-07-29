@@ -378,6 +378,10 @@ func (p *DNSPodProvider) Sync(ctx context.Context, cfg *config.DNSPodConfig) (*S
 		common.Info("dnspod: 模块未启用，跳过同步")
 		return res, nil
 	}
+	// F3/F4：IP 源文件前置检测（过期警告 + 数量剧变警告），非阻断；结果并入 res.Warnings。
+	if warns := CheckIPSources(dnspodFilesForConfig(cfg), IPSourceCheckOpts{}); len(warns) > 0 {
+		res.Warnings = append(res.Warnings, warns...)
+	}
 	resv := NewDNSPodLineResolver(cfg)
 	opts := MultiLineOptions{
 		UnifiedSubDomain: cfg.SubDomainUnified,

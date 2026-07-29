@@ -21,7 +21,7 @@ import (
 // fakeTester 直接返回一条有效测速结果（无需真实 cfst 二进制）。
 type fakeTester struct{}
 
-func (fakeTester) Run(ctx context.Context, cfg *config.CFIPConfig) ([]speedtest.SpeedResult, error) {
+func (fakeTester) Run(ctx context.Context, cfg *config.CFIPConfig, progress speedtest.ProgressFunc) ([]speedtest.SpeedResult, error) {
 	return []speedtest.SpeedResult{{IP: "1.2.3.4", Latency: 10, Speed: 100, Colo: "HKG"}}, nil
 }
 func (fakeTester) ParseOutput(path string) ([]speedtest.SpeedResult, error) { return nil, nil }

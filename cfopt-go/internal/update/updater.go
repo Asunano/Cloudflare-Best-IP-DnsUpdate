@@ -27,6 +27,7 @@ import (
 	"github.com/blang/semver"
 
 	"cfopt/internal/common"
+	"cfopt/internal/geo"
 )
 
 const (
@@ -68,12 +69,38 @@ type Updater struct {
 	APIBase  string // 默认 https://api.github.com（测试可置为 httptest 地址）
 	Client   *http.Client
 	Mirror   string // 镜像源 URL，优先从该地址下载（失败回退 GitHub）
+	ProxyPrefix      string // 智能镜像代理前缀（如 https://v4.gh-proxy.org/），非空时拼到原始下载 URL 前
+	EnableAutoMirror bool   // 未显式指定 Mirror/ProxyPrefix 时，按地区自动决定是否启用镜像
 	Insecure bool   // 仅测试/调试：允许 http 下载（生产必须为 https）
 }
 
 // SetMirror 设置镜像源 URL。更新流程将优先从镜像下载，失败则回退 GitHub。
 func (u *Updater) SetMirror(url string) {
 	u.Mirror = url
+}
+
+// SetProxyPrefix 显式设置镜像代理前缀（直接拼在原始下载 URL 前，形如 https://v4.gh-proxy.org/）。
+func (u *Updater) SetProxyPrefix(prefix string) {
+	u.ProxyPrefix = prefix
+}
+
+// ResolveAutoMirror 在未显式指定 Mirror/ProxyPrefix 时，按客户端地区自动决定是否启用镜像：
+// 若检测到位于中国（CN），将 ProxyPrefix 置为 geo.ChinaMirrorProxy（https://v4.gh-proxy.org/）。
+// 任何检测异常均静默跳过，不覆盖既有 Mirror/ProxyPrefix，也不阻断主流程。
+func (u *Updater) ResolveAutoMirror(ctx context.Context) {
+	if !u.EnableAutoMirror {
+		return
+	}
+	if u.Mirror != "" || u.ProxyPrefix != "" {
+		return
+	}
+	cn, err := geo.IsInChina(ctx)
+	if err != nil {
+		return
+	}
+	if cn {
+		u.ProxyPrefix = geo.ChinaMirrorProxy
+	}
 }
 
 // New 构造 Updater（repo 为空则用 DefaultRepo）。
@@ -134,28 +161,44 @@ type githubRelease struct {
 }
 
 // Check 查询仓库最新 release，返回 ReleaseInfo。
+// 若启用智能镜像（EnableAutoMirror），则以「直连→镜像重试」兜底，防止国内机器连接 api.github.com 异常。
 func (u *Updater) Check(ctx context.Context) (*ReleaseInfo, error) {
-	url := fmt.Sprintf("%s/repos/%s/releases/latest", u.APIBase, u.Repo)
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
-	if err != nil {
-		return nil, fmt.Errorf("update:check:newrequest: %w", err)
+	baseURL := fmt.Sprintf("%s/repos/%s/releases/latest", u.APIBase, u.Repo)
+
+	var info *ReleaseInfo
+	doCheck := func(ctx context.Context, url string) error {
+		req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+		if err != nil {
+			return fmt.Errorf("update:check:newrequest: %w", err)
+		}
+		req.Header.Set("Accept", "application/vnd.github+json")
+		resp, err := u.Client.Do(req)
+		if err != nil {
+			return fmt.Errorf("update:check: %w", err)
+		}
+		defer func() { _ = resp.Body.Close() }()
+		if resp.StatusCode != http.StatusOK {
+			return fmt.Errorf("update:check: HTTP %d", resp.StatusCode)
+		}
+		var gr githubRelease
+		if err := json.NewDecoder(resp.Body).Decode(&gr); err != nil {
+			return fmt.Errorf("update:check:decode: %w", err)
+		}
+		info = &ReleaseInfo{TagName: gr.TagName, Version: strings.TrimPrefix(gr.TagName, "v"), Notes: gr.Body}
+		for _, a := range gr.Assets {
+			info.Assets = append(info.Assets, Asset{Name: a.Name, URL: a.BrowserDownloadURL, Size: a.Size, Digest: a.Digest})
+		}
+		return nil
 	}
-	req.Header.Set("Accept", "application/vnd.github+json")
-	resp, err := u.Client.Do(req)
-	if err != nil {
-		return nil, fmt.Errorf("update:check: %w", err)
+
+	if u.EnableAutoMirror {
+		if err := geo.WithMirrorFallback(ctx, baseURL, u.Client.Timeout, doCheck); err != nil {
+			return nil, err
+		}
+		return info, nil
 	}
-	defer func() { _ = resp.Body.Close() }()
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("update:check: HTTP %d", resp.StatusCode)
-	}
-	var gr githubRelease
-	if err := json.NewDecoder(resp.Body).Decode(&gr); err != nil {
-		return nil, fmt.Errorf("update:check:decode: %w", err)
-	}
-	info := &ReleaseInfo{TagName: gr.TagName, Version: strings.TrimPrefix(gr.TagName, "v"), Notes: gr.Body}
-	for _, a := range gr.Assets {
-		info.Assets = append(info.Assets, Asset{Name: a.Name, URL: a.BrowserDownloadURL, Size: a.Size, Digest: a.Digest})
+	if err := doCheck(ctx, baseURL); err != nil {
+		return nil, err
 	}
 	return info, nil
 }
@@ -168,6 +211,12 @@ func (u *Updater) Download(ctx context.Context, url, dest string) (int64, error)
 // download 将 url 下载到 dest，要求 HTTP 200；返回写入字节数。
 // 安全：默认拒绝非 https 源（Insecure=true 可放宽，仅供测试）。
 func (u *Updater) download(ctx context.Context, url, dest string) (int64, error) {
+	// 智能镜像：将原始 https 下载链接改写为经过代理前缀的链接
+	// （如 https://v4.gh-proxy.org/https://github.com/...）。仅对 https 原始链接生效，且避免重复拼接。
+	if u.ProxyPrefix != "" && strings.HasPrefix(url, "https://") && !strings.HasPrefix(url, u.ProxyPrefix) {
+		prefix := strings.TrimRight(u.ProxyPrefix, "/") + "/"
+		url = prefix + url
+	}
 	if !strings.HasPrefix(url, "https://") && !u.Insecure {
 		return 0, fmt.Errorf("update:download: 拒绝非官方/非 TLS 源: %s", url)
 	}
@@ -202,7 +251,15 @@ func (u *Updater) fetchSHA256SUMS(ctx context.Context, info *ReleaseInfo, assetN
 			continue
 		}
 		tmp := filepath.Join(os.TempDir(), fmt.Sprintf("cfopt-sums-%d.tmp", os.Getpid()))
-		if _, err := u.download(ctx, a.URL, tmp); err != nil {
+		// 智能镜像兜底：直连 SHA256SUMS 失败则重试镜像。
+		if u.EnableAutoMirror {
+			if err := geo.WithMirrorFallback(ctx, a.URL, u.Client.Timeout, func(c context.Context, url string) error {
+				_, e := u.download(c, url, tmp)
+				return e
+			}); err != nil {
+				return ""
+			}
+		} else if _, err := u.download(ctx, a.URL, tmp); err != nil {
 			return ""
 		}
 		defer func() { _ = os.Remove(tmp) }()
@@ -271,6 +328,9 @@ func VerifySHA256(path, expected string) (bool, error) {
 // 校验链：HTTP 200 → 长度匹配（已知时）→ SHA256 匹配（已知时）；任一不符即删除临时文件并 error，绝不替换。
 // 若设置了 Mirror，优先从镜像 URL 下载，失败则回退 GitHub 原始 URL。
 func (u *Updater) DownloadAndReplace(ctx context.Context, currentBin string, info *ReleaseInfo, opts Options) error {
+	// 智能镜像：未显式指定镜像时，按地区自动决定是否走代理（中国地区加速）。
+	u.ResolveAutoMirror(ctx)
+
 	assetName := opts.Asset
 	if assetName == "" {
 		assetName = CurrentAssetName()
@@ -320,10 +380,22 @@ func (u *Updater) DownloadAndReplace(ctx context.Context, currentBin string, inf
 	}
 
 	if !downloaded {
-		n, err := u.download(ctx, assetURL, tmp)
-		if err != nil {
+		var n int64
+		doDownload := func(c context.Context, url string) error {
+			var e error
+			n, e = u.download(c, url, tmp)
+			return e
+		}
+		var dlErr error
+		if u.EnableAutoMirror {
+			// 智能镜像兜底：直连失败自动重试镜像（防止国内机器连接 GitHub 异常）。
+			dlErr = geo.WithMirrorFallback(ctx, assetURL, u.Client.Timeout, doDownload)
+		} else {
+			dlErr = doDownload(ctx, assetURL)
+		}
+		if dlErr != nil {
 			_ = os.Remove(tmp)
-			return err
+			return dlErr
 		}
 		// 长度校验
 		if assetSize > 0 && n != assetSize {

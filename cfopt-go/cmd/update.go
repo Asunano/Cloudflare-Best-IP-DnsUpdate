@@ -31,6 +31,7 @@ func newUpdateCmd() *cobra.Command {
 		noVerify bool
 		rollback bool
 		mirror   string
+		autoMirror bool
 	)
 	cmd := &cobra.Command{
 		Use:   "update",
@@ -40,6 +41,8 @@ func newUpdateCmd() *cobra.Command {
 			if mirror != "" {
 				up.SetMirror(mirror)
 			}
+			// 智能镜像：默认按地区自动启用 gh-proxy 加速（DownloadAndReplace 内按地区解析）。
+			up.EnableAutoMirror = autoMirror
 			currentBin, err := os.Executable()
 			if err != nil {
 				return fmt.Errorf("update: 获取当前二进制路径: %w", err)
@@ -109,6 +112,7 @@ func newUpdateCmd() *cobra.Command {
 	cmd.Flags().BoolVar(&noVerify, "no-verify", false, "跳过 SHA256 校验（不安全）")
 	cmd.Flags().BoolVar(&rollback, "rollback", false, "回滚到上一版本 (cfopt.old)")
 	cmd.Flags().StringVar(&mirror, "mirror", "", "镜像源 URL（优先从镜像下载，失败回退 GitHub）")
+	cmd.Flags().BoolVar(&autoMirror, "auto-mirror", true, "智能镜像：按地区自动启用 gh-proxy 加速（中国地区默认开启）")
 	return cmd
 }
 
@@ -132,6 +136,7 @@ func printReleaseNotes(notes string) {
 // runCheckUpdate 主菜单「检查更新」：展示当前/最新版本与变更说明，并询问是否更新。
 func runCheckUpdate() error {
 	up := update.New("")
+	up.EnableAutoMirror = true // 菜单更新路径默认启用智能镜像
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
 

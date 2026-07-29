@@ -119,7 +119,7 @@ func (s *syncService) Run(ctx context.Context, onProgress sync.ProgressFunc, pro
 
 type speedtestService struct{ cfgDir string }
 
-func (s *speedtestService) Run(ctx context.Context) ([]speedtest.SpeedResult, error) {
+func (s *speedtestService) Run(ctx context.Context, onProgress speedtest.ProgressFunc) ([]speedtest.SpeedResult, error) {
 	cfg, err := config.LoadFresh(s.cfgDir)
 	if err != nil {
 		return nil, err
@@ -131,7 +131,7 @@ func (s *speedtestService) Run(ctx context.Context) ([]speedtest.SpeedResult, er
 	if err != nil {
 		return nil, err
 	}
-	results, runErr := tester.Run(ctx, cfg.CFIP)
+	results, runErr := tester.Run(ctx, cfg.CFIP, onProgress)
 	// P1-5：speedtest 结束后同样写 speedtest 历史。
 	if hist, herr := newHistoryStore(cfg); herr == nil && hist != nil {
 		detail := fmt.Sprintf("count=%d", len(results))

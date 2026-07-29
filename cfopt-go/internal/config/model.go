@@ -113,6 +113,9 @@ type CFDNSConfig struct {
 	DNS      CloudflareDNSConfig      `json:"dns"`
 	IPSource CloudflareIPSourceConfig `json:"ip_source"`
 	Logging  CloudflareLoggingConfig  `json:"logging"`
+	// SpeedTestColo 按域名覆盖测速地区（逗号分隔，如 "HKG,NRT"），覆盖全局 cf-ip.cfst.colo。
+	// 为空则沿用全局测速配置（默认行为），非空时该域名在 sync 阶段获得独立测速结果。
+	SpeedTestColo string `json:"speed_test_colo,omitempty"`
 }
 
 // ===== DNSPod 配置（dnspod.json） =====

@@ -34,7 +34,7 @@ func newSpeedtestCmd() *cobra.Command {
 			}
 			ctx := context.Background()
 			start := time.Now()
-			results, runErr := tester.Run(ctx, cfg.CFIP)
+			results, runErr := tester.Run(ctx, cfg.CFIP, renderSpeedtestProgress)
 			elapsed := time.Since(start)
 
 			// P1-5：无论成功失败，均写入 speedtest 历史。
