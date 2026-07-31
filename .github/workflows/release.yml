@@ -103,12 +103,16 @@ jobs:
         env:
           # 静态化 C 运行库，降低在纯净 Windows 上缺失 mingw 运行库的风险。
           RUSTFLAGS: "-C target-feature=+crt-static"
-        run: cargo build --release --target x86_64-pc-windows-gnu
+        # 必须启用 custom-protocol，否则 Tauri 会以 dev 模式构建（加载 devUrl 而非嵌入前端）。
+        run: cargo build --release --target x86_64-pc-windows-gnu --features tauri/custom-protocol
 
       - name: Collect GUI artifacts
         run: |
           mkdir -p gui-dist
           cp tauri/target/x86_64-pc-windows-gnu/release/cfopt-gui.exe gui-dist/cfopt-gui-windows-x86_64.exe
+          # WebView2Loader.dll 必须由 Tauri 主程序同目录随附，否则在仅有“系统 WebView2 运行时”
+          # 的机器上会报“找不到 webview2.dll”。这是交叉编译产物里易被遗漏的关键文件。
+          cp tauri/target/x86_64-pc-windows-gnu/release/WebView2Loader.dll gui-dist/
           # sidecar：tauri-build 在产物目录里将其重命名为 cfopt-go.exe（运行时按此名查找），
           # 同时保留 cfopt-go-<triple>.exe 以兼容不同 Tauri 版本的解析规则。
           cp tauri/target/x86_64-pc-windows-gnu/release/cfopt-go.exe gui-dist/

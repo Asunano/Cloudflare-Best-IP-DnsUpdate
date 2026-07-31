@@ -23,5 +23,8 @@ serde_json = "1"
 tokio = { version = "1", features = ["time"] }
 
 [features]
-# 默认关闭自定义协议；使用 Tauri 自带资产协议即可。
+# 必须默认开启 custom-protocol，否则 Tauri 会以 dev 模式构建：
+# 不嵌入前端、转而加载 devUrl(localhost:5173)，导致 “localhost 拒绝连接”。
+# 该 feature 由 `cargo tauri build` 自动启用；裸 `cargo build` 也需要它。
+default = ["custom-protocol"]
 custom-protocol = ["tauri/custom-protocol"]
