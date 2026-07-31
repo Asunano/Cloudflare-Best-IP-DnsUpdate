@@ -1,6 +1,6 @@
 //! cfopt 桌面端 Rust 入口：Tauri v2 应用 + IPC 桥接层。
 //!
-//! 设计原则（与 `cfopt-go-redesign.md` 一致）：Rust 侧零业务逻辑，
+//! 设计原则：Rust 侧零业务逻辑，
 //! 仅做 UI 渲染、参数透传与 IPC 桥接；所有优选/测速/DNS 同步均在 Go 端完成。
 //!
 //! 前端（SvelteKit）通过 `invoke('ipc_request', { method, params })` 发起调用，

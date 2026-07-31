@@ -1,6 +1,6 @@
 # 新增 DNS 提供商接入指南（中文）
 
-> 适用版本：cfopt-go 模块化架构（`internal/dns` + `internal/sync` + `pkg/ipc`）
+> 适用版本：cfopt 模块化架构（`internal/dns` + `internal/sync` + `pkg/ipc`）
 > 目标读者：希望为 cfopt 接入新 DNS 服务商（如阿里云、华为云、Route53 等）的开发者
 > 前置依赖方向铁律：
 > - `internal/dns` 可 import `internal/config`；`internal/config` **严禁** import `internal/dns`。
@@ -32,10 +32,11 @@
 
 ```go
 type SyncResult struct {
-    Updated int      `json:"updated"`
-    Created int      `json:"created"`
-    Deleted int      `json:"deleted"`
-    Errors  []string `json:"errors,omitempty"`
+    Updated  int      `json:"updated"`
+    Created  int      `json:"created"`
+    Deleted  int      `json:"deleted"`
+    Errors   []string `json:"errors,omitempty"`
+    Warnings []string `json:"warnings,omitempty"`
 }
 ```
 
@@ -140,7 +141,7 @@ func (c mockConfig) Validate() error {
 var BuiltinModules = []SyncModule{cfModule{}, dnspodModule{}, mockModule{}}
 ```
 
-`Syncer.BuildSyncerFromConfig` 会自动用 `BuiltinModules` 构建 Registry，无需任何其它改动。
+`BuildSyncerFromConfig`（包级函数）会自动用 `BuiltinModules` 构建 Registry，无需任何其它改动。
 
 ### 方式 B：外部包运行时挂载
 
@@ -213,7 +214,7 @@ syncer := sync.NewSyncer(tester, reg, hist)
 ## 6. 验证你的 provider
 
 ```bash
-cd cfopt-go
+# 在仓库根目录执行（Go 模块名为 cfopt，cfopt-go 已合并到仓库根）
 export GOPROXY=https://goproxy.cn,direct
 export GOSUMDB=off
 go build ./...

@@ -3,7 +3,7 @@
 //! 传输：TCP loopback（127.0.0.1:<port>），JSON-RPC 2.0 语义，JSON Lines 帧
 //! （每个 JSON 值独占一行，以 `'\n'` 结尾）。
 //!
-//! 约定（与 `cfopt-go/pkg/ipc/protocol.go` 严格对齐）：
+//! 约定（与 `pkg/ipc/protocol.go` 严格对齐）：
 //! - 所有枚举/结构体字段均为 snake_case；
 //! - `id` 为整数（Go 端按 int64 解析）；
 //! - `sync.run` 执行期间，服务端会在最终响应之前，于同一连接上穿插推送
@@ -121,54 +121,6 @@ pub struct ScheduleConfig {
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case", default)]
-pub struct CFIPConfig {
-    pub enabled: Option<bool>,
-    pub cfst: Option<CFSTConfig>,
-    pub speed_test: Option<SpeedTestConfig>,
-    pub paths: Option<PathConfig>,
-    pub cfst_path: Option<String>,
-}
-
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case", default)]
-pub struct CFSTConfig {
-    pub directory: Option<String>,
-    pub binary: Option<String>,
-    pub threads: Option<i64>,
-    pub colo: Option<String>,
-    pub ping_times: Option<i64>,
-    pub download_count: Option<i64>,
-    pub download_time: Option<i64>,
-    pub port: Option<i64>,
-    pub url: Option<String>,
-    pub httping: Option<bool>,
-    pub latency_max: Option<f64>,
-    pub packet_loss_max: Option<f64>,
-    pub speed_min: Option<f64>,
-    pub show_count: Option<i64>,
-    pub ip_file: Option<String>,
-    pub disable_download: Option<bool>,
-    pub all_ip: Option<bool>,
-}
-
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case", default)]
-pub struct SpeedTestConfig {
-    pub take_ip_num: Option<i64>,
-    pub max_retry: Option<i64>,
-    pub output_html: Option<bool>,
-    pub enable_log: Option<bool>,
-}
-
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case", default)]
-pub struct PathConfig {
-    pub output_dir: Option<String>,
-    pub log_dir: Option<String>,
-}
-
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case", default)]
 pub struct CFDNSConfig {
     pub enabled: Option<bool>,
     pub api: Option<CloudflareAPIConfig>,
@@ -253,7 +205,6 @@ pub struct DNSPodConfig {
 #[serde(rename_all = "snake_case", default)]
 pub struct Config {
     pub global: Option<GlobalConfig>,
-    pub cf_ip: Option<CFIPConfig>,
     pub cf_dns: Option<CFDNSConfig>,
     pub dnspod: Option<DNSPodConfig>,
     /// 各外部 DNS 提供方（如 aliyun）的自有配置（透传，不在此建模）。

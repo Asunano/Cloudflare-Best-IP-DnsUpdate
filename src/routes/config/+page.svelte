@@ -13,10 +13,6 @@
   // 确保嵌套对象存在，便于 bind:value 绑定。
   function ensureShape(c: Config): Config {
     c.global ??= {};
-    c.cf_ip ??= {};
-    c.cf_ip.cfst ??= {};
-    c.cf_ip.speed_test ??= {};
-    c.cf_ip.paths ??= {};
     c.cf_dns ??= {};
     c.cf_dns.api ??= {};
     c.cf_dns.dns ??= {};
@@ -79,23 +75,6 @@
   <p class="muted">加载中…</p>
 {:else}
   <div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(280px,1fr))">
-
-    <div class="card">
-      <h3>Cloudflare IP 优选</h3>
-      <label><input type="checkbox" bind:checked={cfg.cf_ip.enabled} /> 启用</label>
-      <label>测速输出目录</label>
-      <input bind:value={cfg.cf_ip.paths.output_dir} placeholder="assets/data" />
-      <label>cfst 目录</label>
-      <input bind:value={cfg.cf_ip.cfst.directory} placeholder="assets/cfst" />
-      <label>cfst 二进制名</label>
-      <input bind:value={cfg.cf_ip.cfst.binary} placeholder="cfst" />
-      <label>线程数</label>
-      <input type="number" bind:value={cfg.cf_ip.cfst.threads} />
-      <label>地区过滤 (逗号分隔)</label>
-      <input bind:value={cfg.cf_ip.cfst.colo} placeholder="HKG,NRT" />
-      <label>取最优 IP 数量</label>
-      <input type="number" bind:value={cfg.cf_ip.speed_test.take_ip_num} />
-    </div>
 
     <div class="card">
       <h3>Cloudflare DNS</h3>

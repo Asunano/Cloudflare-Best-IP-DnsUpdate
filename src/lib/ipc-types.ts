@@ -1,4 +1,4 @@
-// IPC 协议类型定义（与 Go `cfopt-go/pkg/ipc` 严格对齐，全部 snake_case）。
+// IPC 协议类型定义（与 Go `cmd/serve` + `pkg/ipc` 严格对齐，全部 snake_case）。
 // 前端用这些类型解析/构造 invoke('ipc_request', { method, params }) 的入参与结果。
 
 /** JSON-RPC 错误（对应 Go RPCError）。 */
@@ -75,46 +75,6 @@ export interface ScheduleConfig {
   interval?: string;
 }
 
-export interface CFIPConfig {
-  enabled?: boolean;
-  cfst?: CFSTConfig;
-  speed_test?: SpeedTestConfig;
-  paths?: PathConfig;
-  cfst_path?: string;
-}
-
-export interface CFSTConfig {
-  directory?: string;
-  binary?: string;
-  threads?: number;
-  colo?: string;
-  ping_times?: number;
-  download_count?: number;
-  download_time?: number;
-  port?: number;
-  url?: string;
-  httping?: boolean;
-  latency_max?: number;
-  packet_loss_max?: number;
-  speed_min?: number;
-  show_count?: number;
-  ip_file?: string;
-  disable_download?: boolean;
-  all_ip?: boolean;
-}
-
-export interface SpeedTestConfig {
-  take_ip_num?: number;
-  max_retry?: number;
-  output_html?: boolean;
-  enable_log?: boolean;
-}
-
-export interface PathConfig {
-  output_dir?: string;
-  log_dir?: string;
-}
-
 export interface CFDNSConfig {
   enabled?: boolean;
   api?: CloudflareAPIConfig;
@@ -179,7 +139,6 @@ export interface DNSPodConfig {
 /** 顶层配置（对应 Go config.Config）。 */
 export interface Config {
   global?: GlobalConfig;
-  cf_ip?: CFIPConfig;
   cf_dns?: CFDNSConfig;
   dnspod?: DNSPodConfig;
   modules?: Record<string, unknown>;

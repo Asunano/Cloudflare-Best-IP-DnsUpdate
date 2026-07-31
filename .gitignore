@@ -1,37 +1,33 @@
 # 运行时生成的配置文件（用户自定义）
 conf/*.json
-conf/status.conf
+conf/*.conf
+!conf/**/*.example
 conf/history.jsonl
-conf/deployments.json
-
-# 运行时标记文件
-.restart_needed
-.restart_count
+cmd/conf/*.json
 
 # 日志文件
 logs/
 *.log
 
-# 锁文件（匹配所有模块下的 .*.lock 文件）
-modules/**/*.lock
-
-# 部署版本特有的模块（原始仓库函数内联在 cfopt.sh 中）
-modules/install/
-
 # 运行时数据目录（测速结果、IP 列表等，任意层级）
 **/assets/data/
 
-# IP 源文件数量侧车（<ipfile>.count，由时效性/数量变化检测写入，不入库）
+# IP 源文件数量侧车
 **/*.count
 
-# cfst 程序二进制文件（sidecar，按 assets/cfst/cfst-<goos>-<goarch>[.exe] 探测，不入库）
-assets/cfst/cfst
+# cfst 程序二进制文件
 **/assets/cfst/cfst-*
 
 # 临时文件
 *.tmp
 *.temp
 *~
+*.bak
+*.orig
+*.rej
+
+# Go 测试临时目录（TMPDIR 重定向产物，任意层级）
+**/.gotmp-*
 
 # 系统文件
 .DS_Store
@@ -42,26 +38,25 @@ Thumbs.db
 .vscode/
 .idea/
 
-# ===== Go 重写版（cfopt-go）与 Tauri GUI 构建产物 =====
-# Go 编译产物（cfopt-go 目录下）
-/cfopt-go/cfopt-go
-/cfopt-go/cfopt-go.exe
+# ===== Go 编译产物 =====
+cfopt
+cfopt.exe
 
-# Tauri sidecar 二进制（由 scripts/setup-sidecar 生成，不入库）
+# ===== Tauri GUI 构建产物 =====
 /tauri/binaries/
 
-# cfopt-go 运行时配置（用户自定义，含凭据，不入库；保留 *.example 模板）
-/cfopt-go/conf/**/*.json
-/cfopt-go/conf/**/*.conf
-!/cfopt-go/conf/**/*.example
-# cfopt-go IPC 端口发现文件
-/cfopt-go/cfopt.ipc
+# IPC 端口发现文件
+cfopt.ipc
 
 # SvelteKit 前端构建产物
 /src/build/
+
 .codebuddy/
 nul
 .workbuddy/
 
-# 一次性分析/审计 scratch 报告（不入库）
+# 一次性分析/审计 scratch 报告
 GO_VS_BASH_GAP_REPORT*.md
+
+# 本地 AI 指令（仅本地使用，不入库）
+CODEBUDDY.md

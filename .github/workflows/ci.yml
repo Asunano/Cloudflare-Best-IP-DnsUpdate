@@ -1,0 +1,53 @@
+name: CI
+
+# 在代码更新（push 到 main 或针对 main 的 PR）时编译并测试，但不发布 release。
+# Release 仅由 release.yml 在推送 v* 标签时触发。
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  build-and-test:
+    name: Build & Test
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          # 与 go.mod 的 go 指令保持一致，避免版本不一致导致构建失败。
+          go-version-file: go.mod
+          cache-dependency-path: go.sum
+
+      - name: Build (all packages)
+        run: go build ./...
+
+      - name: Vet
+        run: go vet ./...
+
+      - name: Test
+        run: go test ./... -count=1
+
+      - name: Build binary
+        # 真正产出可执行的 cfopt 二进制（带版本信息注入），供冒烟测试与产物下载。
+        run: |
+          VERSION="ci-${GITHUB_SHA::7}"
+          COMMIT="${GITHUB_SHA::7}"
+          BUILT_AT="$(date -u +'%Y-%m-%dT%H:%M:%SZ')"
+          go build -trimpath -ldflags "-s -w -X cfopt/cmd.Version=${VERSION} -X cfopt/cmd.Commit=${COMMIT} -X cfopt/cmd.BuiltAt=${BUILT_AT}" -o cfopt .
+
+      - name: Smoke test binary
+        run: ./cfopt version
+
+      - name: Upload binary artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: cfopt-linux-amd64
+          path: cfopt

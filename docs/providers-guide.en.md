@@ -1,6 +1,6 @@
 # Adding a New DNS Provider — Integration Guide (English)
 
-> Applies to: cfopt-go modular architecture (`internal/dns` + `internal/sync` + `pkg/ipc`)
+> Applies to: cfopt modular architecture (`internal/dns` + `internal/sync` + `pkg/ipc`)
 > Audience: developers who want to add a new DNS vendor (e.g. Aliyun, Huawei Cloud, Route53) to cfopt
 > Hard dependency rule:
 > - `internal/dns` MAY import `internal/config`; `internal/config` MUST NOT import `internal/dns`.
@@ -33,10 +33,11 @@ Each `SyncModule` must answer four things:
 
 ```go
 type SyncResult struct {
-    Updated int      `json:"updated"`
-    Created int      `json:"created"`
-    Deleted int      `json:"deleted"`
-    Errors  []string `json:"errors,omitempty"`
+    Updated  int      `json:"updated"`
+    Created  int      `json:"created"`
+    Deleted  int      `json:"deleted"`
+    Errors   []string `json:"errors,omitempty"`
+    Warnings []string `json:"warnings,omitempty"`
 }
 ```
 
@@ -143,7 +144,7 @@ Add one line to `BuiltinModules` in `internal/dns/registry.go`:
 var BuiltinModules = []SyncModule{cfModule{}, dnspodModule{}, mockModule{}}
 ```
 
-`Syncer.BuildSyncerFromConfig` automatically builds the Registry from `BuiltinModules` — no other changes needed.
+`BuildSyncerFromConfig` (package-level function) automatically builds the Registry from `BuiltinModules` — no other changes needed.
 
 ### Option B: Register at runtime from an external package
 
@@ -218,7 +219,7 @@ returning errors via both `*dns.SyncResult.Errors` and the `error` value, which 
 ## 6. Verify your provider
 
 ```bash
-cd cfopt-go
+# Run from the repository root (Go module is named cfopt; cfopt-go was merged into the root)
 export GOPROXY=https://goproxy.cn,direct
 export GOSUMDB=off
 go build ./...

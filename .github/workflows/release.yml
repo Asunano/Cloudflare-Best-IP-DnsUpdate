@@ -24,20 +24,23 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
-          go-version: '1.22'
-          cache-dependency-path: cfopt-go/go.sum
+          # 与 go.mod 的 go 指令保持一致（go.mod 声明 go 1.24，原先钉 1.22 会导致构建失败）。
+          go-version-file: go.mod
+          cache-dependency-path: go.sum
 
       - name: Build
-        working-directory: cfopt-go
         env:
           GOOS: ${{ matrix.goos }}
           GOARCH: ${{ matrix.goarch }}
           CGO_ENABLED: '0'
         run: |
           VERSION="${GITHUB_REF_NAME}"
+          COMMIT="${GITHUB_SHA::7}"
+          BUILT_AT="$(date -u +'%Y-%m-%dT%H:%M:%SZ')"
           BIN="cfopt-${{ matrix.goos }}-${{ matrix.goarch }}"
           if [ "${{ matrix.goos }}" = "windows" ]; then BIN="${BIN}.exe"; fi
-          go build -trimpath -ldflags "-s -w -X main.version=${VERSION}" -o "../dist/${BIN}" .
+          mkdir -p dist
+          go build -trimpath -ldflags "-s -w -X cfopt/cmd.Version=${VERSION} -X cfopt/cmd.Commit=${COMMIT} -X cfopt/cmd.BuiltAt=${BUILT_AT}" -o "dist/${BIN}" .
           echo "built ${BIN}"
 
       - name: Upload artifact

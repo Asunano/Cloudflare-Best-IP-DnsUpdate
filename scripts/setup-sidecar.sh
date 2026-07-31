@@ -15,9 +15,9 @@
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-GO_SRC="$REPO_ROOT/cfopt-go"
+GO_SRC="$REPO_ROOT"                  # Go 源码在根目录
 BIN_DIR="$REPO_ROOT/tauri/binaries"
-SCRIPT_NAME="cfopt-go"   # 与 tauri.conf.json 中 externalBin 名称一致
+SCRIPT_NAME="cfopt-go"               # 与 tauri.conf.json 中 externalBin 名称一致
 
 # 目标 -> goos/goarch/ext
 case "${1:-host}" in

@@ -15,7 +15,7 @@ param(
 
 $ErrorActionPreference = "Stop"
 $RepoRoot = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
-$GoSrc = Join-Path $RepoRoot "cfopt-go"
+$GoSrc = $RepoRoot                    # Go 源码在根目录
 $BinDir = Join-Path $RepoRoot "tauri\binaries"
 $ScriptName = "cfopt-go"
 
