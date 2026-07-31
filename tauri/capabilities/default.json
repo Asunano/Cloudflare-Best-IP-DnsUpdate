@@ -13,7 +13,6 @@
       "identifier": "shell:allow-spawn",
       "allow": [{ "name": "cfopt-go", "cmd": "cfopt-go", "args": true, "sidecar": true }]
     },
-    "shell:allow-sidecar",
     "shell:allow-kill"
   ]
 }

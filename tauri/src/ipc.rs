@@ -7,7 +7,8 @@
 //! - 所有枚举/结构体字段均为 snake_case；
 //! - `id` 为整数（Go 端按 int64 解析）；
 //! - `sync.run` 执行期间，服务端会在最终响应之前，于同一连接上穿插推送
-//!   `progress` 通知（method=="progress"），由 [`ProgressEvent.req_id`] 关联回请求。
+//!   `progress` 通知（method=="progress"），由 [`ProgressEvent.req_id`] 关联回请求；
+//!   `speedtest.run` 同理推送 `speedtest.progress` 通知。
 //!
 //! Rust 侧零业务逻辑：仅做透传序列化、连接管理与进度事件转发。
 
@@ -19,8 +20,8 @@ use std::net::TcpStream;
 use std::sync::atomic::{AtomicI64, Ordering};
 use std::time::Duration;
 
-/// 连接读超时。`sync.run` 可能耗时较长，给足 5 分钟。
-const READ_TIMEOUT: Duration = Duration::from_secs(300);
+/// 连接读超时。`sync.run` / `speedtest.run` 可能串行跑多线路、耗时较长，给足 15 分钟。
+const READ_TIMEOUT: Duration = Duration::from_secs(900);
 
 /// IPC 调用结果：成功返回 JSON 值，失败返回可读错误字符串。
 pub type IpcResult<T> = Result<T, String>;
@@ -51,11 +52,11 @@ pub struct DaemonStatus {
     pub state: String,
 }
 
-/// `progress` 事件参数（与 Go `ProgressEvent` 对齐）。
+/// `progress` / `speedtest.progress` 事件参数（与 Go `ProgressEvent` 对齐）。
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ProgressEvent {
     pub req_id: i64,
-    /// speedtest | extract | write | cloudflare | dnspod
+    /// 实际取值：`speedtest:<线路名>`（逐线路测速）或模块 ID `cf` / `dnspod`（模块同步）
     pub phase: String,
     pub cur: i64,
     pub total: i64,
@@ -63,15 +64,22 @@ pub struct ProgressEvent {
     pub message: String,
 }
 
-/// `sync.run` 返回的执行汇总（与 Go `SyncSummary` 对齐）。
+/// `sync.run` 返回的执行汇总（与 Go `internal/sync.SyncSummary` 对齐）。
+///
+/// 字段全加 `#[serde(default)]`：Go 侧 `errors`/`warnings` 为 nil 时序列化为 `null`，
+/// 无 default 会导致反序列化失败，使同步页永远报错。
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SyncSummary {
-    pub best_ip_count: i64,
+    #[serde(default)]
     pub updated: i64,
+    #[serde(default)]
     pub created: i64,
+    #[serde(default)]
     pub deleted: i64,
     #[serde(default)]
     pub errors: Vec<String>,
+    #[serde(default)]
+    pub warnings: Vec<String>,
 }
 
 /// `speedtest.run` 返回的单条测速结果（与 Go `SpeedResult` 对齐）。
@@ -215,7 +223,7 @@ pub struct Config {
 
 /// IPC 客户端：维护到 Go 守护进程的地址；每次调用新建一条 TCP 连接
 /// （Go 服务端按连接串行处理请求，单连接可承载一请求及其 progress 事件流）。
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub struct IpcClient {
     addr: String,
     next_id: AtomicI64,
@@ -310,8 +318,12 @@ impl IpcClient {
             let frame: Value = serde_json::from_str(trimmed)
                 .map_err(|e| format!("解析帧失败: {e} (raw: {trimmed})"))?;
 
-            // 通知（progress 事件）：无 id，且 method=="progress"
-            let is_event = frame.get("method").and_then(Value::as_str) == Some("progress");
+            // 通知（progress 事件）：无 id，method 为 "progress"（sync.run）或
+            // "speedtest.progress"（speedtest.run），交给回调处理。
+            let is_event = matches!(
+                frame.get("method").and_then(Value::as_str),
+                Some("progress") | Some("speedtest.progress")
+            );
             if is_event {
                 if let Some(cb) = on_progress {
                     if let Some(p) = frame.get("params") {
@@ -381,8 +393,13 @@ impl IpcClient {
         serde_json::from_value(v).map_err(|e| format!("解析 sync 汇总失败: {e}"))
     }
 
-    pub fn speedtest_run(&self) -> IpcResult<Vec<SpeedResult>> {
-        let v = self.call::<()>("speedtest.run", None)?;
+    /// 测速。`on_progress` 接收 `speedtest.progress` 进度事件（无进度时传 `|_| {}`）。
+    pub fn speedtest_run<F: Fn(ProgressEvent)>(
+        &self,
+        on_progress: F,
+    ) -> IpcResult<Vec<SpeedResult>> {
+        let v = self
+            .call_with_progress::<(), _>("speedtest.run", None, on_progress)?;
         serde_json::from_value(v).map_err(|e| format!("解析 speedtest 失败: {e}"))
     }
 

@@ -46,6 +46,18 @@ impl DaemonManager {
     }
 }
 
+/// 解析应传给 Go 端的配置目录。
+///
+/// 目前仅认 `CFOPT_CONFIG_DIR` 环境变量；未设置时返回 `None`，
+/// 由 Go 端按自身默认（相对工作目录的 `conf`）解析。
+/// 守护进程与 CLI 直通层共用此结果，保证两者始终读同一份配置。
+pub fn resolve_config_dir() -> Option<String> {
+    std::env::var("CFOPT_CONFIG_DIR")
+        .ok()
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty())
+}
+
 /// 拉起 Go sidecar，返回其进程句柄。
 fn spawn_sidecar(
     app: &AppHandle,

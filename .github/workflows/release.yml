@@ -50,14 +50,88 @@ jobs:
           name: cfopt-${{ matrix.goos }}-${{ matrix.goarch }}
           path: dist/cfopt-*
 
+  build-gui:
+    name: Build Windows GUI (cross, gnu)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache-dependency-path: go.sum
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: src/package-lock.json
+
+      - name: Set up Rust (windows-gnu target)
+        uses: dtolnay/rust-toolchain@v1
+        with:
+          toolchain: stable
+          targets: x86_64-pc-windows-gnu
+
+      - name: Install mingw-w64
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y gcc-mingw-w64
+
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: tauri -> target
+
+      - name: Build Go sidecar (windows/amd64)
+        env:
+          CGO_ENABLED: '0'
+          GOOS: windows
+          GOARCH: amd64
+        run: go build -o tauri/binaries/cfopt-go-x86_64-pc-windows-gnu.exe .
+
+      - name: Build frontend
+        run: |
+          npm --prefix src install
+          npm --prefix src run build
+
+      - name: Build Windows GUI (cargo, windows-gnu)
+        working-directory: tauri
+        env:
+          # 静态化 C 运行库，降低在纯净 Windows 上缺失 mingw 运行库的风险。
+          RUSTFLAGS: "-C target-feature=+crt-static"
+        run: cargo build --release --target x86_64-pc-windows-gnu
+
+      - name: Collect GUI artifacts
+        run: |
+          mkdir -p gui-dist
+          cp tauri/target/x86_64-pc-windows-gnu/release/cfopt-gui.exe gui-dist/cfopt-gui-windows-x86_64.exe
+          # sidecar：tauri-build 在产物目录里将其重命名为 cfopt-go.exe（运行时按此名查找），
+          # 同时保留 cfopt-go-<triple>.exe 以兼容不同 Tauri 版本的解析规则。
+          cp tauri/target/x86_64-pc-windows-gnu/release/cfopt-go.exe gui-dist/
+          cp tauri/binaries/cfopt-go-x86_64-pc-windows-gnu.exe gui-dist/
+          ls -la gui-dist
+
+      - name: Upload GUI artifact (not released)
+        uses: actions/upload-artifact@v4
+        with:
+          # 仅作为 workflow artifact 留存，不进入 GitHub Release（与 CLI 的 cfopt-* 资产红线分离）。
+          name: windows-gui
+          path: gui-dist/*
+
   release:
     name: Release & SHA256SUMS
     needs: build
     runs-on: ubuntu-latest
     steps:
-      - name: Download all artifacts
+      - name: Download CLI artifacts
         uses: actions/download-artifact@v4
         with:
+          # 仅下载 cfopt-* 命名的 CLI 产物；GUI 产物（windows-gui）单独留存，不发布。
+          pattern: cfopt-*
           path: dist
           merge-multiple: true
 

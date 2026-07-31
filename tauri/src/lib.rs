@@ -4,13 +4,18 @@
 //! 仅做 UI 渲染、参数透传与 IPC 桥接；所有优选/测速/DNS 同步均在 Go 端完成。
 //!
 //! 前端（SvelteKit）通过 `invoke('ipc_request', { method, params })` 发起调用，
-//! 本模块将其转发给 [`ipc::IpcClient`]，并把 `sync.run` 的 progress 事件
-//! 以 `sync-progress` 事件透传给前端（`listen('sync-progress', ...)`）。
+//! 本模块将其转发给 [`ipc::IpcClient`]，并把 `sync.run` / `speedtest.run` 的 progress 事件
+//! 以 `sync-progress` / `speedtest-progress` 事件透传给前端。
+//!
+//! 另有 [`cli::run_cli`] 命令：对只有 CLI 实现、未暴露 IPC 方法的能力
+//! （health / logs / cfst / schedule 等），直接以子进程方式运行同一个 sidecar 二进制，
+//! 输出经 `cli-log` / `cli-exit` 事件流式回传。
 
+mod cli;
 mod daemon;
 mod ipc;
 
-use daemon::{DaemonManager, ensure_daemon, stop_daemon};
+use daemon::{DaemonManager, ensure_daemon, resolve_config_dir, stop_daemon};
 use ipc::{Config, IpcClient, ProgressEvent};
 use serde_json::{Value, json};
 use std::sync::Mutex;
@@ -65,7 +70,10 @@ fn ipc_request(
             serde_json::to_value(summary).unwrap_or(Value::Null)
         }
         "speedtest.run" => {
-            serde_json::to_value(client.speedtest_run()?).unwrap_or(Value::Null)
+            let results = client.speedtest_run(|pe: ProgressEvent| {
+                let _ = app.emit("speedtest-progress", pe);
+            })?;
+            serde_json::to_value(results).unwrap_or(Value::Null)
         }
         "history.list" => {
             let n = params
@@ -106,14 +114,18 @@ pub fn run() {
                 }
                 Err(_) => std::env::temp_dir().join("cfopt-ipc.port"),
             };
-            let config_dir = std::env::var("CFOPT_CONFIG_DIR").ok();
+            let config_dir = resolve_config_dir();
             app.manage(AppState {
                 client: Mutex::new(IpcClient::new("127.0.0.1:0")),
                 daemon: Mutex::new(DaemonManager::new(port_file, config_dir)),
             });
             Ok(())
         })
-        .invoke_handler(tauri::generate_handler![ipc_request, stop_daemon_cmd])
+        .invoke_handler(tauri::generate_handler![
+            ipc_request,
+            stop_daemon_cmd,
+            cli::run_cli
+        ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }
