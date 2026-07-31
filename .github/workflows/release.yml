@@ -70,8 +70,8 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: 20
-          cache: npm
-          cache-dependency-path: src/package-lock.json
+          # 不启用 npm cache：仓库未提交 src/package-lock.json（前端源码 WIP 未入库），
+          # 指定 cache-dependency-path 会因找不到 lockfile 直接让 job 失败。
 
       - name: Set up Rust (windows-gnu target)
         uses: dtolnay/rust-toolchain@v1
